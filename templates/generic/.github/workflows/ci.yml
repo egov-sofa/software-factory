@@ -10,4 +10,4 @@ on:
 
 jobs:
   ci:
-    uses: {{GITHUB_OWNER}}/software-factory/.github/workflows/reusable-generic.yml@main
+    uses: {{FACTORY_REPO}}/.github/workflows/reusable-generic.yml@main

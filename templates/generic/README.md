@@ -15,7 +15,7 @@ bash scripts/check.sh   # run all checks locally
 
 ## Development workflow
 
-This project uses the [software-factory](https://github.com/{{GITHUB_OWNER}}/software-factory) pipeline:
+This project uses the [software-factory](https://github.com/{{FACTORY_REPO}}) pipeline:
 
 ```
 /factory-build <feature>   plan → build → test → review → docs

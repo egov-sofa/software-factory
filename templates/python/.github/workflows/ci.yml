@@ -9,6 +9,6 @@ on:
 
 jobs:
   ci:
-    uses: {{GITHUB_OWNER}}/software-factory/.github/workflows/reusable-python.yml@main
+    uses: {{FACTORY_REPO}}/.github/workflows/reusable-python.yml@main
     with:
       python-version: "3.12"

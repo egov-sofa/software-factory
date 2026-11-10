@@ -19,7 +19,7 @@ Show the user a table of files to **add** and files that **already exist** (to b
 
 ## 3. Apply (on a branch `chore/factory-onboard`)
 - **CLAUDE.md:** base it on `{{FACTORY_HOME}}/templates/<stack>/CLAUDE.md`, rewritten with this project's real commands, folder structure (from `ls` and a quick look around) and conventions you observed in the code.
-- **CI:** copy `{{FACTORY_HOME}}/templates/<stack>/.github/workflows/ci.yml` and replace `{{GITHUB_OWNER}}`. If the project already has CI, show both and ask which to keep.
+- **CI:** copy `{{FACTORY_HOME}}/templates/<stack>/.github/workflows/ci.yml` and replace the factory-repo placeholder (the text between double curly braces) with the factory's `owner/repo`, taken from `git -C "{{FACTORY_HOME}}" remote get-url origin`. If the project already has CI, show both and ask which to keep.
 - **From `{{FACTORY_HOME}}/templates/_shared/`:** `.editorconfig`, `.github/pull_request_template.md`, `.github/dependabot.yml` (keep only the ecosystems this project uses).
 - **docs/plans/.gitkeep**, so the factory pipeline has somewhere to put plans.
 - Make sure `.gitignore` covers `.env`, plus dependency and build folders for the stack.
