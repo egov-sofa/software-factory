@@ -24,7 +24,7 @@ People skip steps when they're in a hurry. A *factory* makes the steps automatic
 Open **Git Bash** (or the Claude Code terminal) and run:
 
 ```bash
-bash ~/software-factory/scripts/install.sh
+bash /c/DEV/PROJECTS/gitHub/egov-rdc/software-factory/scripts/install.sh
 ```
 
 **What this does:**
@@ -35,14 +35,14 @@ bash ~/software-factory/scripts/install.sh
 
 **Restart Claude Code** after installing so it picks up the new files.
 
-> 💡 Whenever you change something in `~/software-factory/claude/`, run `install.sh` again to update your installed copy.
+> 💡 Whenever you change something in `/c/DEV/PROJECTS/gitHub/egov-rdc/software-factory/claude/`, run `install.sh` again to update your installed copy.
 
 ---
 
 ## Step 2: Create your first project
 
 ```bash
-bash ~/software-factory/scripts/new-project.sh hello-factory typescript
+bash /c/DEV/PROJECTS/gitHub/egov-rdc/software-factory/scripts/new-project.sh hello-factory typescript
 ```
 
 **What this does:**
@@ -55,7 +55,7 @@ bash ~/software-factory/scripts/new-project.sh hello-factory typescript
 **Optional:** add `--github private` (or `public`) to also create the GitHub repository and push to it:
 
 ```bash
-bash ~/software-factory/scripts/new-project.sh hello-factory typescript --github private
+bash /c/DEV/PROJECTS/gitHub/egov-rdc/software-factory/scripts/new-project.sh hello-factory typescript --github private
 ```
 
 Then install dependencies and check that everything passes:

@@ -17,10 +17,10 @@ A personal "factory" that turns ideas into working, tested, reviewed software, t
 
 ```bash
 # 1. Install the AI team and standards into Claude Code (safe to re-run)
-bash ~/software-factory/scripts/install.sh
+bash /c/DEV/PROJECTS/gitHub/egov-rdc/software-factory/scripts/install.sh
 
 # 2. Create a new project
-bash ~/software-factory/scripts/new-project.sh my-app typescript
+bash /c/DEV/PROJECTS/gitHub/egov-rdc/software-factory/scripts/new-project.sh my-app typescript
 
 # 3. Open it in Claude Code and build something
 cd ~/projects/my-app && claude

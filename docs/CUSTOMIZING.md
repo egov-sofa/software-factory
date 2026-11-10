@@ -2,7 +2,7 @@
 
 The factory is meant to grow with you. The golden rule:
 
-> **Edit files in `~/software-factory/`, never in `~/.claude/` directly.** Then run `scripts/install.sh` again and commit your change. Otherwise your edits are lost on the next install and are never backed up to GitHub.
+> **Edit files in `/c/DEV/PROJECTS/gitHub/egov-rdc/software-factory/`, never in `~/.claude/` directly.** Then run `scripts/install.sh` again and commit your change. Otherwise your edits are lost on the next install and are never backed up to GitHub.
 
 ---
 
