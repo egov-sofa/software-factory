@@ -1,0 +1,13 @@
+# CI: runs automatically on every push and pull request.
+# Runs scripts/check.sh. If your language needs a toolchain (Go, Rust, .NET, Java),
+# add its setup step in `setup-command` or switch to a dedicated reusable workflow.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  ci:
+    uses: {{GITHUB_OWNER}}/software-factory/.github/workflows/reusable-generic.yml@main

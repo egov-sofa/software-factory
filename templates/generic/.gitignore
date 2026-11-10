@@ -1,0 +1,12 @@
+.env
+.env.*
+!.env.example
+build/
+dist/
+out/
+bin/
+obj/
+target/
+*.log
+.DS_Store
+.idea/

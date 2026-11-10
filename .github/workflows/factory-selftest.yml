@@ -1,0 +1,60 @@
+# Tests the factory itself: scaffolds a project from every template and runs its checks.
+# If a change to a template or script breaks project creation, this goes red.
+name: Factory self-test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  scripts:
+    name: Shell scripts lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: shellcheck scripts/*.sh templates/generic/scripts/*.sh
+
+  scaffold:
+    name: Scaffold ${{ matrix.template }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        template: [typescript, python, generic]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Configure git identity
+        run: |
+          git config --global user.name "factory-selftest"
+          git config --global user.email "selftest@example.com"
+
+      - name: Scaffold project
+        run: bash scripts/new-project.sh selftest-app ${{ matrix.template }} --dir "$RUNNER_TEMP" --owner example
+
+      - name: No placeholders left behind
+        run: |
+          if grep -rn "{{" "$RUNNER_TEMP/selftest-app" --exclude-dir=.git; then
+            echo "::error::Unreplaced placeholders found"; exit 1
+          fi
+
+      - name: Run project checks
+        working-directory: ${{ runner.temp }}/selftest-app
+        run: |
+          case "${{ matrix.template }}" in
+            typescript) npm install && npm run lint && npm run build && npm test ;;
+            python)     pip install -e ".[dev]" && ruff check . && ruff format --check . && pytest ;;
+            generic)    bash scripts/check.sh ;;
+          esac

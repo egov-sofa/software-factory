@@ -1,0 +1,34 @@
+# Reusable CI for any language: runs the project's scripts/check.sh.
+# Called from a project's ci.yml with:
+#   uses: <owner>/software-factory/.github/workflows/reusable-generic.yml@main
+name: Reusable Generic CI
+
+on:
+  workflow_call:
+    inputs:
+      setup-command:
+        description: Optional shell command to install a toolchain before checks
+        type: string
+        default: ""
+      check-script:
+        description: Script that runs lint, build and test
+        type: string
+        default: "scripts/check.sh"
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Run checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up toolchain
+        if: inputs.setup-command != ''
+        run: ${{ inputs.setup-command }}
+
+      - name: Run checks
+        run: bash "${{ inputs.check-script }}"

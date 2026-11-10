@@ -1,0 +1,14 @@
+# CI: runs automatically on every push and pull request.
+# The actual steps live in the shared software-factory repo, so improving them there updates every project.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  ci:
+    uses: {{GITHUB_OWNER}}/software-factory/.github/workflows/reusable-node.yml@main
+    with:
+      node-version: "22"
