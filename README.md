@@ -23,7 +23,7 @@ bash /c/DEV/PROJECTS/gitHub/egov-rdc/software-factory/scripts/install.sh
 bash /c/DEV/PROJECTS/gitHub/egov-rdc/software-factory/scripts/new-project.sh my-app typescript
 
 # 3. Open it in Claude Code and build something
-cd ~/projects/my-app && claude
+cd /c/DEV/PROJECTS/gitHub/egov-rdc/my-app && claude
 > /factory-build add a function that converts Celsius to Fahrenheit
 ```
 

@@ -17,7 +17,7 @@ Factory location: `{{FACTORY_HOME}}`
    ```bash
    bash "{{FACTORY_HOME}}/scripts/new-project.sh" <name> <template> [--github private|public]
    ```
-   Projects go in `~/projects/` by default. Add `--dir <path>` if the user wants somewhere else.
+   Projects go in the folder that contains the factory (`/c/DEV/PROJECTS/gitHub/egov-rdc`) by default. Add `--dir <path>` if the user wants somewhere else.
 3. **Install and verify.** `cd` into the project and run its install and test commands (they're listed in the new project's `CLAUDE.md`). Report the results honestly.
 4. **Explain what was created**, as a short annotated tree of the key files and what each one is for.
 5. **Next steps:** `cd <path> && claude`, then `/factory-build <first feature>`.

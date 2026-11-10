@@ -46,7 +46,7 @@ bash /c/DEV/PROJECTS/gitHub/egov-rdc/software-factory/scripts/new-project.sh hel
 ```
 
 **What this does:**
-1. Creates `~/projects/hello-factory/`
+1. Creates `/c/DEV/PROJECTS/gitHub/egov-rdc/hello-factory/`
 2. Copies in the shared files (editor settings, PR template, Dependabot config, CLAUDE.md)
 3. Adds the TypeScript-specific files on top (package.json, tsconfig, a sample function and test)
 4. Fills in placeholders such as the project name and your GitHub username
@@ -61,7 +61,7 @@ bash /c/DEV/PROJECTS/gitHub/egov-rdc/software-factory/scripts/new-project.sh hel
 Then install dependencies and check that everything passes:
 
 ```bash
-cd ~/projects/hello-factory
+cd /c/DEV/PROJECTS/gitHub/egov-rdc/hello-factory
 npm install
 npm test
 ```
@@ -71,7 +71,7 @@ npm test
 ## Step 3: Build a feature with the AI team
 
 ```bash
-cd ~/projects/hello-factory
+cd /c/DEV/PROJECTS/gitHub/egov-rdc/hello-factory
 claude
 ```
 

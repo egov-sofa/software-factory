@@ -12,7 +12,7 @@ flowchart LR
     end
 
     A -- install.sh copies --> C["~/.claude<br/>(works in every project)"]
-    T -- new-project.sh copies --> P["~/projects/my-app"]
+    T -- new-project.sh copies --> P["egov-rdc/my-app<br/>(next to the factory)"]
     P -- ci.yml calls --> W
     S -. read by .-> A
     C -- you run /factory-build --> P
@@ -71,7 +71,7 @@ templates/_shared/     ← every project gets these (CLAUDE.md, .editorconfig, P
         +
 templates/typescript/  ← language-specific files, copied on top (can override _shared files)
         =
-~/projects/my-app/
+/c/DEV/PROJECTS/gitHub/egov-rdc/my-app/
 ```
 
 Then it replaces placeholders:

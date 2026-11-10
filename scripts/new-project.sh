@@ -5,7 +5,8 @@
 #   bash scripts/new-project.sh <name> <template> [options]
 #
 # Options:
-#   --dir <parent>             Where to create the project (default: ~/projects)
+#   --dir <parent>             Where to create the project (default: the folder that contains
+#                              the factory, or $FACTORY_PROJECTS_DIR if set)
 #   --github private|public    Also create a GitHub repo and push to it
 #   --owner <github-user>      GitHub owner for CI links (default: detected with gh)
 #   --no-git                   Don't initialize a git repository
@@ -20,7 +21,7 @@ TEMPLATES="$FACTORY_HOME/templates"
 die() { printf '❌ %s\n' "$*" >&2; exit 1; }
 
 usage() {
-  sed -n '2,13p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,15p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
   printf '\nTemplates: %s\n' "$(find "$TEMPLATES" -mindepth 1 -maxdepth 1 -type d ! -name '_*' -exec basename {} \; | sort | tr '\n' ' ')"
   exit 1
 }
@@ -28,7 +29,8 @@ usage() {
 # ---- Parse arguments -------------------------------------------------------
 [[ $# -lt 2 ]] && usage
 NAME="$1"; TEMPLATE="$2"; shift 2
-PARENT="$HOME/projects"; GITHUB=""; OWNER=""; INIT_GIT=true
+# New projects live next to the factory by default, so they share one workspace folder.
+PARENT="${FACTORY_PROJECTS_DIR:-$(dirname "$FACTORY_HOME")}"; GITHUB=""; OWNER=""; INIT_GIT=true
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
