@@ -1,0 +1,11 @@
+# Proposes updates of the GitHub Actions used in .github/workflows and .github/actions (they are pinned to commit SHAs).
+# Every project calls these workflows, so review each update and release it like any other factory change.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directories: ["/", "/.github/actions/*"]
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]

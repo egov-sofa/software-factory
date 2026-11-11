@@ -94,7 +94,7 @@ Each project has a tiny `.github/workflows/ci.yml`:
 ```yaml
 jobs:
   ci:
-    uses: YOUR_NAME/software-factory/.github/workflows/reusable-node.yml@main
+    uses: YOUR_NAME/software-factory/.github/workflows/reusable-node.yml@v1
 ```
 
 That one line runs the full pipeline defined in the factory repo:

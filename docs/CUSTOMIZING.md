@@ -40,11 +40,21 @@ To include it in the pipeline, add a step to `claude/skills/factory-build/SKILL.
 
 Use `{{PROJECT_NAME}}`, `{{PACKAGE_NAME}}`, `{{GITHUB_OWNER}}` and `{{YEAR}}` anywhere in file contents.
 
-## Change the CI pipeline for all projects
+## Change the CI pipeline (or another shared service) for all projects
 
-Edit `.github/workflows/reusable-*.yml` and push to `main`. Every project that calls it uses the new version on its next run. No changes are needed in the projects themselves.
+Projects call the factory's workflows and actions at `@v1`, not `@main`. A merge to `main` changes nothing for them
+until you **release** it:
 
-> ⚠️ This is powerful: a broken change breaks every project's CI. Test on a branch first. A project can pin to a branch or tag with `@my-branch` instead of `@main`.
+1. Edit `.github/workflows/reusable-*.yml` (or another shared service) on a branch and merge it to `main`.
+   To try a change in one project first, point that project's `uses:` line at your branch (`@my-branch`) for a while.
+2. Preview the notes: `bash scripts/release-notes.sh v1.3.0`.
+3. Tag and push: `git tag -a v1.3.0 -m "Short description" && git push origin v1.3.0`.
+   The [Release workflow](../.github/workflows/release.yml) publishes the release and moves `v1` to it, so every
+   project uses it on its next run.
+
+> ⚠️ A **breaking** change (a removed or renamed input, a new required secret, behavior a project relies on) gets a
+> new major version instead: tag `v2.0.0`. `v1` stays where it was, and each project moves to `@v2` when you choose.
+> See [SHARED-SERVICES.md](SHARED-SERVICES.md#versioning-and-releases-of-the-factory).
 
 ## Private factory repo
 
