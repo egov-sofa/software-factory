@@ -1,0 +1,45 @@
+# Source of project-scaffolding.drawio and .png (docs/HOW-IT-WORKS.md, Part 2). Regenerate: bash docs/diagrams/build.sh project-scaffolding
+diagram:
+  title: new-project.sh, how a project is built
+  statement: Shared files first, the language template on top, the factory's guard and hooks, then placeholders filled; the project calls CI at v1.
+  notation: c4
+  viewpoint: solution
+  status: approved
+  version: "2"
+  author: software-factory
+  date: 2026-11-11
+pages:
+  - name: Scaffolding
+    flow: left-to-right
+    items:
+      - container: factory
+        kind: system-boundary
+        name: Factory repo
+        layout: column
+        items:
+          - {node: shared, kind: component, name: templates/_shared, qualifier: "PR template, hooks callers, pr-review"}
+          - {node: lang, kind: component, name: templates/<language>, qualifier: "typescript, python or generic"}
+          - {node: guard, kind: component, name: scripts/check_content.py, qualifier: and scripts/hooks}
+      - container: script
+        kind: zone
+        name: new-project.sh
+        layout: column
+        items:
+          - {node: layer, kind: component, name: 1. Copy layers, qualifier: "language overrides _shared", lane: mid}
+          - {node: fill, kind: component, name: 2. Fill placeholders, qualifier: "{{PROJECT_NAME}}, {{FACTORY_REPO}}"}
+          - {node: git, kind: component, name: 3. git init, qualifier: "first commit, hooks on"}
+      - container: project
+        kind: zone
+        name: egov-rdc/<org>/my-app
+        layout: column
+        items:
+          - {node: app, kind: system, name: my-app, qualifier: ready for /factory-build, lane: mid}
+          - {node: ci, kind: component, name: .github/workflows, qualifier: "ci.yml calls @v1"}
+    edges:
+      - {from: shared, to: layer, kind: file, label: first, bus: inputs}
+      - {from: lang, to: layer, kind: file, label: on top, bus: inputs}
+      - {from: guard, to: layer, kind: file, label: copied, bus: inputs}
+      - {from: layer, to: fill, kind: sync, label: then}
+      - {from: fill, to: git, kind: sync, label: then}
+      - {from: git, to: app, kind: file, label: writes, primary: true}
+      - {from: app, to: ci, kind: sync, label: contains}

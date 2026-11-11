@@ -4,3 +4,6 @@
 .env
 .content-denylist
 __pycache__/
+
+# Diagram SVG exports: the .drawio is the source, the PNG is what the docs embed (docs/diagrams/README.md)
+docs/diagrams/*.svg

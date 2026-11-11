@@ -59,6 +59,8 @@ until you **release** it:
    The [Release workflow](../.github/workflows/release.yml) publishes the release and moves `v1` to it, so every
    project uses it on its next run.
 
+   ![Releasing the factory, as a process from merge to rollout](diagrams/release-flow.png)
+
 > ⚠️ A **breaking** change (a removed or renamed input, a new required secret, behavior a project relies on) gets a
 > new major version instead: tag `v2.0.0`. `v1` stays where it was, and each project moves to `@v2` when you choose.
 > See [SHARED-SERVICES.md](SHARED-SERVICES.md#versioning-and-releases-of-the-factory).
@@ -69,6 +71,8 @@ The factory lives in the `egov-sofa` org, but projects live in many orgs (`egov-
 
 Public means anyone can *read* it, so **never put secrets, tokens, internal URLs or client data in this repo.** Projects keep their secrets in their own GitHub Secrets. The content guard checks pull requests for such details.
 
+![If the factory were made private: calls from other organizations fail with "workflow was not found"](diagrams/cross-org-access-2.png)
+
 If you ever make it private again, only projects inside `egov-sofa` keep working. Turn on sharing in GitHub → software-factory → **Settings → Actions → General → Access** → *"Accessible from repositories in the 'egov-sofa' organization"*, or from the terminal:
 `gh api -X PUT repos/egov-sofa/software-factory/actions/permissions/access -f access_level=organization`.
 
@@ -76,6 +80,20 @@ If you ever make it private again, only projects inside `egov-sofa` keep working
 allow the factory's workflows. "Allow all actions and reusable workflows" does; if a repo allows only its own
 organization's, choose the "select" option and add `egov-sofa/software-factory/*`. Do not turn on "Require actions to
 be pinned to a full-length commit SHA" there: projects call the factory at the tag `@v1`.
+
+## Change or add a diagram
+
+Every diagram in `docs/` is generated from a YAML sketch in [`docs/diagrams/`](diagrams/) by the architecture-diagram
+skill of `egov-ai/claude-skills`. Edit the sketch, never the `.drawio` or `.png`, then regenerate and look at the PNG:
+
+```bash
+bash docs/diagrams/build.sh <name>
+```
+
+`build.sh` needs a clone of claude-skills (`CLAUDE_SKILLS=/path` if it is not next to the factory's org folder) and,
+for the PNG, the pinned draw.io CLI. To add a diagram, copy the sketch closest to what you need, add it to the index in
+[diagrams/README.md](diagrams/README.md) and embed the PNG where it is explained. In Claude Code, the
+`architecture-diagram` skill does all of this when you ask for a diagram.
 
 ## Adding deployment (CD)
 

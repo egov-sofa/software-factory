@@ -32,6 +32,11 @@ both:
 4. **Always leave an escape route.** Any project can replace a `uses:` line with a local copy and diverge. Nothing
    locks it in.
 
+The first rule fixed a real problem. Before #2, every project followed `main`; now each follows `v1`, which moves only
+on a release:
+
+![From @main to @v1: the old calls to main are removed; projects call the tag v1, which the Release workflow moves; v2 is planned for breaking changes](diagrams/version-pinning.png)
+
 ## Who uses what
 
 | Project | Uses from the factory | Keeps locally |
@@ -56,7 +61,7 @@ Do not adopt the factory's services when:
 
 ## The services
 
-All of them are referenced as `<owner>/software-factory/...@v1`. Templates already contain the callers; for an
+All of them are referenced as `egov-sofa/software-factory/...@v1`. Templates already contain the callers; for an
 existing project, copy the caller files from [`templates/_shared/`](../templates/_shared/) or run `/factory-onboard`.
 
 | Service | Kind | What it does | Caller file in projects |
@@ -66,6 +71,8 @@ existing project, copy the caller files from [`templates/_shared/`](../templates
 | Claude on demand | reusable workflow: `reusable-claude-mention.yml` | Answers a pull request comment starting with `@claude` (write access only) | `.github/workflows/claude-mention.yml` |
 | Content guard | composite action: `.github/actions/content-guard` | Blocks secrets, public IP addresses, internal host names and denylisted terms in a pull request | `.github/workflows/content-guard.yml` |
 | Local hooks | files copied into the project | Run the same guard before each commit | `scripts/hooks/`, `scripts/check_content.py` |
+
+![Shared services: four thin callers in the project call the factory at v1; the content guard reads the pull request, an untrusted zone, only as data; the two Claude workflows get a short-lived token for the Claude API](diagrams/shared-services.png)
 
 ### Why the content guard is an action, not a reusable workflow
 
@@ -119,6 +126,8 @@ Findings never print a denylisted term, only its number.
 - **Breaking** change (a removed or renamed input, a new required secret, different behavior a project relies on):
   major release `v2`. `v1` stays where it was until each project chooses to move.
 
+![Releasing the factory: run Release on main; the workflow checks the version, creates the tag, writes notes, publishes, and moves v1 for a stable version; projects pick it up on their next run](diagrams/release-flow.png)
+
 Two ways to release:
 
 - **From GitHub (no terminal):** Actions → **Release** → *Run workflow*, branch `main`, version `v1.1.0`. The workflow
@@ -144,5 +153,12 @@ setup on the factory side. Two things follow:
   all actions and reusable workflows", or the "select" option with `egov-sofa/software-factory/*` added. This matters
   for `egov-ai/claude-skills`, which lives in another organization.
 
+![Today, a public factory: claude-skills in egov-ai and a project in pentagone-digital call software-factory in egov-sofa at v1](diagrams/cross-org-access-1.png)
+
 If the factory is ever made private, it can only serve repositories of the same owner: private workflows cannot be
 shared across organizations. See [CUSTOMIZING.md](CUSTOMIZING.md#why-the-factory-repo-is-public).
+
+![If the factory were made private: only projects in egov-sofa keep working; calls from other organizations fail with "workflow was not found"](diagrams/cross-org-access-2.png)
+
+The way out, if the factory must stop being public, is one GitHub Enterprise account with internal repositories; it is
+open question 1 of [ENTERPRISE-VISION.md](ENTERPRISE-VISION.md#7-open-questions-for-the-next-analysis).

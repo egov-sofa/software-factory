@@ -1,0 +1,71 @@
+# Source of rigour-levels.drawio and .png (docs/ENTERPRISE-VISION.md, section 3). Regenerate: bash docs/diagrams/build.sh rigour-levels
+# Two two-way decisions instead of one four-way gateway: "Level?" splits small changes (L0, L1) from large ones
+# (L2, L3), then each branch makes one more choice.
+diagram:
+  title: Levels of rigour, L0 to L3
+  statement: A cheap classifier proposes the level and you confirm it; only L2 and L3 add architects and a review board, so cost follows the risk of the change.
+  notation: bpmn
+  viewpoint: process
+  status: draft
+  version: "1"
+  author: software-factory
+  date: 2026-11-11
+pages:
+  - name: Levels
+    flow: left-to-right
+    items:
+      - container: factory
+        kind: pool
+        name: Enterprise factory
+        items:
+          - container: board
+            kind: lane
+            name: Review board
+            layout: row
+            align: middle
+            items:
+              - {node: arb, kind: task, name: Approve initiative, step: 6}
+          - container: architects
+            kind: lane
+            name: Architects
+            layout: row
+            align: middle
+            items:
+              - {node: big, kind: gateway, name: "Initiative?", step: 4}
+              - {node: align, kind: task, name: Align with strategy, step: 5}
+              - {node: design, kind: task, name: "Spec, design, ADRs", step: 7}
+          - container: you
+            kind: lane
+            name: You
+            layout: row
+            align: middle
+            items:
+              - {node: start, kind: start-event, name: Change requested, step: 1}
+              - {node: level, kind: gateway, name: "Level?", step: 3}
+              - {node: small, kind: gateway, name: "Plan needed?", step: 4}
+              - {node: approve, kind: task, name: Approve plan, step: 9}
+          - container: agents
+            kind: lane
+            name: Agents
+            layout: row
+            align: middle
+            items:
+              - {node: classify, kind: task, name: Propose a level, step: 2}
+              - {node: plan, kind: task, name: Write spec and plan, step: 8}
+              - {node: build, kind: task, name: "Build, test, review", step: 10}
+              - {node: done, kind: end-event, name: Ready to ship, step: 11}
+    edges:
+      - {from: start, to: classify, kind: sequence}
+      - {from: classify, to: level, kind: sequence}
+      - {from: level, to: big, kind: sequence, label: "L2, L3"}
+      - {from: level, to: small, kind: sequence, label: "L0, L1"}
+      - {from: big, to: align, kind: sequence, label: "yes, L3"}
+      - {from: align, to: arb, kind: sequence}
+      - {from: arb, to: design, kind: sequence}
+      - {from: big, to: design, kind: sequence, label: "no, L2"}
+      - {from: small, to: plan, kind: sequence, label: "yes, L1"}
+      - {from: design, to: approve, kind: sequence}
+      - {from: plan, to: approve, kind: sequence}
+      - {from: approve, to: build, kind: sequence}
+      - {from: small, to: build, kind: sequence, label: "no, L0"}
+      - {from: build, to: done, kind: sequence}

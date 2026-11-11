@@ -1,0 +1,103 @@
+# Source of cross-org-access.drawio and cross-org-access-1..3.png (docs/SHARED-SERVICES.md, docs/ENTERPRISE-VISION.md).
+# Regenerate: bash docs/diagrams/build.sh cross-org-access
+diagram:
+  title: Who can call the factory
+  statement: The factory serves projects in several organizations; that works only while it is public, or once all of them sit in one GitHub Enterprise.
+  notation: c4
+  viewpoint: solution
+  status: review
+  version: "1"
+  author: software-factory
+  date: 2026-11-11
+pages:
+  - name: Today
+    title: Today, a public factory
+    statement: The factory is public, so projects in any organization can call it; the price is that everything in it is visible to anyone.
+    flow: left-to-right
+    items:
+      - container: sofa
+        kind: tenant
+        name: Org egov-sofa
+        items:
+          - {node: factory, kind: system, name: software-factory, qualifier: public}
+      - container: others
+        kind: group
+        layout: column
+        items:
+          - container: ai
+            kind: tenant
+            name: Org egov-ai
+            items:
+              - {node: skills, kind: component, name: claude-skills, qualifier: private}
+          - container: pd
+            kind: tenant
+            name: Org pentagone-digital
+            items:
+              - {node: app, kind: component, name: a project, qualifier: private}
+    edges:
+      - {from: skills, to: factory, kind: sync, label: "uses @v1", primary: true}
+      - {from: app, to: factory, kind: sync, label: "uses @v1"}
+  - name: Private
+    title: If the factory were made private
+    statement: A private repository shares its workflows only within its own organization, so every project outside egov-sofa breaks.
+    flow: left-to-right
+    items:
+      - container: sofa
+        kind: tenant
+        name: Org egov-sofa
+        layout: column
+        items:
+          - {node: factory, kind: system, name: software-factory, qualifier: private}
+          - {node: own, kind: component, name: a project in egov-sofa, qualifier: still works}
+      - container: others
+        kind: group
+        layout: column
+        items:
+          - container: ai
+            kind: tenant
+            name: Org egov-ai
+            items:
+              - {node: skills, kind: component, name: claude-skills}
+          - {node: risk, kind: note, risk: true, name: "Other orgs: workflow was not found"}
+          - container: pd
+            kind: tenant
+            name: Org pentagone-digital
+            items:
+              - {node: app, kind: component, name: a project}
+    edges:
+      - {from: own, to: factory, kind: sync, label: "uses @v1", primary: true}
+      - {from: skills, to: factory, kind: sync, label: "uses @v1", lifecycle: removed}
+      - {from: app, to: factory, kind: sync, label: "uses @v1", lifecycle: removed}
+  - name: Enterprise
+    title: Option, one GitHub Enterprise
+    statement: Inside one GitHub Enterprise, an internal factory serves every organization of the enterprise without being public (roadmap E1.6).
+    flow: left-to-right
+    items:
+      - container: ent
+        kind: tenant
+        name: GitHub Enterprise account
+        lifecycle: planned
+        layout: row
+        items:
+          - container: sofa
+            kind: subscription
+            name: Org egov-sofa
+            items:
+              - {node: factory, kind: system, name: software-factory, qualifier: internal, lifecycle: planned}
+          - container: others
+            kind: group
+            layout: column
+            items:
+              - container: ai
+                kind: subscription
+                name: Org egov-ai
+                items:
+                  - {node: skills, kind: component, name: claude-skills, qualifier: private}
+              - container: pd
+                kind: subscription
+                name: Org pentagone-digital
+                items:
+                  - {node: app, kind: component, name: a project, qualifier: private}
+    edges:
+      - {from: skills, to: factory, kind: sync, label: "uses @v1", primary: true}
+      - {from: app, to: factory, kind: sync, label: "uses @v1"}

@@ -66,6 +66,10 @@ Callers of the factory's own services in templates use `@v1`, never `@main`.
 **Docs.** A change to how something is used updates `README.md` or the page in `docs/` that describes it, and an item
 of `docs/ROADMAP.md` that the PR completes has its status updated.
 
+**Diagrams** (`docs/diagrams/`): a `.drawio` or `.png` changes only together with its `.yaml` sketch (or, for a change
+diagram, its `.before.yaml` and `.after.yaml`); a diagram edited by hand is a blocker. A new diagram is listed in
+`docs/diagrams/README.md`. A doc that describes a changed flow points at a diagram that still matches it.
+
 ## 3. Report
 
 On GitHub (in the workflow): one inline comment per finding with `confirmed: true`, then one summary comment with

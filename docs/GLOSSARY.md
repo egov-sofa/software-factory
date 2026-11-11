@@ -25,3 +25,11 @@ Plain-English definitions of every term used in the factory.
 | **Dependency** | Someone else's code your project uses (an npm or pip package). |
 | **Secret** | A password, API key or token. **Never** commit these; use `.env` files (git-ignored) or GitHub Secrets. |
 | **Model (opus / sonnet / haiku)** | Different Claude models. Opus is the most capable (used for planning and review); Sonnet is fast and strong; Haiku is fastest and cheapest. |
+| **Diagram sketch** | A short YAML file describing what a diagram shows (boxes, containers, flows). The architecture-diagram engine of claude-skills lays it out; the sketch is the source, never the picture. See [diagrams/README.md](diagrams/README.md). |
+| **draw.io** | A free diagram editor. Its `.drawio` files are what the engine generates; its command-line tool exports them to PNG. |
+| **C4** | A way of drawing software at zoom levels (context, containers, components) with plain boxes and labelled arrows. |
+| **BPMN** | Business Process Model and Notation: a process drawn as tasks, decisions (diamonds) and events (circles), in one lane per role. |
+| **ArchiMate** | An enterprise architecture language with standard shapes for business, application and technology elements. |
+| **Capability map** | A picture of what an organization (or the factory) can do, with "heat" marking where attention is needed. |
+| **Trust boundary** | A dashed line around something you do not trust, such as a pull request from someone else: nothing inside it may run with your secrets. |
+| **Change diagram** | A diagram that compares two versions and marks elements as new, changed, removed or planned. |

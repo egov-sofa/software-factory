@@ -24,6 +24,11 @@ cost and speed. Enterprise rigour applies only where a change needs it. Cost alw
 | Hosting | A public repo in `egov-sofa`; claude-skills lives in another organization | A GitHub Enterprise account with **internal** repos, which share workflows across the enterprise's organizations (this also removes the cross-organization problem) |
 | Evidence | Nothing records what the pipeline decided | An audit trail per run: spec, approvals, findings, model, cost |
 
+The same gap, by capability. Heat is the distance from today to enterprise grade: building features is ready;
+governance, delivery and running the factory at scale are not.
+
+![Factory capabilities with heat: build features mostly low; govern, deliver, secure and run the factory mostly high](diagrams/capability-gaps.png)
+
 ---
 
 ## 2. The architecture roles
@@ -61,6 +66,8 @@ later work.
 | **Platform** | changes CI/CD, the runtime, containers or developer tooling | Golden-path compliance, platform contracts |
 | **Network** | changes ingress, egress, private connectivity, DNS or firewalls | Network flows, segmentation, zero-trust check |
 
+![The architect roles by layer: strategic roles at the top, design roles in the middle with the Solution architect at the centre, specialists triggered by the Solution architect, and today's /factory-build agents below](diagrams/architect-layers.png)
+
 ### Where the roles meet
 
 - **Information** covers what data *means*, **Data** covers how it *flows*, **Database** covers how it is *stored*.
@@ -80,6 +87,8 @@ A cheap classifier step (a Haiku call) reads the request and proposes a level. T
 | **L1** feature | Today's `/factory-build`; **the personal default** | plan, approve, build, test, review and security, docs | same as today |
 | **L2** significant change | A new component, new data, a new external integration | L1 plus a **design gate**: Solution and Security architects, the specialists the plan triggers, an ADR | 2 to 4 more agent runs |
 | **L3** initiative | A new system or product | Business, then Enterprise alignment, then a Solution-led design with every relevant architect, then an **architecture review board** where a human approves; then L2 for each epic | paid once per initiative |
+
+![Levels of rigour: a classifier proposes a level and you confirm it; L0 goes straight to build, L1 adds spec and plan, L2 adds the architects, L3 also aligns with strategy and needs the review board](diagrams/rigour-levels.png)
 
 **Cost controls:**
 - **Profiles.** Each project has a `factory.yaml` with a profile (`personal`, `team` or `enterprise`), the highest
@@ -113,6 +122,8 @@ OpenSpec or Tessl is present.
 | **Kiro-style** (`requirements.md` in EARS format, `design.md`, `tasks.md`) | A clean structure, but tied to its own tool. Its EARS requirement format is worth borrowing. |
 | **Custom only** | Full control, but nobody outside will recognize it. |
 
+![Spec-driven development with traceability: today one plan.md; the target adds spec.md with requirement IDs, ADRs, tasks.md, test names that cite the IDs and an evidence record](diagrams/sdd-traceability.png)
+
 **Recommendation:** a file layout **compatible with Spec Kit**, run by the factory's own agents:
 - `standards/` becomes the constitution.
 - `spec.md` holds the requirements, written in EARS format with IDs.
@@ -140,6 +151,10 @@ In order of priority:
    version.
 7. **Metrics.** DORA metrics, cost per feature, eval scores, and how often a gate catches a real issue.
 
+What the target looks like once E1 to E6 are in place:
+
+![Enterprise factory, target landscape: project teams work in Claude Code with managed settings and the factory plugin from one marketplace; projects in GitHub Enterprise call the factory at v1; architects maintain an architecture repository; every run leaves evidence; only approved model providers](diagrams/enterprise-landscape.png)
+
 ---
 
 ## 6. Phases
@@ -162,7 +177,10 @@ The phases are listed with their work items in [ROADMAP.md](ROADMAP.md#enterpris
 These need an answer before E1 starts:
 
 1. **Hosting.** Stay public in `egov-sofa`, or move to a GitHub Enterprise account with internal repos? This decides
-   how claude-skills and future teams reach the factory.
+   how claude-skills and future teams reach the factory. Today and the private case are drawn in
+   [SHARED-SERVICES.md](SHARED-SERVICES.md#who-can-call-the-factory); the enterprise option:
+
+   ![Option, one GitHub Enterprise: an internal software-factory in egov-sofa serves claude-skills in egov-ai and a project in pentagone-digital](diagrams/cross-org-access-3.png)
 2. **Spec format.** Confirm the Spec Kit-compatible layout, or choose another option from section 4.
 3. **Default profile.** Should new projects start as `personal` or `team`? Who may raise a project to `enterprise`?
 4. **Architecture repository.** One shared repo for principles, ADRs and the technology radar, or a folder in each

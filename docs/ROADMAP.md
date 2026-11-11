@@ -39,6 +39,8 @@ rule is written down but not enforced.
 | I11 | **This roadmap.** One document with an ID and status per finding. | Keeps the plan visible and reviewable. | `docs/roadmap.md` | XS | done (#2) |
 | I12 | **Reuse skills from claude-skills.** `docs-writer` uses `plain-human-english`; `planner` can draw diagrams with `architecture-diagram`. | Better docs and plans for free. | `skills/writing/plain-human-english`, `skills/architecture/architecture-diagram` | S | open |
 | I13 | **Tidy the I6 review follow-ups.** Nine LOW/MINOR findings: CRLF `CLAUDE.md` message, allowlist for read-only agent tools, more `GIT_*` variables unset in test support, `sed` value escaping, shared marker check, `trap - EXIT` in `new-project.sh`, backslash-continued lines in `test_no_in_place_sed`, `[]` for empty `name`/`model`, assert the reason in `test_rejected_arguments`. | Small gaps found in review that did not block I6. | [plan](plans/2026-11-11-validate-and-test-factory-scripts.md) (Follow-ups) | XS | open |
+| I14 | **Diagrams from sketches.** Every diagram in the docs is a YAML sketch in `docs/diagrams/`, drawn by the architecture-diagram skill of claude-skills (0.10.0) into `.drawio` and `.png`; `build.sh` regenerates them and `--check` compares them with their sketches. Replaces the Mermaid and ASCII diagrams and adds diagrams for the problems and the target (13 files, 15 pages). | One house style, reviewable sources, diagrams that can be regenerated instead of redrawn. | `docs/how-it-works.yaml`, `skills/architecture/architecture-diagram` | S | done (this branch) |
+| I15 | **Diagram follow-ups.** (a) Report or fix in claude-skills: the trust-boundary legend sample is drawn as an empty container and fails the engine's own strict lint (no golden test uses a trust boundary); then remove the tolerance in `docs/diagrams/build.sh`. (b) Run `build.sh --check` in CI: needs a read token for the private claude-skills repo, or the engine published as a package. | Keep the diagrams honest without relying on people remembering to regenerate them. | `tests/golden/`, `.github/workflows/validate.yml` | S | open |
 
 ### Not to copy
 
@@ -69,7 +71,8 @@ separate from personal content across several plugins. The factory is a single t
 
 ### Phase 2: confidence in the factory
 
-I6 (validation and script tests, done in #5), I1 (evals), I10 (generated catalog), I13 (I6 follow-ups).
+I6 (validation and script tests, done in #5), I1 (evals), I10 (generated catalog), I13 (I6 follow-ups), I14 (diagrams
+from sketches, done), I15 (diagram follow-ups).
 
 ### Phase 3: distribution
 
@@ -79,7 +82,8 @@ I7 (plugin marketplace), I8 (link mode), I12 (reuse skills).
 
 ## Enterprise track
 
-The goal and the reasoning are in [ENTERPRISE-VISION.md](ENTERPRISE-VISION.md). **Status of the whole track:
+The goal and the reasoning are in [ENTERPRISE-VISION.md](ENTERPRISE-VISION.md); the gaps it closes are drawn in
+[capability-gaps](diagrams/capability-gaps.png). **Status of the whole track:
 proposed.** It is analysed again, and the open questions in section 7 of the vision are answered, before E1 starts.
 Phase 1 to 3 items above continue in parallel; I1 (evals) and I7 (plugin marketplace) are also prerequisites here.
 
@@ -123,3 +127,7 @@ Phase 1 to 3 items above continue in parallel; I1 (evals) and I7 (plugin marketp
   enterprise track ([ENTERPRISE-VISION.md](ENTERPRISE-VISION.md)): 12 architect roles in three layers, levels L0 to L3
   so cost follows risk, a Spec Kit-compatible spec layout, and phases E1 to E6. To be analysed again before work
   starts.
+- **2026-11-11:** I14 done: all diagrams redrawn with the architecture-diagram skill of `egov-ai/claude-skills`
+  (0.10.0, `6a715ce`) from YAML sketches in `docs/diagrams/`, and new ones added for the problems (`@main` coupling,
+  cross-organization access, capability gaps) and the target (shared services, releases, architect layers, levels,
+  spec-driven traceability, enterprise landscape). Found an engine bug with the trust-boundary legend (I15).

@@ -17,6 +17,11 @@ Building software well means repeating the same steps every time:
 
 People skip steps when they're in a hurry. A *factory* makes the steps automatic and identical every time. Here the workers are AI agents in Claude Code, and the conveyor belt is GitHub Actions.
 
+![Software factory, how it works: the factory repo, the scripts you run, your machine and the project repos](diagrams/factory-overview.png)
+
+The steps below follow this picture from left to right: install (step 1), create a project (step 2), build a feature
+(step 3).
+
 ---
 
 ## Step 1: Install the factory into Claude Code

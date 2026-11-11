@@ -1,0 +1,57 @@
+# Source of sdd-traceability.drawio and .png (docs/ENTERPRISE-VISION.md, section 4). Regenerate: bash docs/diagrams/build.sh sdd-traceability
+diagram:
+  title: Spec-driven development, with traceability
+  statement: Today one plan file carries everything; the target splits the what from the how and traces each requirement ID from the spec to its tests and evidence.
+  notation: c4
+  viewpoint: current-vs-target
+  status: draft
+  version: "1"
+  author: software-factory
+  date: 2026-11-11
+pages:
+  - name: Traceability
+    flow: left-to-right
+    items:
+      - container: rules
+        kind: zone
+        name: Constitution
+        layout: column
+        items:
+          - {node: standards, kind: component, name: standards/, qualifier: "coding, security, done"}
+          - {node: principles, kind: component, name: Architecture principles, qualifier: E5, lifecycle: new}
+      - container: what
+        kind: zone
+        name: What, agreed with business
+        layout: column
+        items:
+          - {node: spec, kind: component, name: spec.md, qualifier: "EARS, REQ-012", lifecycle: new}
+      - container: how
+        kind: zone
+        name: How, owned by engineering
+        layout: column
+        items:
+          - {node: plan, kind: component, name: plan.md, qualifier: "design, file list", lifecycle: changed}
+          - {node: adr, kind: component, name: ADRs, qualifier: L2 and above, lifecycle: new}
+          - {node: tasks, kind: component, name: tasks.md, qualifier: T-03 for REQ-012, lifecycle: new}
+      - container: build
+        kind: zone
+        name: Build
+        layout: column
+        items:
+          - {node: code, kind: component, name: Code and tests, qualifier: test names cite REQ-012, lifecycle: changed}
+      - container: prove
+        kind: zone
+        name: Prove
+        layout: column
+        items:
+          - {node: pr, kind: component, name: Pull request, qualifier: links REQ and ADR}
+          - {node: evidence, kind: data-store, name: Evidence record, qualifier: "approvals, findings, cost", lifecycle: new}
+    edges:
+      - {from: spec, to: plan, kind: sync, label: REQ-012, primary: true}
+      - {from: plan, to: tasks, kind: sync, label: split into}
+      - {from: tasks, to: code, kind: sync, label: T-03, primary: true}
+      - {from: code, to: pr, kind: sync, label: REQ-012, primary: true}
+      - {from: pr, to: evidence, kind: file, label: recorded in}
+      - {from: standards, to: spec, kind: sync, label: governs}
+      - {from: principles, to: adr, kind: sync, label: governs}
+      - {from: plan, to: adr, kind: sync, label: decisions in}

@@ -4,6 +4,8 @@ A personal "factory" that turns ideas into working, tested, reviewed software, t
 
 > **New here?** Read [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md) first. It assumes no prior knowledge.
 
+![Software factory, how it works: the factory repo, the scripts you run, your machine and the project repos](docs/diagrams/factory-overview.png)
+
 ## What's inside (the 4 parts)
 
 | Part | What it does for you | Where it lives |
@@ -54,3 +56,4 @@ cd /c/DEV/PROJECTS/gitHub/egov-rdc/egov-sofa/my-app && claude
 - [docs/SHARED-SERVICES.md](docs/SHARED-SERVICES.md): why and how other repositories use the factory's services
 - [docs/ROADMAP.md](docs/ROADMAP.md): planned improvements, ranked by value, with their status
 - [docs/ENTERPRISE-VISION.md](docs/ENTERPRISE-VISION.md): the proposed path to an enterprise-grade factory (architect roles, levels of rigour, spec-driven development)
+- [docs/diagrams/](docs/diagrams/README.md): every diagram, its YAML source and how to regenerate it
