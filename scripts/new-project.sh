@@ -54,8 +54,12 @@ fi
 # The owner is a deliberate choice per project (it decides the GitHub org and the local folder),
 # so it's never guessed.
 if [[ -z "$OWNER" && ( -z "$PARENT" || -n "$GITHUB" ) ]]; then
-  # `|| true`: without gh, or with gh logged out, there are just no options to show (pipefail would exit here).
-  choices="$(command -v gh >/dev/null && { gh api user -q .login; gh api user/orgs -q '.[].login'; } 2>/dev/null | tr '\n' ' ' || true)"
+  # Without gh, or with gh logged out, there are just no options to show. `|| true` keeps a failing gh from
+  # ending the script here (set -e with pipefail) before the message below is printed.
+  choices=""
+  if command -v gh >/dev/null; then
+    choices="$({ gh api user -q .login; gh api user/orgs -q '.[].login'; } 2>/dev/null | tr '\n' ' ' || true)"
+  fi
   die "Choose who owns the project with --owner <org-or-user>.${choices:+ Options: $choices}"
 fi
 [[ -z "$OWNER" || "$OWNER" =~ ^[A-Za-z0-9-]+$ ]] || die "Invalid --owner '$OWNER'."
@@ -99,6 +103,7 @@ done
 # BSD sed of macOS. The temporary file lives outside the project, so grep never lists it; copying back with cat
 # keeps the file's mode.
 tmp="$(mktemp)"
+trap 'rm -f "$tmp"' EXIT
 grep -rl '{{' "$TARGET" 2>/dev/null | while read -r file; do
   sed \
     -e "s|{{PROJECT_NAME}}|$NAME|g" \

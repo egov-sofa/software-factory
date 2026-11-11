@@ -164,8 +164,10 @@ def check(text, kind, expected_name):
             if tool_name(tool) is None:
                 problems.append((num, f"unknown tool '{tool}' in {tools_key}"))
     if kind == "agent" and expected_name in READ_ONLY_AGENTS:
-        if tools_key not in fields:
-            problems.append((1, "read-only agent without 'tools' (it would get every tool, the write tools too)"))
+        # An empty `tools:` (or `tools: []`) is treated by Claude Code like a missing one: every tool.
+        if not tools:
+            num = fields[tools_key][1] if tools_key in fields else 1
+            problems.append((num, "read-only agent without 'tools' (it would get every tool, the write tools too)"))
         else:
             for tool in tools:
                 if tool_name(tool) in WRITE_TOOLS:
