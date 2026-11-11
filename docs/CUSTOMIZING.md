@@ -47,8 +47,11 @@ until you **release** it:
 
 1. Edit `.github/workflows/reusable-*.yml` (or another shared service) on a branch and merge it to `main`.
    To try a change in one project first, point that project's `uses:` line at your branch (`@my-branch`) for a while.
-2. Preview the notes: `bash scripts/release-notes.sh v1.3.0`.
-3. Tag and push: `git tag -a v1.3.0 -m "Short description" && git push origin v1.3.0`.
+2. Release it, either way:
+   - On GitHub: Actions → **Release** → *Run workflow* on `main`, with the version (`v1.3.0`).
+   - In a terminal: preview with `bash scripts/release-notes.sh v1.3.0`, then
+     `git tag -a v1.3.0 -m "Short description" && git push origin v1.3.0`.
+
    The [Release workflow](../.github/workflows/release.yml) publishes the release and moves `v1` to it, so every
    project uses it on its next run.
 
