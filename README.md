@@ -51,3 +51,5 @@ cd ~/projects/my-app && claude
 - [docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md): how the parts fit together, with diagrams
 - [docs/CUSTOMIZING.md](docs/CUSTOMIZING.md): add templates, change agents, tune the pipeline
 - [docs/GLOSSARY.md](docs/GLOSSARY.md): plain-English definitions of every term
+- [docs/SHARED-SERVICES.md](docs/SHARED-SERVICES.md): why and how other repositories use the factory's services
+- [docs/ROADMAP.md](docs/ROADMAP.md): planned improvements, ranked by value, with their status
