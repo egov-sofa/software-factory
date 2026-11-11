@@ -58,10 +58,18 @@ jobs:
         run: bash scripts/new-project.sh selftest-app ${{ matrix.template }} --dir "$RUNNER_TEMP" --owner example
 
       - name: No placeholders left behind
+        # factory placeholders are {{UPPER_CASE}}; GitHub expressions (${{ ... }}) in workflows are expected
         run: |
-          if grep -rn "{{" "$RUNNER_TEMP/selftest-app" --exclude-dir=.git; then
+          if grep -rnE "\{\{[A-Z_]+\}\}" "$RUNNER_TEMP/selftest-app" --exclude-dir=.git; then
             echo "::error::Unreplaced placeholders found"; exit 1
           fi
+
+      - name: Content guard and hooks are in place
+        working-directory: ${{ runner.temp }}/selftest-app
+        run: |
+          test "$(git config core.hooksPath)" = scripts/hooks
+          test -x scripts/hooks/pre-commit && test -x scripts/hooks/commit-msg
+          python3 scripts/check_content.py --all
 
       - name: Run project checks
         working-directory: ${{ runner.temp }}/selftest-app

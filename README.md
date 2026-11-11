@@ -10,7 +10,7 @@ A personal "factory" that turns ideas into working, tested, reviewed software, t
 |---|---|---|
 | **1. AI agent pipeline** | A team of AI specialists (planner, builder, tester, reviewer, security auditor, docs writer) that build a feature end to end when you type `/factory-build add a login page` | [`claude/`](claude/) → installed to `~/.claude` |
 | **2. Project scaffolding** | Creates a new project with folders, tests, linting, CI and docs already set up, in one command | [`templates/`](templates/) + [`scripts/new-project.sh`](scripts/new-project.sh) |
-| **3. CI/CD automation** | Shared GitHub Actions pipelines that every project reuses, so a fix here fixes all your projects | [`.github/workflows/`](.github/workflows/) |
+| **3. CI/CD and shared services** | Versioned services every project calls at `@v1`: CI pipelines, Claude PR review, `@claude` mentions, and a content guard that blocks secrets. A fix here reaches all your projects at the next release | [`.github/workflows/`](.github/workflows/), [`.github/actions/`](.github/actions/), [docs/SHARED-SERVICES.md](docs/SHARED-SERVICES.md) |
 | **4. Shared standards** | Coding rules, git workflow, definition of done and security rules that both you and the AI follow | [`standards/`](standards/) |
 
 ## Quick start

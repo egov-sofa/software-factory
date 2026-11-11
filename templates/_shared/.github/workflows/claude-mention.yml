@@ -1,0 +1,23 @@
+# Answers a pull request comment that starts with @claude (write access only): a question about the change, or a
+# re-review of the part named. Read-only. The steps live in the shared software-factory repo at @v1.
+# Skipped until the repository variable ANTHROPIC_MENTION_FEDERATION_RULE_ID is set (a federation rule that matches
+# only this workflow on the default branch).
+name: Claude on demand
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  answer:
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+    uses: {{GITHUB_OWNER}}/software-factory/.github/workflows/reusable-claude-mention.yml@v1
+    with:
+      federation-rule-id: ${{ vars.ANTHROPIC_MENTION_FEDERATION_RULE_ID }}
+      organization-id: ${{ vars.ANTHROPIC_ORGANIZATION_ID }}
+      service-account-id: ${{ vars.ANTHROPIC_SERVICE_ACCOUNT_ID }}
+      workspace-id: ${{ vars.ANTHROPIC_WORKSPACE_ID }}
+      debug: ${{ vars.CLAUDE_REVIEW_DEBUG == 'true' }}

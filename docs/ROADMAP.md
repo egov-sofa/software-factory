@@ -27,14 +27,14 @@ rule is written down but not enforced.
 | ID | Improvement | Why | Source in claude-skills | Effort | Status |
 |---|---|---|---|---|---|
 | I1 | **Evals for agents and skills.** `claude plugin eval` cases per agent: reviewer finds a planted off-by-one, security auditor finds a planted key and SQL injection, planner writes testable acceptance criteria, `/factory-build` triggers from a natural request. Each case runs with and without the agent, so the report shows what it adds. Run by hand from a `workflow_dispatch` job with a cost ceiling. | A change to an agent's instructions can make it worse and nothing would notice. | `skills/*/evals/`, `scripts/ci_evals.sh`, `.github/workflows/evals.yml` | M | open |
-| I2 | **Claude PR review as a shared service.** A reusable workflow that reviews each pull request against the project's own `.claude/skills/pr-review/SKILL.md`, skips drafts, has a `skip-review` label and cancels a running review on a new push. Plus an `@claude` mention workflow. Authenticates with workload identity federation, so no API key is stored. | The reviewer and security auditor already exist as checklists; CI can apply them on every pull request. | `.github/workflows/claude-code-review.yml`, `claude-mention.yml`, `docs/claude-code-review-auth.md` | M | open |
-| I3 | **Versions and releases.** Tag releases `vX.Y.Z`, keep a moving major tag `v1`, have templates call `@v1` instead of `@main`, and generate release notes from Conventional Commit subjects. | `@main` means one bad push breaks every project's CI at once. | `.github/workflows/release.yml`, `scripts/release_notes.py` | S | open |
-| I4 | **Supply-chain hygiene.** Pin every action to a commit SHA with its version in a comment, and add Dependabot for the factory's own workflows. | Floating `@v4` tags can change under you; only the templates had Dependabot. | every workflow, `.github/dependabot.yml` | XS | open |
-| I5 | **Enforce "never commit secrets".** A content guard that blocks secrets, public IP addresses, internal host names and a private denylist, in CI on every pull request and in local pre-commit and commit-msg hooks shipped with every project. | `standards/SECURITY.md` says it, nothing enforces it. | `scripts/check_content.py`, `scripts/hooks/`, `.github/workflows/content.yml` | S | open |
+| I2 | **Claude PR review as a shared service.** A reusable workflow that reviews each pull request against the project's own `.claude/skills/pr-review/SKILL.md`, skips drafts, has a `skip-review` label and cancels a running review on a new push. Plus an `@claude` mention workflow. Authenticates with workload identity federation, so no API key is stored. | The reviewer and security auditor already exist as checklists; CI can apply them on every pull request. | `.github/workflows/claude-code-review.yml`, `claude-mention.yml`, `docs/claude-code-review-auth.md` | M | done (this branch) |
+| I3 | **Versions and releases.** Tag releases `vX.Y.Z`, keep a moving major tag `v1`, have templates call `@v1` instead of `@main`, and generate release notes from Conventional Commit subjects. | `@main` means one bad push breaks every project's CI at once. | `.github/workflows/release.yml`, `scripts/release_notes.py` | S | done (this branch) |
+| I4 | **Supply-chain hygiene.** Pin every action to a commit SHA with its version in a comment, and add Dependabot for the factory's own workflows. | Floating `@v4` tags can change under you; only the templates had Dependabot. | every workflow, `.github/dependabot.yml` | XS | done (this branch) |
+| I5 | **Enforce "never commit secrets".** A content guard that blocks secrets, public IP addresses, internal host names and a private denylist, in CI on every pull request and in local pre-commit and commit-msg hooks shipped with every project. | `standards/SECURITY.md` says it, nothing enforces it. | `scripts/check_content.py`, `scripts/hooks/`, `.github/workflows/content.yml` | S | done (this branch) |
 | I6 | **Validate and test the factory's own scripts.** Check agent and skill frontmatter (`name` matches the file, `model` is valid, `tools` names real tools). Test `install.sh` twice into a temporary `CLAUDE_CONFIG_DIR` (own content kept, factory block replaced, backups written). Test the options of `new-project.sh` and the content guard's rules. | The self-test only scaffolds projects; a broken installer or a typo in an agent's frontmatter goes unnoticed. | `scripts/validate.py`, `scripts/tests/` | M | open |
 | I7 | **Distribute as a plugin marketplace.** `.claude-plugin/marketplace.json` so agents and skills install with `/plugin install` and update with `/plugin update`. Check first whether a plugin can contribute the global `CLAUDE.md` rules; if not, keep a slim `install.sh` for that block only. | Re-running `install.sh` by hand is easy to forget. | `.claude-plugin/marketplace.json`, `scripts/build.py` | M | open |
 | I8 | **Link mode for install.** `install.sh --link` symlinks agents and skills (a junction on Windows) instead of copying, so a `git pull` updates the installed copy. | Removes the "never edit `~/.claude`" trap in CUSTOMIZING.md. | `scripts/install_local.py` | S | open |
-| I9 | **Review checklist for the factory repo itself.** `.claude/skills/pr-review/SKILL.md` with the factory's own rules (placeholders, template layering, shared-service compatibility, pinned actions), also usable locally as `/pr-review <n>`. | The factory's pull requests should get the same review its projects get. | `.claude/skills/pr-review/SKILL.md` | S | open |
+| I9 | **Review checklist for the factory repo itself.** `.claude/skills/pr-review/SKILL.md` with the factory's own rules (placeholders, template layering, shared-service compatibility, pinned actions), also usable locally as `/pr-review <n>`. | The factory's pull requests should get the same review its projects get. | `.claude/skills/pr-review/SKILL.md` | S | done (this branch) |
 | I10 | **Generated catalog.** Build the README's tables of agents, commands and templates from file metadata, and have CI fail when they are out of date. | Hand-kept tables drift. | `scripts/build.py --check` | S | open |
 | I11 | **This roadmap.** One document with an ID and status per finding. | Keeps the plan visible and reviewable. | `docs/roadmap.md` | XS | done (this branch) |
 | I12 | **Reuse skills from claude-skills.** `docs-writer` uses `plain-human-english`; `planner` can draw diagrams with `architecture-diagram`. | Better docs and plans for free. | `skills/writing/plain-human-english`, `skills/architecture/architecture-diagram` | S | open |
@@ -52,10 +52,10 @@ separate from personal content across several plugins. The factory is a single t
 
 | Step | Items | Status |
 |---|---|---|
-| 1. Versioning and releases (tag `v1`) | I3, I4 | open |
-| 2. Move the Claude review, mentions and content guard into the factory as shared services | I2, I5, I9 | open |
+| 1. Versioning and releases (tag `v1`) | I3, I4 | done (this branch); tag `v1.0.0` after merge |
+| 2. Move the Claude review, mentions and content guard into the factory as shared services | I2, I5, I9 | done (this branch) |
 | 3. Switch claude-skills to the shared services, replacing its own copies | | open: needs `v1.0.0` tagged first |
-| 4. Templates and `/factory-onboard` use the shared services | I2, I5 | open |
+| 4. Templates and `/factory-onboard` use the shared services | I2, I5 | done (this branch) |
 
 **Step 3 in detail**, once `v1.0.0` exists:
 - `claude-code-review.yml` becomes a caller of `reusable-claude-review.yml@v1` (same triggers, `paths-ignore`,
@@ -79,4 +79,5 @@ I7 (plugin marketplace), I8 (link mode), I12 (reuse skills).
 ## Review log
 
 - **2026-11-11:** first review, comparing the factory with `egov-ai/claude-skills`. Decision to make the factory a
-  provider of shared, versioned services ([SHARED-SERVICES.md](SHARED-SERVICES.md)).
+  provider of shared, versioned services ([SHARED-SERVICES.md](SHARED-SERVICES.md)). Phase 1 steps 1, 2 and 4 done
+  on branch `claude/vigilant-darwin-zn54mk`.

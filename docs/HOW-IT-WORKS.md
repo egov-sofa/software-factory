@@ -105,6 +105,19 @@ checkout → install runtime → install deps (cached) → lint → build → te
 
 The factory also has its own **self-test** workflow ([factory-selftest.yml](../.github/workflows/factory-selftest.yml)). On every change to the factory, it creates a project from each template and runs its tests. If you break a template, you find out immediately.
 
+**Why `@v1` and not `@main`?** A project follows the factory's releases, not every commit. `v1` is a tag that the
+[Release workflow](../.github/workflows/release.yml) moves to each compatible release; a breaking change becomes `v2`,
+and each project moves when you choose. So a bad commit on the factory's `main` breaks nothing until it is released.
+
+Besides CI, every new project calls three more **shared services** the same way (details in
+[SHARED-SERVICES.md](SHARED-SERVICES.md)):
+
+| Service | When it runs | What it does |
+|---|---|---|
+| Claude review | every pull request (once turned on) | Claude reviews the change against the project's `.claude/skills/pr-review/SKILL.md` and comments |
+| Claude on demand | a PR comment starting with `@claude` | Answers the question or re-reviews the part named |
+| Content guard | every pull request, and before each commit (git hooks) | Blocks secrets, public IP addresses, internal host names and a private denylist |
+
 **CD** (Continuous Deployment) depends on where you deploy (Vercel, AWS, Azure…), so it isn't hard-wired. See [CUSTOMIZING.md](CUSTOMIZING.md#adding-deployment-cd) for how to add it.
 
 ---
