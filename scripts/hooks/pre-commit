@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Refuse a commit whose added lines hold a secret, a public IP address, an internal host name or a denylisted term.
+# Install once per clone: git config core.hooksPath scripts/hooks   (new-project.sh does it for you)
+set -euo pipefail
+PY=python3
+"$PY" -c "" >/dev/null 2>&1 || PY=python
+"$PY" -c "" >/dev/null 2>&1 || { echo "content guard skipped: no python3 or python found" >&2; exit 0; }
+exec "$PY" "$(git rev-parse --show-toplevel)/scripts/check_content.py" --staged

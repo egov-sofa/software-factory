@@ -16,7 +16,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: shellcheck scripts/*.sh templates/generic/scripts/*.sh
+      - run: shellcheck scripts/*.sh scripts/hooks/* templates/generic/scripts/*.sh
+
+  guard:
+    name: Content guard tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Unit tests of scripts/check_content.py
+        run: python -m unittest discover -s scripts/tests -v
+      - name: The factory itself is clean
+        run: python scripts/check_content.py --all
 
   scaffold:
     name: Scaffold ${{ matrix.template }}

@@ -2,3 +2,5 @@
 .idea/
 *.log
 .env
+.content-denylist
+__pycache__/

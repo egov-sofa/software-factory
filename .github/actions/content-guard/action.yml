@@ -1,0 +1,56 @@
+# Content guard: refuses secrets, public IP addresses, internal host names and denylisted terms in what a pull request
+# adds (changed lines, file names, commit messages, title and description). Shared service of the software factory:
+# see docs/SHARED-SERVICES.md.
+#
+# Use it from a workflow that runs on pull_request_target, so GitHub takes that workflow from the base branch:
+#   on:
+#     pull_request_target:
+#       types: [opened, edited, synchronize, reopened]
+#   permissions:
+#     contents: read
+#   jobs:
+#     content:
+#       runs-on: ubuntu-latest
+#       steps:
+#         - uses: <owner>/software-factory/.github/actions/content-guard@v1
+#           with:
+#             denylist: ${{ secrets.CONTENT_DENYLIST }}
+#
+# Why this is safe on pull_request_target: the pull request's commits are checked out only as data, without
+# credentials, and nothing from them runs. The guard is this action's own copy of scripts/check_content.py at the
+# pinned tag, outside the checkout, run in isolated mode (python3 -I) so a module the pull request adds cannot shadow
+# one the guard imports.
+name: Content guard
+description: Refuse secrets, public IPs, internal host names and denylisted terms in a pull request
+inputs:
+  denylist:
+    description: Terms to refuse, one per line (pass a secret such as CONTENT_DENYLIST); findings never print them
+    required: false
+    default: ""
+runs:
+  using: composite
+  steps:
+    - name: Only for pull requests
+      if: ${{ !github.event.pull_request }}
+      shell: bash
+      run: |
+        echo "::error::the content guard checks a pull request; run it on pull_request_target"
+        exit 1
+
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        ref: ${{ github.event.pull_request.head.sha }}   # the pull request's commits, read as data only
+        fetch-depth: 0   # the base branch and every commit of the pull request
+        persist-credentials: false
+
+    - name: Check the pull request
+      shell: bash
+      # pull request text goes through env, never into the script: it is untrusted input
+      env:
+        BASE_REF: ${{ github.base_ref }}
+        PR_TITLE: ${{ github.event.pull_request.title }}
+        PR_BODY: ${{ github.event.pull_request.body }}
+        CONTENT_DENYLIST: ${{ inputs.denylist }}
+      run: >-
+        python3 -I "$GITHUB_ACTION_PATH/../../../scripts/check_content.py" --root "$GITHUB_WORKSPACE"
+        --diff "origin/$BASE_REF" --text-env PR_TITLE --text-env PR_BODY
