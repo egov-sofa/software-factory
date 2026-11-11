@@ -4,6 +4,7 @@ The copy sits at <tmp>/ws/test-org/software-factory, so the default workspace (t
 factory repository read from the remote does not depend on the real checkout. Most cases use --no-git to stay fast.
 Run: python3 -m unittest discover -s scripts/tests
 """
+import os
 import re
 import shutil
 import tempfile
@@ -113,6 +114,35 @@ class Options(Base):
                 result = self.new_project(*args)
                 self.assertEqual(1, result.returncode, result.stdout)
                 self.assertFalse(self.out.exists())
+
+    def fake_gh(self, body):
+        """A `gh` that runs body (sh), first on PATH, so the owner hint does not depend on the real gh or account."""
+        bin_dir = Path(tempfile.mkdtemp(dir=self.tmp.name))
+        gh = bin_dir / "gh"
+        gh.write_bytes(f"#!/bin/sh\n{body}\n".encode("utf-8"))
+        gh.chmod(0o755)
+        return {"PATH": f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}"}
+
+    def test_owner_hint_when_gh_fails(self):
+        """gh logged out (it exits non-zero): the --owner error still shows, with exit 1 and no options."""
+        env = self.fake_gh("exit 1")
+        result = run(self.home / "scripts" / "new-project.sh", NAME, "generic", "--no-git", env=env)
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertIn("Choose who owns the project with --owner", result.stderr)
+        self.assertNotIn("Options:", result.stderr)
+        self.assertEqual(["test-org"], [p.name for p in self.ws.iterdir()])
+
+    def test_owner_hint_lists_gh_accounts(self):
+        env = self.fake_gh('case "$2" in user) echo alice ;; user/orgs) printf "acme\\nbeta\\n" ;; esac')
+        result = run(self.home / "scripts" / "new-project.sh", NAME, "generic", "--no-git", env=env)
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertIn("Options: alice acme beta", result.stderr)
+
+    def test_github_needs_owner_even_with_dir(self):
+        result = self.new_project(NAME, "generic", "--dir", posix(self.out), "--github", "private")
+        self.assertEqual(1, result.returncode, result.stdout)
+        self.assertIn("--owner", result.stderr)
+        self.assertFalse(self.out.exists())
 
     def test_existing_target_rejected(self):
         target = self.out / NAME

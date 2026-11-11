@@ -100,6 +100,25 @@ class Frontmatter(unittest.TestCase):
         self.assertEqual(["Bash(rm *)"], validate.split_tools("Bash(rm *)"))
         self.assertIsNone(validate.tool_name("Fetch(x)"))
 
+    def test_read_only_agent_with_empty_tools(self):
+        """An empty `tools:` is YAML null, which Claude Code treats like no tools field: every tool, the write ones
+        too. A read-only agent must not get through with it."""
+        reviewer = AGENT.replace("name: helper", "name: reviewer")
+        found = self.agent(reviewer.replace("tools: Read, Grep", "tools:"), name="reviewer")
+        self.assertTrue(any("read-only agent" in text for _, text in found), found)
+
+    def test_stdlib_only(self):
+        """The validator runs on a bare Python in CI and on any machine: it may import the standard library only."""
+        import ast
+        tree = ast.parse(SCRIPT.read_text(encoding="utf-8"))
+        modules = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                modules |= {alias.name.split(".")[0] for alias in node.names}
+            elif isinstance(node, ast.ImportFrom):
+                modules.add((node.module or "").split(".")[0])
+        self.assertEqual(set(), modules - set(sys.stdlib_module_names))
+
     def test_messages_never_hold_other_content(self):
         found = self.agent(AGENT.replace("model: sonnet", "model: sonnet\nsecret_key: s3cr3t-value"))
         self.assertEqual([(6, "unknown frontmatter key 'secret_key' for an agent")], found)
