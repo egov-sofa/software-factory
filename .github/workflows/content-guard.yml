@@ -1,0 +1,46 @@
+# Content guard for the factory itself: secrets, public IPs, internal host names and denylisted terms in what a pull
+# request adds. Projects use the same check through the content-guard action at @v1 (docs/SHARED-SERVICES.md).
+#
+# Here the guard is taken from the base branch with git show, not from ./.github/actions: a local action would be
+# read from the checkout, which is the pull request's own copy.
+name: Content guard
+
+on:
+  pull_request_target:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  content:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}   # the pull request's commits, read as data only
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Take the guard from the base branch
+        id: guard
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/guard"
+          if git show "origin/$BASE_REF:scripts/check_content.py" > "$RUNNER_TEMP/guard/check_content.py"; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            # only for the pull request that introduces the guard: the base branch has none to run yet
+            echo "::notice::no scripts/check_content.py on $BASE_REF yet; the guard starts with the next pull request"
+          fi
+      - name: Check the pull request
+        if: steps.guard.outputs.ready == 'true'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          CONTENT_DENYLIST: ${{ secrets.CONTENT_DENYLIST }}
+        run: >-
+          python3 -I "$RUNNER_TEMP/guard/check_content.py" --root "$GITHUB_WORKSPACE"
+          --diff "origin/$BASE_REF" --text-env PR_TITLE --text-env PR_BODY

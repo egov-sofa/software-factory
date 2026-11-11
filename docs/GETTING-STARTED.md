@@ -134,6 +134,6 @@ Existing project    →  /factory-onboard
 | Problem | Fix |
 |---|---|
 | `/factory-build` isn't recognized | Run `install.sh`, then restart Claude Code |
-| CI fails with "workflow was not found" | Your factory repo is private. See *Private factory repo* in [CUSTOMIZING.md](CUSTOMIZING.md#private-factory-repo) |
+| CI fails with "workflow was not found" | The factory has no `v1` tag yet (tag a release: see [SHARED-SERVICES.md](SHARED-SERVICES.md#versioning-and-releases-of-the-factory)), your project's Actions permissions block other owners' workflows, or the factory repo is private. See *Private factory repo* in [CUSTOMIZING.md](CUSTOMIZING.md#private-factory-repo) |
 | `gh: command not found` | Install the GitHub CLI from https://cli.github.com and run `gh auth login` |
 | The plan is wrong | Say what's wrong. The planner revises it before any code is written |

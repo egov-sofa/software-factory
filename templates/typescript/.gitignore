@@ -9,3 +9,6 @@ coverage/
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# Content guard denylist: never committed (see .github/workflows/content-guard.yml)
+.content-denylist

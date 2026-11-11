@@ -27,6 +27,9 @@ addopts = "-ra"
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+# A copy of the software-factory content guard: maintained in the factory, not here, so this project's lint and
+# format rules do not apply to it (CI runs the factory's own copy anyway).
+extend-exclude = ["scripts/check_content.py"]
 
 [tool.ruff.lint]
 # E/F: errors, I: import sorting, B: likely bugs, UP: modern syntax, S: security

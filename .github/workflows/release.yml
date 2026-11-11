@@ -1,0 +1,59 @@
+# Publishes a factory release when you push a tag like v1.2.0, and moves the major tag (v1) to it.
+# Projects call the factory's workflows and actions at @v1, so moving v1 is what rolls a release out to them.
+# A breaking change gets a new major version (v2.0.0): v1 then stays where it was until each project moves.
+#
+# Release (see docs/SHARED-SERVICES.md):
+#   bash scripts/release-notes.sh v1.2.0        # preview
+#   git tag -a v1.2.0 -m "Short description" && git push origin v1.2.0
+name: Release
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+*"]
+
+permissions:
+  contents: write   # create the release and move the major tag
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0   # full history and every tag: to check the tag is on main and to write the notes
+
+      - name: Tag is on main
+        run: |
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || {
+            echo "::error::tag $GITHUB_REF_NAME is not on main; tag the merged commit on main"
+            exit 1
+          }
+
+      - name: Release notes
+        run: |
+          bash scripts/release-notes.sh "$GITHUB_REF_NAME" > release-notes.md
+          cat release-notes.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # v1.2.0-rc.1 and similar are pre-releases: published, but the major tag does not move
+          if [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then pre=""; else pre="--prerelease"; fi
+          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file release-notes.md $pre
+
+      - name: Move the major tag
+        if: ${{ !contains(github.ref_name, '-') }}
+        run: |
+          major="${GITHUB_REF_NAME%%.*}"   # v1.2.0 -> v1
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -fa "$major" -m "$major -> $GITHUB_REF_NAME" "$GITHUB_SHA"
+          # a tag pushed with GITHUB_TOKEN starts no workflow, and v1 does not match this workflow's tag pattern
+          git push -f origin "refs/tags/$major"
+          echo "Moved $major to $GITHUB_REF_NAME ($GITHUB_SHA)" >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,24 @@
+# Content guard: refuses secrets, public IP addresses, internal host names and denylisted terms in what a pull request
+# adds (lines, file names, commit messages, title and description). Works with no setup.
+# Optional denylist (customer, employer or internal system names): put the terms in the secret CONTENT_DENYLIST,
+# one per line. The same check runs before each commit through scripts/hooks.
+#
+# pull_request_target: GitHub takes this file from the base branch, so a pull request cannot weaken the check it is
+# held to or read the secret. The guard itself is the factory's copy at @v1; nothing from the pull request runs.
+name: Content guard
+
+on:
+  pull_request_target:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  content:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: {{GITHUB_OWNER}}/software-factory/.github/actions/content-guard@v1
+        with:
+          denylist: ${{ secrets.CONTENT_DENYLIST }}
