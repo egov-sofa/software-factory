@@ -53,3 +53,4 @@ cd /c/DEV/PROJECTS/gitHub/egov-rdc/egov-sofa/my-app && claude
 - [docs/GLOSSARY.md](docs/GLOSSARY.md): plain-English definitions of every term
 - [docs/SHARED-SERVICES.md](docs/SHARED-SERVICES.md): why and how other repositories use the factory's services
 - [docs/ROADMAP.md](docs/ROADMAP.md): planned improvements, ranked by value, with their status
+- [docs/ENTERPRISE-VISION.md](docs/ENTERPRISE-VISION.md): the proposed path to an enterprise-grade factory (architect roles, levels of rigour, spec-driven development)
