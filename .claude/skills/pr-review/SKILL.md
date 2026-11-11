@@ -44,8 +44,8 @@ employer names, in any file, commit message or the PR text. Flag each as a block
 Callers of the factory's own services in templates use `@v1`, never `@main`.
 
 **Templates.**
-- Placeholders are only `{{PROJECT_NAME}}`, `{{PACKAGE_NAME}}`, `{{GITHUB_OWNER}}` and `{{YEAR}}`; a new one needs a
-  matching replacement in `scripts/new-project.sh`.
+- Placeholders are only `{{PROJECT_NAME}}`, `{{PACKAGE_NAME}}`, `{{GITHUB_OWNER}}`, `{{FACTORY_REPO}}` and
+  `{{YEAR}}`; a new one needs a matching replacement in `scripts/new-project.sh` and is added to this list.
 - Files in `templates/_shared/` go to every project; a language template overrides a file of the same path.
 - A new template is added to the matrix in `.github/workflows/factory-selftest.yml`.
 

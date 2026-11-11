@@ -21,6 +21,10 @@ model: opus                     # opus | sonnet | haiku | inherit
 
 Everything below is the agent's instructions, written in plain English. Edit them like a job description.
 
+After changing the frontmatter of an agent or skill, run `python scripts/validate.py`. It catches a misspelled key,
+a `name` that does not match the file, an unknown model or tool, and a write tool given to a read-only agent; the
+self-test runs it on every pull request too.
+
 ## Add a new agent
 
 Create `claude/agents/my-agent.md` with the same structure, then run `install.sh`. Ideas:
