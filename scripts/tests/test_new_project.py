@@ -139,7 +139,10 @@ class Options(Base):
         self.assertIn("Options: alice acme beta", result.stderr)
 
     def test_github_needs_owner_even_with_dir(self):
-        result = self.new_project(NAME, "generic", "--dir", posix(self.out), "--github", "private")
+        """A fake (logged-out) gh, so the --owner check is reached whether or not the real gh is installed."""
+        env = self.fake_gh("exit 1")
+        result = run(self.home / "scripts" / "new-project.sh", NAME, "generic", "--dir", posix(self.out),
+                     "--github", "private", env=env)
         self.assertEqual(1, result.returncode, result.stdout)
         self.assertIn("--owner", result.stderr)
         self.assertFalse(self.out.exists())
