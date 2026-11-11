@@ -119,12 +119,21 @@ Findings never print a denylisted term, only its number.
 - **Breaking** change (a removed or renamed input, a new required secret, different behavior a project relies on):
   major release `v2`. `v1` stays where it was until each project chooses to move.
 
-```bash
-git checkout main && git pull
-bash scripts/release-notes.sh v1.1.0   # preview
-git tag -a v1.1.0 -m "Short description"
-git push origin v1.1.0
-```
+Two ways to release:
+
+- **From GitHub (no terminal):** Actions → **Release** → *Run workflow*, branch `main`, version `v1.1.0`. The workflow
+  creates the tag itself. Claude can start it the same way, which matters in cloud sessions: they may push only
+  their own working branch, never a tag.
+- **From a terminal:**
+  ```bash
+  git checkout main && git pull
+  bash scripts/release-notes.sh v1.1.0   # preview
+  git tag -a v1.1.0 -m "Short description"
+  git push origin v1.1.0
+  ```
+
+Do not create the tag with GitHub's "Draft a new release" button: the workflow would then try to create a release
+that already exists.
 
 ## Who can call the factory
 
