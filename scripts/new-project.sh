@@ -54,7 +54,12 @@ fi
 # The owner is a deliberate choice per project (it decides the GitHub org and the local folder),
 # so it's never guessed.
 if [[ -z "$OWNER" && ( -z "$PARENT" || -n "$GITHUB" ) ]]; then
-  choices="$(command -v gh >/dev/null && { gh api user -q .login; gh api user/orgs -q '.[].login'; } 2>/dev/null | tr '\n' ' ')"
+  # Without gh, or with gh logged out, there are just no options to show. `|| true` keeps a failing gh from
+  # ending the script here (set -e with pipefail) before the message below is printed.
+  choices=""
+  if command -v gh >/dev/null; then
+    choices="$({ gh api user -q .login; gh api user/orgs -q '.[].login'; } 2>/dev/null | tr '\n' ' ' || true)"
+  fi
   die "Choose who owns the project with --owner <org-or-user>.${choices:+ Options: $choices}"
 fi
 [[ -z "$OWNER" || "$OWNER" =~ ^[A-Za-z0-9-]+$ ]] || die "Invalid --owner '$OWNER'."
@@ -94,16 +99,22 @@ cp "$FACTORY_HOME/scripts/hooks/"* "$TARGET/scripts/hooks/"
 find "$TARGET" -depth -name '*{{PACKAGE_NAME}}*' | while read -r path; do
   mv "$path" "${path//\{\{PACKAGE_NAME\}\}/$PACKAGE_NAME}"
 done
-# Then file contents.
+# Then file contents. Through a temporary file rather than `sed -i`, whose syntax differs between GNU sed and the
+# BSD sed of macOS. The temporary file lives outside the project, so grep never lists it; copying back with cat
+# keeps the file's mode.
+tmp="$(mktemp)"
+trap 'rm -f "$tmp"' EXIT
 grep -rl '{{' "$TARGET" 2>/dev/null | while read -r file; do
-  sed -i \
+  sed \
     -e "s|{{PROJECT_NAME}}|$NAME|g" \
     -e "s|{{PACKAGE_NAME}}|$PACKAGE_NAME|g" \
     -e "s|{{GITHUB_OWNER}}|$OWNER|g" \
     -e "s|{{FACTORY_REPO}}|$FACTORY_REPO|g" \
     -e "s|{{YEAR}}|$YEAR|g" \
-    "$file"
+    "$file" > "$tmp"
+  cat "$tmp" > "$file"
 done
+rm -f "$tmp"
 
 find "$TARGET" -name '*.sh' -exec chmod +x {} +
 chmod +x "$TARGET/scripts/check_content.py" "$TARGET/scripts/hooks/"*

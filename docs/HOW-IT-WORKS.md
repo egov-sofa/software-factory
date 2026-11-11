@@ -104,7 +104,7 @@ That one line runs the full pipeline defined in the factory repo:
 checkout → install runtime → install deps (cached) → lint → build → test
 ```
 
-The factory also has its own **self-test** workflow ([factory-selftest.yml](../.github/workflows/factory-selftest.yml)). On every change to the factory, it creates a project from each template and runs its tests. If you break a template, you find out immediately.
+The factory also has its own **self-test** workflow ([factory-selftest.yml](../.github/workflows/factory-selftest.yml)). On every change to the factory, it creates a project from each template and runs its tests. If you break a template, you find out immediately. It also checks the frontmatter of every agent and skill (`scripts/validate.py`) and runs the tests in `scripts/tests/`, which exercise `install.sh`, `uninstall.sh` and the options of `new-project.sh` in temporary folders.
 
 **Why `@v1` and not `@main`?** A project follows the factory's releases, not every commit. `v1` is a tag that the
 [Release workflow](../.github/workflows/release.yml) moves to each compatible release; a breaking change becomes `v2`,
