@@ -1,6 +1,6 @@
 # Plan: Validate and test the factory's own scripts (roadmap I6)
 
-**Status:** Approved / In progress
+**Status:** Done
 **Request:** Feature request — roadmap item I6 in docs/ROADMAP.md, "Validate and test the factory's own scripts":
 1. A validator (suggested: scripts/validate.py, stdlib-only Python like scripts/check_content.py) that checks frontmatter of claude/agents/*.md and claude/skills/*/SKILL.md (and .claude/skills/*/SKILL.md, templates/_shared/.claude/skills/*/SKILL.md if sensible): required fields present, `name` matches the file name / folder name, `model` (if present) is a valid value, `tools` lists only real Claude Code tool names. Exit non-zero with clear messages.
 2. Tests for scripts/install.sh run into a temporary CLAUDE_CONFIG_DIR: a pre-existing user CLAUDE.md content is kept, the factory block (between <!-- software-factory:start/end --> markers) is inserted once and replaced (not duplicated) on the second run, backups are written when files change, second run is idempotent ("unchanged"), {{FACTORY_HOME}} rendered. Also scripts/uninstall.sh if cheap.
@@ -42,75 +42,75 @@ project per template; nothing checks the installer, the script options or the fr
 ## Acceptance criteria
 
 Validator (`python scripts/validate.py`):
-- [ ] Exits 0 and prints `No problems in N file(s).` on the current repository.
-- [ ] Exits 1 and prints `path:line: problem` for each of: no frontmatter (file does not start with `---`, or no
+- [x] Exits 0 and prints `No problems in N file(s).` on the current repository.
+- [x] Exits 1 and prints `path:line: problem` for each of: no frontmatter (file does not start with `---`, or no
       closing `---`); missing `name` or `description`; empty `description`; `name` different from the file stem
       (agents) or folder name (skills); `model` not in the allowed set; an unknown tool in `tools` (agents) or
       `allowed-tools` (skills); an unknown frontmatter key; a read-only agent with a write tool or without `tools`.
-- [ ] `tools` accepts a comma-separated string, an inline list `[A, B]` or a block list (`- A`); `mcp__<server>__<tool>`
+- [x] `tools` accepts a comma-separated string, an inline list `[A, B]` or a block list (`- A`); `mcp__<server>__<tool>`
       names and permission-rule forms such as `Bash(git status:*)` (known tool name before the parenthesis) are valid.
-- [ ] Exits 2 with the usage text on an unknown argument; `--root DIR` checks another tree (used by the tests).
-- [ ] Stdlib only; no secret or file content beyond the offending key/value is printed.
+- [x] Exits 2 with the usage text on an unknown argument; `--root DIR` checks another tree (used by the tests).
+- [x] Stdlib only; no secret or file content beyond the offending key/value is printed.
 
 install.sh / uninstall.sh (run with `bash`, `CLAUDE_CONFIG_DIR` set to a temporary folder):
-- [ ] Fresh install into an empty folder creates every agent and skill file and a `CLAUDE.md` with exactly one
+- [x] Fresh install into an empty folder creates every agent and skill file and a `CLAUDE.md` with exactly one
       start and one end marker; no backup folder is created.
-- [ ] No installed file contains `{{FACTORY_HOME}}`; `agents/reviewer.md` contains the factory path followed by
+- [x] No installed file contains `{{FACTORY_HOME}}`; `agents/reviewer.md` contains the factory path followed by
       `/standards/`.
-- [ ] A pre-existing `CLAUDE.md` with user text keeps that text byte-for-byte before the factory block, and a backup
+- [x] A pre-existing `CLAUDE.md` with user text keeps that text byte-for-byte before the factory block, and a backup
       of the original is written under `backups/software-factory-*/CLAUDE.md`.
-- [ ] Second run with nothing changed: every line reports `(unchanged)`, `CLAUDE.md` is byte-identical, and no new
+- [x] Second run with nothing changed: every line reports `(unchanged)`, `CLAUDE.md` is byte-identical, and no new
       backup is written (requires the install.sh fix above).
-- [ ] When the block holds old content (the test edits a line between the markers) and user text sits both before
+- [x] When the block holds old content (the test edits a line between the markers) and user text sits both before
       and after the block, the next run replaces the block in place: still one start marker, old line gone, user text
       before and after kept, and a backup holding the old content exists.
-- [ ] When an installed agent was edited by hand, the next run restores it and backs up the edited copy.
-- [ ] `--dry-run` writes nothing (the target folder stays empty or absent).
-- [ ] uninstall.sh removes the factory's agents, skills and block, keeps a user-created `agents/mine.md` and the
+- [x] When an installed agent was edited by hand, the next run restores it and backs up the edited copy.
+- [x] `--dry-run` writes nothing (the target folder stays empty or absent).
+- [x] uninstall.sh removes the factory's agents, skills and block, keeps a user-created `agents/mine.md` and the
       user's `CLAUDE.md` text, and deletes `CLAUDE.md` when only the factory block was in it.
 
 new-project.sh (run against a temporary copy of the factory with a fake remote):
-- [ ] Without `--owner` and without `--dir`: exit 1, message mentions `--owner`, nothing is created.
-- [ ] `--dir <parent>` without `--owner` succeeds and creates `<parent>/<name>`.
-- [ ] `--owner acme` without `--dir` creates `<workspace>/acme/<name>`, where the workspace is two levels above the
+- [x] Without `--owner` and without `--dir`: exit 1, message mentions `--owner`, nothing is created.
+- [x] `--dir <parent>` without `--owner` succeeds and creates `<parent>/<name>`.
+- [x] `--owner acme` without `--dir` creates `<workspace>/acme/<name>`, where the workspace is two levels above the
       factory copy (`FACTORY_WORKSPACE` unset in the test environment).
-- [ ] Default (git on): `.git` exists with one commit on `main`, `core.hooksPath` is `scripts/hooks`, and
+- [x] Default (git on): `.git` exists with one commit on `main`, `core.hooksPath` is `scripts/hooks`, and
       `scripts/hooks/pre-commit` is mode `100755` in the index. With `--no-git`: no `.git` folder.
-- [ ] Rejected with exit 1 and nothing created: names `My_App`, `1app`, `app_x`; templates `cobol`, `_shared`;
+- [x] Rejected with exit 1 and nothing created: names `My_App`, `1app`, `app_x`; templates `cobol`, `_shared`;
       owner `bad/owner`; `--github internal`; `--github private --no-git`; an unknown option; a target that already
       exists (whose existing content stays untouched).
-- [ ] `{{FACTORY_REPO}}` is filled from the remote: `https://github.com/test-org/test-factory.git` gives
+- [x] `{{FACTORY_REPO}}` is filled from the remote: `https://github.com/test-org/test-factory.git` gives
       `test-org/test-factory` and `git@github.com:other-org/fork.git` gives `other-org/fork` in
       `.github/workflows/ci.yml`; with no remote, it falls back to `YOUR_ORG/software-factory` and prints the warning.
-- [ ] For each template (`typescript`, `python`, `generic`): no file or path contains a factory placeholder
+- [x] For each template (`typescript`, `python`, `generic`): no file or path contains a factory placeholder
       (`(?<!\$)\{\{\s*[A-Z_]+\s*\}\}`), the python package folder is renamed, and the GitHub `${{ ... }}`
       expressions in the workflows are still present and unchanged.
 
 Extra fixes (approved with the plan; previously listed as out of scope):
-- [ ] A. `.claude/skills/pr-review/SKILL.md` lists `{{FACTORY_REPO}}` among the allowed template placeholders. A test
+- [x] A. `.claude/skills/pr-review/SKILL.md` lists `{{FACTORY_REPO}}` among the allowed template placeholders. A test
       checks that the placeholders listed there, the placeholders `new-project.sh` replaces, and the placeholders the
       templates use agree (every used one is replaced and listed; every listed one is replaced).
-- [ ] B. `new-project.sh` fills placeholders without `sed -i` (GNU-only without a suffix; BSD sed on macOS needs one):
+- [x] B. `new-project.sh` fills placeholders without `sed -i` (GNU-only without a suffix; BSD sed on macOS needs one):
       it writes `sed` output to a temporary file made with `mktemp` (outside the project, so the running `grep -rl`
       never lists it) and copies it back with `cat`, which keeps the file mode. Shellcheck stays clean; a test
       asserts the script no longer calls `sed -i`, and the placeholder tests cover the behavior.
-- [ ] C. `install.sh` and `uninstall.sh` never drop user content when the markers in `CLAUDE.md` are broken: a start
+- [x] C. `install.sh` and `uninstall.sh` never drop user content when the markers in `CLAUDE.md` are broken: a start
       marker without an end marker, an end marker without a start marker, two start markers or two blocks, the end
       before the start, or a marker sharing its line with other text. Both scripts then print a clear error naming
       `CLAUDE.md` and the markers, exit 1, and leave `CLAUDE.md` byte-identical (no `.tmp` left behind). Both make
       the check before touching anything (install.sh also in `--dry-run`; uninstall.sh removes no agent or skill).
 
 Found while testing (fixed, since the acceptance criteria above require it):
-- [ ] `new-project.sh` without `--owner` and `--dir` exited with status 4 and no message when `gh` was installed but
+- [x] `new-project.sh` without `--owner` and `--dir` exited with status 4 and no message when `gh` was installed but
       logged out (and would have when `gh` was missing): the `choices=$(...)` substitution failed under
       `set -e`/`pipefail`. It now ends in `|| true`, so the "Choose who owns the project with --owner" error shows.
 
 CI and docs:
-- [ ] `factory-selftest.yml` runs the validator and the whole `scripts/tests` suite on ubuntu; existing pinned SHAs
+- [x] `factory-selftest.yml` runs the validator and the whole `scripts/tests` suite on ubuntu; existing pinned SHAs
       are reused, no new action is added.
-- [ ] `python scripts/check_content.py --all` and `shellcheck scripts/*.sh scripts/hooks/* templates/generic/scripts/*.sh`
+- [ ] `python scripts/check_content.py --all` and `shellcheck scripts/*.sh scripts/hooks/* templates/generic/scripts/*.sh` (content guard passes; shellcheck not yet run: not installed locally, first check is CI)
       still pass.
-- [ ] `docs/ROADMAP.md`: I6 status `done (this branch)`, review log has a dated entry.
+- [x] `docs/ROADMAP.md`: I6 status `done (this branch)`, review log has a dated entry.
 
 ## Design
 
@@ -207,3 +207,18 @@ regressions.
 - **Speed:** each `new-project.sh` run copies a template; keep git-enabled runs to one or two cases.
 - The three items first listed here as out of scope (the pr-review placeholder list, `sed -i` on macOS, broken
   markers in `CLAUDE.md`) were approved with the plan and moved to the acceptance criteria as A, B and C.
+
+## Follow-ups (not fixed)
+LOW/MINOR review findings, left for a later change:
+1. A `CLAUDE.md` with CRLF line endings is refused with an unhelpful message on Linux/macOS: strip `\r` in the awk
+   marker check, or mention CRLF in the error.
+2. The read-only agent rule uses a denylist of write tools. Switch to an allowlist so `Agent`/`Task` and MCP write
+   tools are caught too.
+3. `scripts/tests/support.py` should also unset `GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE`,
+   `GIT_OBJECT_DIRECTORY`, `GIT_CONFIG_PARAMETERS` and `GIT_CONFIG_COUNT`.
+4. `sed` replacement values (`FACTORY_REPO`, `FACTORY_HOME`) are not escaped for `&`, `|` and `\` (pre-existing).
+5. The marker-check awk is duplicated in `install.sh` and `uninstall.sh`.
+6. Add an explicit `trap - EXIT` after the `rm` in `new-project.sh`.
+7. `test_no_in_place_sed` misses backslash-continued lines.
+8. The validator prints `[]` for an empty `name` or `model`.
+9. `test_rejected_arguments` does not assert the reason for the rejection.

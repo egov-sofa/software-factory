@@ -38,6 +38,7 @@ rule is written down but not enforced.
 | I10 | **Generated catalog.** Build the README's tables of agents, commands and templates from file metadata, and have CI fail when they are out of date. | Hand-kept tables drift. | `scripts/build.py --check` | S | open |
 | I11 | **This roadmap.** One document with an ID and status per finding. | Keeps the plan visible and reviewable. | `docs/roadmap.md` | XS | done (this branch) |
 | I12 | **Reuse skills from claude-skills.** `docs-writer` uses `plain-human-english`; `planner` can draw diagrams with `architecture-diagram`. | Better docs and plans for free. | `skills/writing/plain-human-english`, `skills/architecture/architecture-diagram` | S | open |
+| I13 | **Tidy the I6 review follow-ups.** Nine LOW/MINOR findings: CRLF `CLAUDE.md` message, allowlist for read-only agent tools, more `GIT_*` variables unset in test support, `sed` value escaping, shared marker check, `trap - EXIT` in `new-project.sh`, backslash-continued lines in `test_no_in_place_sed`, `[]` for empty `name`/`model`, assert the reason in `test_rejected_arguments`. | Small gaps found in review that did not block I6. | [plan](plans/2026-11-11-validate-and-test-factory-scripts.md) (Follow-ups) | XS | open |
 
 ### Not to copy
 
