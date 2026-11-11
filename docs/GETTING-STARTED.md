@@ -24,7 +24,7 @@ People skip steps when they're in a hurry. A *factory* makes the steps automatic
 Open **Git Bash** (or the Claude Code terminal) and run:
 
 ```bash
-bash ~/software-factory/scripts/install.sh
+bash /c/DEV/PROJECTS/gitHub/egov-rdc/egov-sofa/software-factory/scripts/install.sh
 ```
 
 **What this does:**
@@ -35,18 +35,18 @@ bash ~/software-factory/scripts/install.sh
 
 **Restart Claude Code** after installing so it picks up the new files.
 
-> 💡 Whenever you change something in `~/software-factory/claude/`, run `install.sh` again to update your installed copy.
+> 💡 Whenever you change something in `/c/DEV/PROJECTS/gitHub/egov-rdc/egov-sofa/software-factory/claude/`, run `install.sh` again to update your installed copy.
 
 ---
 
 ## Step 2: Create your first project
 
 ```bash
-bash ~/software-factory/scripts/new-project.sh hello-factory typescript
+bash /c/DEV/PROJECTS/gitHub/egov-rdc/egov-sofa/software-factory/scripts/new-project.sh hello-factory typescript --owner egov-sofa
 ```
 
 **What this does:**
-1. Creates `~/projects/hello-factory/`
+1. Creates `/c/DEV/PROJECTS/gitHub/egov-rdc/egov-sofa/hello-factory/` (folders mirror GitHub: `egov-rdc/<org>/<project>`; `--owner` picks the org, and the script always asks for it)
 2. Copies in the shared files (editor settings, PR template, Dependabot config, CLAUDE.md)
 3. Adds the TypeScript-specific files on top (package.json, tsconfig, a sample function and test)
 4. Fills in placeholders such as the project name and your GitHub username
@@ -55,13 +55,13 @@ bash ~/software-factory/scripts/new-project.sh hello-factory typescript
 **Optional:** add `--github private` (or `public`) to also create the GitHub repository and push to it:
 
 ```bash
-bash ~/software-factory/scripts/new-project.sh hello-factory typescript --github private
+bash /c/DEV/PROJECTS/gitHub/egov-rdc/egov-sofa/software-factory/scripts/new-project.sh hello-factory typescript --owner egov-sofa --github private
 ```
 
 Then install dependencies and check that everything passes:
 
 ```bash
-cd ~/projects/hello-factory
+cd /c/DEV/PROJECTS/gitHub/egov-rdc/egov-sofa/hello-factory
 npm install
 npm test
 ```
@@ -71,7 +71,7 @@ npm test
 ## Step 3: Build a feature with the AI team
 
 ```bash
-cd ~/projects/hello-factory
+cd /c/DEV/PROJECTS/gitHub/egov-rdc/egov-sofa/hello-factory
 claude
 ```
 
@@ -134,6 +134,6 @@ Existing project    →  /factory-onboard
 | Problem | Fix |
 |---|---|
 | `/factory-build` isn't recognized | Run `install.sh`, then restart Claude Code |
-| CI fails with "workflow was not found" | The factory has no `v1` tag yet (tag a release: see [SHARED-SERVICES.md](SHARED-SERVICES.md#versioning-and-releases-of-the-factory)), your project's Actions permissions block other owners' workflows, or the factory repo is private. See *Private factory repo* in [CUSTOMIZING.md](CUSTOMIZING.md#private-factory-repo) |
+| CI fails with "workflow was not found" | The factory has no `v1` tag yet (tag a release: see [SHARED-SERVICES.md](SHARED-SERVICES.md#versioning-and-releases-of-the-factory)), your project's Actions permissions block other orgs' workflows, or the factory repo is private and the project is in another org. See [CUSTOMIZING.md](CUSTOMIZING.md#why-the-factory-repo-is-public) |
 | `gh: command not found` | Install the GitHub CLI from https://cli.github.com and run `gh auth login` |
 | The plan is wrong | Say what's wrong. The planner revises it before any code is written |

@@ -12,7 +12,7 @@ flowchart LR
     end
 
     A -- install.sh copies --> C["~/.claude<br/>(works in every project)"]
-    T -- new-project.sh copies --> P["~/projects/my-app"]
+    T -- new-project.sh copies --> P["egov-rdc/(org)/my-app"]
     P -- ci.yml calls --> W
     S -. read by .-> A
     C -- you run /factory-build --> P
@@ -71,7 +71,7 @@ templates/_shared/     ← every project gets these (CLAUDE.md, .editorconfig, P
         +
 templates/typescript/  ← language-specific files, copied on top (can override _shared files)
         =
-~/projects/my-app/
+/c/DEV/PROJECTS/gitHub/egov-rdc/<org>/my-app/
 ```
 
 Then it replaces placeholders:
@@ -80,7 +80,8 @@ Then it replaces placeholders:
 |---|---|
 | `{{PROJECT_NAME}}` | `my-app` |
 | `{{PACKAGE_NAME}}` | `my_app` (for Python imports) |
-| `{{GITHUB_OWNER}}` | your GitHub username |
+| `{{GITHUB_OWNER}}` | owner of the new project's GitHub repo |
+| `{{FACTORY_REPO}}` | where the shared CI lives, read from the factory's git remote (`egov-sofa/software-factory`) |
 | `{{YEAR}}` | current year |
 
 ---
@@ -103,7 +104,7 @@ That one line runs the full pipeline defined in the factory repo:
 checkout → install runtime → install deps (cached) → lint → build → test
 ```
 
-The factory also has its own **self-test** workflow ([factory-selftest.yml](../.github/workflows/factory-selftest.yml)). On every change to the factory, it creates a project from each template and runs its tests. If you break a template, you find out immediately.
+The factory also has its own **self-test** workflow ([factory-selftest.yml](../.github/workflows/factory-selftest.yml)). On every change to the factory, it creates a project from each template and runs its tests. If you break a template, you find out immediately. It also checks the frontmatter of every agent and skill (`scripts/validate.py`) and runs the tests in `scripts/tests/`, which exercise `install.sh`, `uninstall.sh` and the options of `new-project.sh` in temporary folders.
 
 **Why `@v1` and not `@main`?** A project follows the factory's releases, not every commit. `v1` is a tag that the
 [Release workflow](../.github/workflows/release.yml) moves to each compatible release; a breaking change becomes `v2`,

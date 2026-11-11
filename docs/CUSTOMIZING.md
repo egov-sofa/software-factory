@@ -2,7 +2,7 @@
 
 The factory is meant to grow with you. The golden rule:
 
-> **Edit files in `~/software-factory/`, never in `~/.claude/` directly.** Then run `scripts/install.sh` again and commit your change. Otherwise your edits are lost on the next install and are never backed up to GitHub.
+> **Edit files in `/c/DEV/PROJECTS/gitHub/egov-rdc/egov-sofa/software-factory/`, never in `~/.claude/` directly.** Then run `scripts/install.sh` again and commit your change. Otherwise your edits are lost on the next install and are never backed up to GitHub.
 
 ---
 
@@ -21,6 +21,10 @@ model: opus                     # opus | sonnet | haiku | inherit
 
 Everything below is the agent's instructions, written in plain English. Edit them like a job description.
 
+After changing the frontmatter of an agent or skill, run `python scripts/validate.py`. It catches a misspelled key,
+a `name` that does not match the file, an unknown model or tool, and a write tool given to a read-only agent; the
+self-test runs it on every pull request too.
+
 ## Add a new agent
 
 Create `claude/agents/my-agent.md` with the same structure, then run `install.sh`. Ideas:
@@ -38,7 +42,7 @@ To include it in the pipeline, add a step to `claude/skills/factory-build/SKILL.
 4. Add the template to the matrix in `.github/workflows/factory-selftest.yml`.
 5. Test it: `bash scripts/new-project.sh test-app <name> --dir /tmp`.
 
-Use `{{PROJECT_NAME}}`, `{{PACKAGE_NAME}}`, `{{GITHUB_OWNER}}` and `{{YEAR}}` anywhere in file contents.
+Use `{{PROJECT_NAME}}`, `{{PACKAGE_NAME}}`, `{{GITHUB_OWNER}}`, `{{FACTORY_REPO}}` and `{{YEAR}}` anywhere in file contents.
 
 ## Change the CI pipeline (or another shared service) for all projects
 
@@ -59,26 +63,18 @@ until you **release** it:
 > new major version instead: tag `v2.0.0`. `v1` stays where it was, and each project moves to `@v2` when you choose.
 > See [SHARED-SERVICES.md](SHARED-SERVICES.md#versioning-and-releases-of-the-factory).
 
-## Private factory repo
+## Why the factory repo is public
 
-A **public** factory repo needs no setup: any repository can call its workflows and actions. Everything in it is then
-visible to anyone, so keep employer and customer details out (the content guard checks pull requests for them).
+The factory lives in the `egov-sofa` org, but projects live in many orgs (`egov-ai`, `pentagone-digital`, …). GitHub only lets a **private** repo share its workflows with repos in the **same** org, so the factory is **public**. That way every project, in any org, can call its CI and shared services.
 
-If the factory repo is **private**, other repos can use its workflows and actions only after you allow it once, under
-GitHub → software-factory → **Settings → Actions → General → Access** (the section appears only on private repos):
+Public means anyone can *read* it, so **never put secrets, tokens, internal URLs or client data in this repo.** Projects keep their secrets in their own GitHub Secrets. The content guard checks pull requests for such details.
 
-| Factory owned by | Choose | From the terminal |
-|---|---|---|
-| your personal account | *Accessible from repositories owned by the user* | `gh api -X PUT repos/<you>/software-factory/actions/permissions/access -f access_level=user` |
-| an organization | *Accessible from repositories in the organization* | `gh api -X PUT repos/<org>/software-factory/actions/permissions/access -f access_level=organization` |
-
-> ⚠️ A private factory can only be shared **within one owner** (one user, one organization, or an enterprise's
-> organizations). Repositories in another organization cannot call it. Keep the factory public, or keep it and its
-> users under the same owner.
+If you ever make it private again, only projects inside `egov-sofa` keep working. Turn on sharing in GitHub → software-factory → **Settings → Actions → General → Access** → *"Accessible from repositories in the 'egov-sofa' organization"*, or from the terminal:
+`gh api -X PUT repos/egov-sofa/software-factory/actions/permissions/access -f access_level=organization`.
 
 **In each repository that calls the factory:** its own Settings → Actions → General → *Actions permissions* must
 allow the factory's workflows. "Allow all actions and reusable workflows" does; if a repo allows only its own
-organization's, choose the "select" option and add `<owner>/software-factory/*`. Do not turn on "Require actions to
+organization's, choose the "select" option and add `egov-sofa/software-factory/*`. Do not turn on "Require actions to
 be pinned to a full-length commit SHA" there: projects call the factory at the tag `@v1`.
 
 ## Adding deployment (CD)

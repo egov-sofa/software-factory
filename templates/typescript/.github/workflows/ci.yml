@@ -10,6 +10,6 @@ on:
 
 jobs:
   ci:
-    uses: {{GITHUB_OWNER}}/software-factory/.github/workflows/reusable-node.yml@v1
+    uses: {{FACTORY_REPO}}/.github/workflows/reusable-node.yml@v1
     with:
       node-version: "22"

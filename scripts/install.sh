@@ -17,6 +17,21 @@ MARK_START="<!-- software-factory:start -->"
 MARK_END="<!-- software-factory:end -->"
 
 say() { printf '%s\n' "$*"; }
+die() { printf '❌ %s\n' "$*" >&2; exit 1; }
+
+# True if the file holds no factory block, or one start line followed later by one end line, each on its own line.
+# Anything else (a marker missing, doubled, out of order, or sharing its line with other text) is refused:
+# replacing between broken markers could drop the user's own content.
+markers_ok() {
+  awk -v start="$MARK_START" -v end="$MARK_END" '
+    index($0, start) || index($0, end) {
+      if ($0 == start && !open && !seen) { open = 1; next }
+      if ($0 == end && open) { open = 0; seen = 1; next }
+      bad = 1
+    }
+    END { exit (bad || open) }
+  ' "$1"
+}
 
 # Fill {{FACTORY_HOME}} so agents can find the standards folder.
 render() { sed "s|{{FACTORY_HOME}}|$FACTORY_HOME|g" "$1"; }
@@ -54,6 +69,12 @@ say "   into: $CLAUDE_DIR"
 $DRY_RUN && say "   (dry run: nothing will be written)"
 say ""
 
+# Check the user's CLAUDE.md before installing anything, so a refusal leaves everything as it was.
+target="$CLAUDE_DIR/CLAUDE.md"
+if [[ -f "$target" ]] && ! markers_ok "$target"; then
+  die "$target has broken software-factory markers: expected one '$MARK_START' line, later one '$MARK_END' line, each on its own line. Fix or remove them by hand, then run this again. Nothing was changed."
+fi
+
 say "Agents:"
 for f in "$FACTORY_HOME"/claude/agents/*.md; do
   install_file "$f" "$CLAUDE_DIR/agents/$(basename "$f")"
@@ -69,7 +90,6 @@ done
 
 # Global CLAUDE.md: manage only our marked block, so the user's own rules are never lost.
 say "Global rules (CLAUDE.md):"
-target="$CLAUDE_DIR/CLAUDE.md"
 block="$(mktemp)"
 { say "$MARK_START"; render "$FACTORY_HOME/claude/CLAUDE.md"; say "$MARK_END"; } > "$block"
 if $DRY_RUN; then
@@ -77,14 +97,20 @@ if $DRY_RUN; then
 else
   mkdir -p "$CLAUDE_DIR"
   if [[ -f "$target" ]] && grep -qF "$MARK_START" "$target"; then
-    backup "$target"
-    # Replace everything between the markers with the new block.
+    # Replace everything between the markers with the new block; back up and write only if that changes the file.
     awk -v start="$MARK_START" -v end="$MARK_END" -v blockfile="$block" '
       $0 == start { while ((getline line < blockfile) > 0) print line; skip = 1; next }
       $0 == end   { skip = 0; next }
       !skip
-    ' "$target" > "$target.tmp" && mv "$target.tmp" "$target"
-    say "  ~ CLAUDE.md (factory block updated; your own content kept)"
+    ' "$target" > "$target.tmp"
+    if cmp -s "$target.tmp" "$target"; then
+      rm -f "$target.tmp"
+      say "  = CLAUDE.md (unchanged)"
+    else
+      backup "$target"
+      mv "$target.tmp" "$target"
+      say "  ~ CLAUDE.md (factory block updated; your own content kept)"
+    fi
   elif [[ -f "$target" ]]; then
     backup "$target"
     { printf '\n'; cat "$block"; } >> "$target"

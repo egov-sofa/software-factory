@@ -14,7 +14,7 @@ jobs:
       contents: read
       pull-requests: write
       id-token: write
-    uses: {{GITHUB_OWNER}}/software-factory/.github/workflows/reusable-claude-mention.yml@v1
+    uses: {{FACTORY_REPO}}/.github/workflows/reusable-claude-mention.yml@v1
     with:
       federation-rule-id: ${{ vars.ANTHROPIC_MENTION_FEDERATION_RULE_ID }}
       organization-id: ${{ vars.ANTHROPIC_ORGANIZATION_ID }}
