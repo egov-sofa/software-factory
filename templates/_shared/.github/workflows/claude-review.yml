@@ -1,0 +1,40 @@
+# Claude reviews every pull request, following .claude/skills/pr-review/SKILL.md (edit it to fit this project).
+# The steps live in the shared software-factory repo at @v1 (docs/SHARED-SERVICES.md in the factory).
+# Off until you turn it on: install the Claude GitHub app, set up API access (federation variables below, or the
+# secret ANTHROPIC_API_KEY), then set the repository variable CLAUDE_REVIEW_ENABLED to true.
+# Each review costs API credit. The label skip-review turns it off for the pushes that follow.
+name: Claude review
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
+    paths-ignore:   # files that never need a review
+      - "**/*.png"
+      - "**/*.jpg"
+
+concurrency:
+  # a new push to the same pull request replaces the review still running
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    if: >-
+      vars.CLAUDE_REVIEW_ENABLED == 'true' &&
+      github.event.pull_request.draft == false &&
+      !contains(github.event.pull_request.labels.*.name, 'skip-review') &&
+      github.actor != 'dependabot[bot]'
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+    uses: {{FACTORY_REPO}}/.github/workflows/reusable-claude-review.yml@v1
+    with:
+      federation-rule-id: ${{ vars.ANTHROPIC_FEDERATION_RULE_ID }}
+      organization-id: ${{ vars.ANTHROPIC_ORGANIZATION_ID }}
+      service-account-id: ${{ vars.ANTHROPIC_SERVICE_ACCOUNT_ID }}
+      workspace-id: ${{ vars.ANTHROPIC_WORKSPACE_ID }}
+      debug: ${{ vars.CLAUDE_REVIEW_DEBUG == 'true' }}
+    secrets:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}

@@ -40,19 +40,35 @@ To include it in the pipeline, add a step to `claude/skills/factory-build/SKILL.
 
 Use `{{PROJECT_NAME}}`, `{{PACKAGE_NAME}}`, `{{GITHUB_OWNER}}`, `{{FACTORY_REPO}}` and `{{YEAR}}` anywhere in file contents.
 
-## Change the CI pipeline for all projects
+## Change the CI pipeline (or another shared service) for all projects
 
-Edit `.github/workflows/reusable-*.yml` and push to `main`. Every project that calls it uses the new version on its next run. No changes are needed in the projects themselves.
+Projects call the factory's workflows and actions at `@v1`, not `@main`. A merge to `main` changes nothing for them
+until you **release** it:
 
-> ⚠️ This is powerful: a broken change breaks every project's CI. Test on a branch first. A project can pin to a branch or tag with `@my-branch` instead of `@main`.
+1. Edit `.github/workflows/reusable-*.yml` (or another shared service) on a branch and merge it to `main`.
+   To try a change in one project first, point that project's `uses:` line at your branch (`@my-branch`) for a while.
+2. Preview the notes: `bash scripts/release-notes.sh v1.3.0`.
+3. Tag and push: `git tag -a v1.3.0 -m "Short description" && git push origin v1.3.0`.
+   The [Release workflow](../.github/workflows/release.yml) publishes the release and moves `v1` to it, so every
+   project uses it on its next run.
+
+> ⚠️ A **breaking** change (a removed or renamed input, a new required secret, behavior a project relies on) gets a
+> new major version instead: tag `v2.0.0`. `v1` stays where it was, and each project moves to `@v2` when you choose.
+> See [SHARED-SERVICES.md](SHARED-SERVICES.md#versioning-and-releases-of-the-factory).
 
 ## Why the factory repo is public
 
-The factory lives in the `egov-sofa` org, but projects live in many orgs (`egov-ai`, `pentagone-digital`, …). GitHub only lets a **private** repo share its workflows with repos in the **same** org, so the factory is **public**. That way every project, in any org, can call its CI.
+The factory lives in the `egov-sofa` org, but projects live in many orgs (`egov-ai`, `pentagone-digital`, …). GitHub only lets a **private** repo share its workflows with repos in the **same** org, so the factory is **public**. That way every project, in any org, can call its CI and shared services.
 
-Public means anyone can *read* it, so **never put secrets, tokens, internal URLs or client data in this repo.** Projects keep their secrets in their own GitHub Secrets.
+Public means anyone can *read* it, so **never put secrets, tokens, internal URLs or client data in this repo.** Projects keep their secrets in their own GitHub Secrets. The content guard checks pull requests for such details.
 
-If you ever make it private again, only projects inside `egov-sofa` keep working. Turn on sharing in GitHub → software-factory → **Settings → Actions → General → Access** → *"Accessible from repositories in the 'egov-sofa' organization"*.
+If you ever make it private again, only projects inside `egov-sofa` keep working. Turn on sharing in GitHub → software-factory → **Settings → Actions → General → Access** → *"Accessible from repositories in the 'egov-sofa' organization"*, or from the terminal:
+`gh api -X PUT repos/egov-sofa/software-factory/actions/permissions/access -f access_level=organization`.
+
+**In each repository that calls the factory:** its own Settings → Actions → General → *Actions permissions* must
+allow the factory's workflows. "Allow all actions and reusable workflows" does; if a repo allows only its own
+organization's, choose the "select" option and add `egov-sofa/software-factory/*`. Do not turn on "Require actions to
+be pinned to a full-length commit SHA" there: projects call the factory at the tag `@v1`.
 
 ## Adding deployment (CD)
 

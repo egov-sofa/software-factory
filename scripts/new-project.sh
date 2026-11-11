@@ -84,6 +84,10 @@ echo "🏭 Creating $NAME from '$TEMPLATE' in $TARGET"
 mkdir -p "$TARGET"
 cp -R "$TEMPLATES/_shared/." "$TARGET/"
 cp -R "$TEMPLATES/$TEMPLATE/." "$TARGET/"
+# The content guard and its git hooks come from the factory itself (one source); CI runs the factory's copy at @v1.
+mkdir -p "$TARGET/scripts/hooks"
+cp "$FACTORY_HOME/scripts/check_content.py" "$TARGET/scripts/"
+cp "$FACTORY_HOME/scripts/hooks/"* "$TARGET/scripts/hooks/"
 
 # ---- Fill placeholders -----------------------------------------------------
 # Rename paths first (deepest first so parent renames don't break child paths).
@@ -102,17 +106,23 @@ grep -rl '{{' "$TARGET" 2>/dev/null | while read -r file; do
 done
 
 find "$TARGET" -name '*.sh' -exec chmod +x {} +
+chmod +x "$TARGET/scripts/check_content.py" "$TARGET/scripts/hooks/"*
 
 # ---- Git -------------------------------------------------------------------
 if $INIT_GIT; then
   git -C "$TARGET" init -q -b main
   git -C "$TARGET" add -A
   # --chmod keeps scripts executable even when created on Windows
-  find "$TARGET" -name '*.sh' -not -path '*/.git/*' | while read -r f; do
+  { find "$TARGET" -name '*.sh' -not -path '*/.git/*'
+    echo "$TARGET/scripts/check_content.py"
+    find "$TARGET/scripts/hooks" -type f
+  } | while read -r f; do
     git -C "$TARGET" update-index --chmod=+x "${f#"$TARGET"/}"
   done
   git -C "$TARGET" commit -q -m "chore: scaffold from software-factory ($TEMPLATE template)"
-  echo "✅ Git repository initialized with first commit on 'main'"
+  # From now on every commit runs the content guard (secrets, public IPs, internal hosts, denylist).
+  git -C "$TARGET" config core.hooksPath scripts/hooks
+  echo "✅ Git repository initialized with first commit on 'main' (content guard hooks on)"
 fi
 
 if [[ -n "$GITHUB" ]]; then

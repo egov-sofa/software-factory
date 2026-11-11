@@ -1,6 +1,6 @@
 # Reusable CI for any language: runs the project's scripts/check.sh.
 # Called from a project's ci.yml with:
-#   uses: <owner>/software-factory/.github/workflows/reusable-generic.yml@main
+#   uses: <owner>/software-factory/.github/workflows/reusable-generic.yml@v1
 name: Reusable Generic CI
 
 on:
@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up toolchain
         if: inputs.setup-command != ''

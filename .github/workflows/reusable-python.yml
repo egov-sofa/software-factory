@@ -1,6 +1,6 @@
 # Reusable CI for Python projects (pyproject.toml with a [dev] extra).
 # Called from a project's ci.yml with:
-#   uses: <owner>/software-factory/.github/workflows/reusable-python.yml@main
+#   uses: <owner>/software-factory/.github/workflows/reusable-python.yml@v1
 name: Reusable Python CI
 
 on:
@@ -27,9 +27,9 @@ jobs:
       run:
         working-directory: ${{ inputs.working-directory }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: ${{ inputs.python-version }}
           cache: pip

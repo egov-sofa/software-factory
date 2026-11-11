@@ -1,5 +1,6 @@
 # CI: runs automatically on every push and pull request.
-# The actual steps live in the shared software-factory repo, so improving them there updates every project.
+# The actual steps live in the shared software-factory repo. `@v1` follows every compatible factory release;
+# a breaking change gets `@v2`, and this project moves to it only when you change the line below.
 name: CI
 
 on:
@@ -9,6 +10,6 @@ on:
 
 jobs:
   ci:
-    uses: {{FACTORY_REPO}}/.github/workflows/reusable-node.yml@main
+    uses: {{FACTORY_REPO}}/.github/workflows/reusable-node.yml@v1
     with:
       node-version: "22"
