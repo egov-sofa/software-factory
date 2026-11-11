@@ -136,4 +136,4 @@ setup on the factory side. Two things follow:
   for `egov-ai/claude-skills`, which lives in another organization.
 
 If the factory is ever made private, it can only serve repositories of the same owner: private workflows cannot be
-shared across organizations. See [CUSTOMIZING.md](CUSTOMIZING.md#private-factory-repo).
+shared across organizations. See [CUSTOMIZING.md](CUSTOMIZING.md#why-the-factory-repo-is-public).

@@ -5,13 +5,14 @@
 #   bash scripts/new-project.sh <name> <template> [options]
 #
 # Options:
-#   --dir <parent>             Where to create the project (default: ~/projects)
-#   --github private|public    Also create a GitHub repo and push to it
-#   --owner <github-user>      GitHub owner for CI links (default: detected with gh)
+#   --owner <org-or-user>      GitHub org/user that owns the project (required unless --dir is given)
+#   --dir <parent>             Where to create the project (default: <workspace>/<owner>, where the
+#                              workspace is the folder above the factory's org folder, or $FACTORY_WORKSPACE)
+#   --github private|public    Also create the GitHub repo <owner>/<name> and push to it
 #   --no-git                   Don't initialize a git repository
 #
 # Example:
-#   bash scripts/new-project.sh my-api python --github private
+#   bash scripts/new-project.sh my-api python --owner egov-ai --github private
 set -euo pipefail
 
 FACTORY_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -20,7 +21,7 @@ TEMPLATES="$FACTORY_HOME/templates"
 die() { printf '❌ %s\n' "$*" >&2; exit 1; }
 
 usage() {
-  sed -n '2,13p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,16p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
   printf '\nTemplates: %s\n' "$(find "$TEMPLATES" -mindepth 1 -maxdepth 1 -type d ! -name '_*' -exec basename {} \; | sort | tr '\n' ' ')"
   exit 1
 }
@@ -28,7 +29,7 @@ usage() {
 # ---- Parse arguments -------------------------------------------------------
 [[ $# -lt 2 ]] && usage
 NAME="$1"; TEMPLATE="$2"; shift 2
-PARENT="$HOME/projects"; GITHUB=""; OWNER=""; INIT_GIT=true
+PARENT=""; GITHUB=""; OWNER=""; INIT_GIT=true
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -50,16 +51,29 @@ if [[ -n "$GITHUB" ]]; then
   command -v gh >/dev/null || die "--github needs the GitHub CLI: https://cli.github.com"
 fi
 
+# The owner is a deliberate choice per project (it decides the GitHub org and the local folder),
+# so it's never guessed.
+if [[ -z "$OWNER" && ( -z "$PARENT" || -n "$GITHUB" ) ]]; then
+  choices="$(command -v gh >/dev/null && { gh api user -q .login; gh api user/orgs -q '.[].login'; } 2>/dev/null | tr '\n' ' ')"
+  die "Choose who owns the project with --owner <org-or-user>.${choices:+ Options: $choices}"
+fi
+[[ -z "$OWNER" || "$OWNER" =~ ^[A-Za-z0-9-]+$ ]] || die "Invalid --owner '$OWNER'."
+
+# Local layout mirrors GitHub: <workspace>/<owner>/<project>. The factory itself lives at
+# <workspace>/<factory-org>/software-factory, so the workspace is two levels up.
+if [[ -z "$PARENT" ]]; then
+  WORKSPACE="${FACTORY_WORKSPACE:-$(dirname "$(dirname "$FACTORY_HOME")")}"
+  PARENT="$WORKSPACE/$OWNER"
+fi
+
 TARGET="$PARENT/$NAME"
 [[ -e "$TARGET" ]] && die "$TARGET already exists."
 
-# GitHub owner is used in CI links to the shared workflows.
-if [[ -z "$OWNER" ]] && command -v gh >/dev/null; then
-  OWNER="$(gh api user -q .login 2>/dev/null || true)"
-fi
-if [[ -z "$OWNER" ]]; then
-  OWNER="YOUR_GITHUB_USER"
-  echo "⚠️  Couldn't detect your GitHub username. Run 'gh auth login' or pass --owner; using a placeholder for now."
+# Where the shared CI workflows live (e.g. egov-sofa/software-factory), read from the factory's own git remote.
+FACTORY_REPO="$(git -C "$FACTORY_HOME" remote get-url origin 2>/dev/null | sed -E 's#\.git$##; s#^.*[:/]([^/]+/[^/]+)$#\1#' || true)"
+if [[ -z "$FACTORY_REPO" ]]; then
+  FACTORY_REPO="YOUR_ORG/software-factory"
+  echo "⚠️  The factory has no git remote, so CI can't find the shared workflows. Fix .github/workflows/ci.yml later."
 fi
 
 PACKAGE_NAME="${NAME//-/_}"   # Python import names can't contain dashes
@@ -86,6 +100,7 @@ grep -rl '{{' "$TARGET" 2>/dev/null | while read -r file; do
     -e "s|{{PROJECT_NAME}}|$NAME|g" \
     -e "s|{{PACKAGE_NAME}}|$PACKAGE_NAME|g" \
     -e "s|{{GITHUB_OWNER}}|$OWNER|g" \
+    -e "s|{{FACTORY_REPO}}|$FACTORY_REPO|g" \
     -e "s|{{YEAR}}|$YEAR|g" \
     "$file"
 done
