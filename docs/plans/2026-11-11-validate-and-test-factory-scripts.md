@@ -108,7 +108,7 @@ Found while testing (fixed, since the acceptance criteria above require it):
 CI and docs:
 - [x] `factory-selftest.yml` runs the validator and the whole `scripts/tests` suite on ubuntu; existing pinned SHAs
       are reused, no new action is added.
-- [ ] `python scripts/check_content.py --all` and `shellcheck scripts/*.sh scripts/hooks/* templates/generic/scripts/*.sh` (content guard passes; shellcheck not yet run: not installed locally, first check is CI)
+- [x] `python scripts/check_content.py --all` and `shellcheck scripts/*.sh scripts/hooks/* templates/generic/scripts/*.sh` (both pass; shellcheck 0.11.0 run locally)
       still pass.
 - [x] `docs/ROADMAP.md`: I6 status `done (this branch)`, review log has a dated entry.
 
