@@ -58,15 +58,25 @@ until you **release** it:
 
 ## Private factory repo
 
-If the factory repo is **private**, other repos can only use its workflows after you allow it once:
+A **public** factory repo needs no setup: any repository can call its workflows and actions. Everything in it is then
+visible to anyone, so keep employer and customer details out (the content guard checks pull requests for them).
 
-GitHub → software-factory → **Settings → Actions → General → Access** → *"Accessible from repositories owned by the user"*.
+If the factory repo is **private**, other repos can use its workflows and actions only after you allow it once, under
+GitHub → software-factory → **Settings → Actions → General → Access** (the section appears only on private repos):
 
-Or from the terminal:
+| Factory owned by | Choose | From the terminal |
+|---|---|---|
+| your personal account | *Accessible from repositories owned by the user* | `gh api -X PUT repos/<you>/software-factory/actions/permissions/access -f access_level=user` |
+| an organization | *Accessible from repositories in the organization* | `gh api -X PUT repos/<org>/software-factory/actions/permissions/access -f access_level=organization` |
 
-```bash
-gh api -X PUT repos/<you>/software-factory/actions/permissions/access -f access_level=user
-```
+> ⚠️ A private factory can only be shared **within one owner** (one user, one organization, or an enterprise's
+> organizations). Repositories in another organization cannot call it. Keep the factory public, or keep it and its
+> users under the same owner.
+
+**In each repository that calls the factory:** its own Settings → Actions → General → *Actions permissions* must
+allow the factory's workflows. "Allow all actions and reusable workflows" does; if a repo allows only its own
+organization's, choose the "select" option and add `<owner>/software-factory/*`. Do not turn on "Require actions to
+be pinned to a full-length commit SHA" there: projects call the factory at the tag `@v1`.
 
 ## Adding deployment (CD)
 

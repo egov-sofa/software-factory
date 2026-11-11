@@ -126,8 +126,14 @@ git tag -a v1.1.0 -m "Short description"
 git push origin v1.1.0
 ```
 
-## Private factory repository
+## Who can call the factory
 
-If the factory repository is private, other repositories can use its workflows and actions only after one setting:
-Settings → Actions → General → Access → *Accessible from repositories owned by the user*. See
-[CUSTOMIZING.md](CUSTOMIZING.md#private-factory-repo).
+The factory repository (`egov-sofa/software-factory`) is **public**, so any repository can call its services with no
+setup on the factory side. Two things follow:
+- Everything in the factory is public: keep employer and customer details out of it.
+- Each calling repository must allow it under its own Settings → Actions → General → *Actions permissions*: "Allow
+  all actions and reusable workflows", or the "select" option with `egov-sofa/software-factory/*` added. This matters
+  for `egov-ai/claude-skills`, which lives in another organization.
+
+If the factory is ever made private, it can only serve repositories of the same owner: private workflows cannot be
+shared across organizations. See [CUSTOMIZING.md](CUSTOMIZING.md#private-factory-repo).
