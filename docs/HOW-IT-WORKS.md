@@ -2,25 +2,15 @@
 
 ## The big picture
 
-```mermaid
-flowchart LR
-    subgraph Factory["software-factory repo (source of truth)"]
-        A[claude/<br/>agents + skills + rules]
-        T[templates/<br/>typescript, python, generic]
-        W[.github/workflows/<br/>reusable CI]
-        S[standards/<br/>coding, git, security]
-    end
+![Software factory, how it works: the factory repo, the scripts you run, your machine and the project repos](diagrams/factory-overview.png)
 
-    A -- install.sh copies --> C["~/.claude<br/>(works in every project)"]
-    T -- new-project.sh copies --> P["egov-rdc/(org)/my-app"]
-    P -- ci.yml calls --> W
-    S -. read by .-> A
-    C -- you run /factory-build --> P
-```
+*Diagrams in these docs are generated from YAML sketches in [`diagrams/`](diagrams/) by the architecture-diagram
+skill of claude-skills; see [diagrams/README.md](diagrams/README.md) to change one.*
 
 **Why this design?**
 - **One source of truth.** Everything lives in one git repo. Improve an agent or a CI step once, and every project benefits.
 - **Copy for Claude, reference for CI.** Claude Code needs files on disk (`~/.claude`), so we *copy* them. GitHub Actions can *reference* workflows from another repo, so projects *call* the shared workflow instead of duplicating it.
+- **Projects follow releases, not commits.** They call the factory at `@v1`, a tag that moves only when a release is made (Part 3).
 
 ---
 
@@ -32,22 +22,10 @@ An **agent** (also called a *subagent*) is Claude running with a focused job, it
 - read-only agents (reviewer, security) **can't accidentally change code**
 - reviewers **didn't write the code**, so they look at it with fresh eyes
 
-```mermaid
-flowchart TD
-    U([You: /factory-build feature]) --> B[Create git branch]
-    B --> P[🧭 planner<br/>writes docs/plans/feature.md]
-    P --> G{You approve<br/>the plan?}
-    G -- changes --> P
-    G -- yes --> I[🔨 implementer<br/>writes code + tests]
-    I --> T[🧪 tester<br/>runs & adds tests]
-    T --> R1[🔍 reviewer]
-    T --> R2[🛡️ security-auditor]
-    R1 --> D{Any blocking<br/>findings?}
-    R2 --> D
-    D -- yes, max 2 rounds --> I
-    D -- no --> W[📝 docs-writer]
-    W --> S([Summary → /factory-ship])
-```
+![/factory-build as a process: the planner writes a plan, you approve it, the implementer and tester build, the reviewer and security auditor check, at most two fix rounds, then the docs writer](diagrams/factory-build-pipeline.png)
+
+Before the plan, the conductor creates a branch (`feat/…` or `fix/…`); after each stage it commits, so every stage has
+a checkpoint to return to. The reviewer and the security auditor run **in parallel** on the same change.
 
 | Agent | Can edit code? | Model | Job |
 |---|---|---|---|
@@ -64,15 +42,13 @@ The **skills** (`/factory-build`, etc.) are the *conductors*: instructions that 
 
 ## Part 2: Project scaffolding
 
-`new-project.sh` builds a project in **layers**:
+`new-project.sh` builds a project in **layers**: `templates/_shared/` first (every project gets these), then the
+language template on top (it can override a shared file), then the factory's content guard and its git hooks.
 
-```
-templates/_shared/     ← every project gets these (CLAUDE.md, .editorconfig, PR template, dependabot)
-        +
-templates/typescript/  ← language-specific files, copied on top (can override _shared files)
-        =
-/c/DEV/PROJECTS/gitHub/egov-rdc/<org>/my-app/
-```
+![new-project.sh copies the layers, fills the placeholders and runs git init with the hooks on](diagrams/project-scaffolding.png)
+
+The project lands in `<workspace>/<org>/my-app/`, next to the factory's own org folder (for example
+`/c/DEV/PROJECTS/gitHub/egov-rdc/<org>/my-app/`).
 
 Then it replaces placeholders:
 
@@ -95,14 +71,11 @@ Each project has a tiny `.github/workflows/ci.yml`:
 ```yaml
 jobs:
   ci:
-    uses: YOUR_NAME/software-factory/.github/workflows/reusable-node.yml@v1
+    uses: egov-sofa/software-factory/.github/workflows/reusable-node.yml@v1
 ```
 
-That one line runs the full pipeline defined in the factory repo:
-
-```
-checkout → install runtime → install deps (cached) → lint → build → test
-```
+That one line runs the full pipeline defined in the factory repo: checkout, install the runtime, install
+dependencies (cached), lint, build, test (and, for Node, an audit of production dependencies).
 
 The factory also has its own **self-test** workflow ([factory-selftest.yml](../.github/workflows/factory-selftest.yml)). On every change to the factory, it creates a project from each template and runs its tests. If you break a template, you find out immediately. It also checks the frontmatter of every agent and skill (`scripts/validate.py`) and runs the tests in `scripts/tests/`, which exercise `install.sh`, `uninstall.sh` and the options of `new-project.sh` in temporary folders.
 
@@ -112,6 +85,8 @@ and each project moves when you choose. So a bad commit on the factory's `main` 
 
 Besides CI, every new project calls three more **shared services** the same way (details in
 [SHARED-SERVICES.md](SHARED-SERVICES.md)):
+
+![Shared services: callers in the project call the factory at v1; the content guard reads the pull request only as data; the Claude workflows get a short-lived token](diagrams/shared-services.png)
 
 | Service | When it runs | What it does |
 |---|---|---|
@@ -131,7 +106,7 @@ The files in [`standards/`](../standards/) are written for **both humans and AI*
 - The agents are told to read them, for example the reviewer checks against `DEFINITION-OF-DONE.md`
 - Each project's `CLAUDE.md` adds project-specific details (commands, folder layout)
 
-```
-~/.claude/CLAUDE.md          ← global: "how I work everywhere"
-  └─ project/CLAUDE.md       ← local: "how this project works" (wins if they conflict)
-```
+![Where Claude's rules come from: standards, the global CLAUDE.md block, the project's CLAUDE.md which wins, and the agents that check against the standards](diagrams/rules-and-standards.png)
+
+The global block says how to work everywhere; a project's `CLAUDE.md` says how this project works, and wins where the
+two conflict.

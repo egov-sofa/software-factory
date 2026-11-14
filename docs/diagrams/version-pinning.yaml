@@ -1,0 +1,36 @@
+diagram:
+  title: From @main to @v1
+  statement: Projects now follow the tag v1, which moves only when a release is made; a bad commit on main reaches no project.
+  notation: c4
+  viewpoint: current-vs-target
+  status: approved
+  version: '2'
+  author: software-factory
+  date: 2026-11-11
+pages:
+  - name: Pinning
+    flow: left-to-right
+    items:
+      - container: projects
+        kind: zone
+        name: Projects, many orgs
+        layout: column
+        items:
+          - {node: proj-a, kind: component, name: Project A, qualifier: egov-ai}
+          - {node: proj-b, kind: component, name: Project B, qualifier: pentagone-digital}
+      - container: factory
+        kind: system-boundary
+        name: Factory, egov-sofa/software-factory
+        layout: column
+        items:
+          - {node: v1, kind: component, name: Tag v1, qualifier: last compatible release, lifecycle: new}
+          - {node: release, kind: component, name: Release workflow, qualifier: 'tags vX.Y.Z, moves v1', lifecycle: new}
+          - {node: main, kind: component, name: main branch, qualifier: every merged commit}
+          - {node: v2, kind: component, name: Tag v2, qualifier: 'breaking changes, opt-in', lifecycle: planned}
+    edges:
+      - {from: proj-a, to: v1, kind: sync, label: uses @v1, primary: true, lifecycle: new}
+      - {from: proj-b, to: v1, kind: sync, label: uses @v1, lifecycle: new}
+      - {from: release, to: v1, kind: sync, label: moves on release, lifecycle: new}
+      - {from: main, to: release, kind: sync, label: released from, lifecycle: new}
+      - {from: proj-a, to: main, kind: sync, label: uses @main, lifecycle: removed}
+      - {from: proj-b, to: main, kind: sync, label: uses @main, lifecycle: removed}

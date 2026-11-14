@@ -1,0 +1,58 @@
+# Source of release-flow.drawio and .png (docs/SHARED-SERVICES.md, Versioning and releases). Regenerate: bash docs/diagrams/build.sh release-flow
+diagram:
+  title: Releasing the factory
+  statement: A merge to main changes nothing for projects; a release moves v1, and every project picks it up on its next run.
+  notation: bpmn
+  viewpoint: process
+  status: approved
+  version: "1"
+  author: software-factory
+  date: 2026-11-11
+pages:
+  - name: Release
+    flow: left-to-right
+    items:
+      - container: org
+        kind: pool
+        name: Factory release
+        items:
+          - container: maintainer
+            kind: lane
+            name: You or Claude
+            layout: row
+            align: middle
+            items:
+              - {node: merged, kind: start-event, name: Change merged to main, step: 1}
+              - {node: run, kind: task, name: Run Release on main, step: 2}
+              - {node: pre-end, kind: end-event, name: Pre-release to try, step: 8}
+          - container: workflow
+            kind: lane
+            name: Release workflow
+            layout: row
+            align: middle
+            items:
+              - {node: check, kind: task, name: Check version and main, step: 3}
+              - {node: tag, kind: task, name: Create tag v1.x.y, step: 4}
+              - {node: notes, kind: task, name: Write release notes, step: 5}
+              - {node: publish, kind: task, name: Publish release, step: 6}
+              - {node: stable, kind: gateway, name: "Stable version?", step: 7}
+              - {node: move, kind: task, name: Move tag v1, step: 8}
+          - container: projects
+            kind: lane
+            name: Projects calling @v1
+            layout: row
+            align: middle
+            items:
+              - {node: pickup, kind: task, name: Next run uses new v1, step: 9}
+              - {node: done, kind: end-event, name: Release rolled out, step: 10}
+    edges:
+      - {from: merged, to: run, kind: sequence}
+      - {from: run, to: check, kind: sequence}
+      - {from: check, to: tag, kind: sequence}
+      - {from: tag, to: notes, kind: sequence}
+      - {from: notes, to: publish, kind: sequence}
+      - {from: publish, to: stable, kind: sequence}
+      - {from: stable, to: move, kind: sequence, label: "yes"}
+      - {from: stable, to: pre-end, kind: sequence, label: "no, rc", ports: {exit: [0.5, 0], entry: [0, 0.5]}}
+      - {from: move, to: pickup, kind: sequence}
+      - {from: pickup, to: done, kind: sequence}

@@ -1,0 +1,70 @@
+# Source of factory-build-pipeline.drawio and .png (docs/HOW-IT-WORKS.md, Part 1). Regenerate: bash docs/diagrams/build.sh factory-build-pipeline
+# The pool is the conductor (the /factory-build skill in the main session); each lane is who does the work.
+# reviewer and security-auditor share a lane: they run in parallel on the same change.
+diagram:
+  title: /factory-build, the agent pipeline
+  statement: No code is written before you approve the plan; two read-only reviewers check every change, with at most two fix rounds.
+  notation: bpmn
+  viewpoint: process
+  status: approved
+  version: "2"
+  author: software-factory
+  date: 2026-11-11
+pages:
+  - name: Pipeline
+    flow: left-to-right
+    items:
+      - container: conductor
+        kind: pool
+        name: /factory-build
+        items:
+          - container: planner
+            kind: lane
+            name: planner
+            layout: row
+            align: middle
+            items:
+              - {node: plan, kind: task, name: Write plan, step: 2}
+          - container: you
+            kind: lane
+            name: You
+            layout: row
+            align: middle
+            items:
+              - {node: start, kind: start-event, name: Feature requested, step: 1}
+              - {node: approve, kind: gateway, name: "Plan approved?", step: 3}
+          - container: builders
+            kind: lane
+            name: implementer, tester
+            layout: row
+            align: middle
+            items:
+              - {node: implement, kind: task, name: Write code and tests, step: 4}
+              - {node: test, kind: task, name: Run and add tests, step: 5}
+          - container: reviewers
+            kind: lane
+            name: reviewer, security-auditor
+            layout: row
+            align: middle
+            items:
+              - {node: review, kind: task, name: Review and audit, step: 6}
+              - {node: blocking, kind: gateway, name: "Blocking findings?", step: 7}
+          - container: docs
+            kind: lane
+            name: docs-writer
+            layout: row
+            align: middle
+            items:
+              - {node: document, kind: task, name: Update docs, step: 8}
+              - {node: done, kind: end-event, name: Ready for /factory-ship, step: 9}
+    edges:
+      - {from: start, to: plan, kind: sequence}
+      - {from: plan, to: approve, kind: sequence}
+      - {from: approve, to: implement, kind: sequence, label: "yes"}
+      - {from: implement, to: test, kind: sequence}
+      - {from: test, to: review, kind: sequence}
+      - {from: review, to: blocking, kind: sequence}
+      - {from: blocking, to: document, kind: sequence, label: "no"}
+      - {from: document, to: done, kind: sequence}
+      - {from: approve, to: plan, kind: sequence, label: changes, ports: {exit: [0.5, 0], entry: [0.5, 1]}}
+      - {from: blocking, to: implement, kind: sequence, label: "yes, at most 2 rounds", ports: {exit: [0.5, 0], entry: [0.5, 1]}}

@@ -1,0 +1,31 @@
+# Version 1 (before #2) of the version-pinning change diagram. build.sh diffs it against version-pinning.after.yaml
+# with sketch_diff.py and writes version-pinning.yaml, which it then draws. Edit these two files, never the output.
+diagram:
+  title: Projects followed main
+  statement: Every project ran the factory's latest main, so one bad push broke every project at once.
+  notation: c4
+  viewpoint: current-vs-target
+  status: superseded
+  version: "1"
+  author: software-factory
+  date: 2026-11-10
+pages:
+  - name: Pinning
+    flow: left-to-right
+    items:
+      - container: projects
+        kind: zone
+        name: Projects, many orgs
+        layout: column
+        items:
+          - {node: proj-a, kind: component, name: Project A, qualifier: egov-ai}
+          - {node: proj-b, kind: component, name: Project B, qualifier: pentagone-digital}
+      - container: factory
+        kind: system-boundary
+        name: Factory, egov-sofa/software-factory
+        layout: column
+        items:
+          - {node: main, kind: component, name: main branch, qualifier: every merged commit}
+    edges:
+      - {from: proj-a, to: main, kind: sync, label: "uses @main"}
+      - {from: proj-b, to: main, kind: sync, label: "uses @main"}

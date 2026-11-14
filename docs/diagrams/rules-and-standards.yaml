@@ -1,0 +1,46 @@
+# Source of rules-and-standards.drawio and .png (docs/HOW-IT-WORKS.md, Part 4). Regenerate: bash docs/diagrams/build.sh rules-and-standards
+diagram:
+  title: Where Claude's rules come from
+  statement: Standards are written once; the global block applies everywhere, each project's CLAUDE.md adds detail and wins on conflict, agents check against the standards.
+  notation: c4
+  viewpoint: solution
+  status: approved
+  version: "2"
+  author: software-factory
+  date: 2026-11-11
+pages:
+  - name: Rules
+    flow: left-to-right
+    items:
+      - container: factory
+        kind: system-boundary
+        name: Factory repo
+        layout: column
+        items:
+          - {node: standards, kind: component, name: standards/, qualifier: "coding, git, security, done", lane: top}
+          - {node: rules, kind: component, name: claude/CLAUDE.md, qualifier: summary of the standards, lane: mid}
+      - container: machine
+        kind: zone
+        name: Your machine
+        layout: column
+        items:
+          - {node: global, kind: data-store, name: ~/.claude/CLAUDE.md, qualifier: factory block, lane: mid}
+      - container: project
+        kind: zone
+        name: Project repo
+        layout: column
+        items:
+          - {node: local, kind: component, name: CLAUDE.md, qualifier: "commands, layout; wins", lane: mid}
+      - container: session
+        kind: zone
+        name: Claude Code session
+        layout: column
+        items:
+          - {node: agents, kind: container, name: Agents, qualifier: "reviewer, security-auditor", lane: top}
+          - {node: claude, kind: container, name: Main session, qualifier: follows the rules, lane: mid}
+    edges:
+      - {from: standards, to: rules, kind: sync, label: summarised in}
+      - {from: rules, to: global, kind: file, label: install.sh}
+      - {from: global, to: local, kind: sync, label: then}
+      - {from: local, to: claude, kind: sync, label: loaded by, primary: true}
+      - {from: standards, to: agents, kind: sync, label: checklists for}

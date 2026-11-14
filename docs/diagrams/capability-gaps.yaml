@@ -1,0 +1,61 @@
+# Source of capability-gaps.drawio and .png (docs/ENTERPRISE-VISION.md, section 1; docs/ROADMAP.md).
+# Regenerate: bash docs/diagrams/build.sh capability-gaps
+# Heat = the gap between today's factory and enterprise grade (assessed 2026-11-11). Update it as roadmap items land.
+diagram:
+  title: Factory capabilities, gap to enterprise grade
+  statement: Heat is the gap between today and enterprise grade; building features is ready, governance, delivery and running the factory at scale are not.
+  notation: archimate
+  viewpoint: capability-map
+  status: draft
+  version: "1"
+  author: software-factory
+  date: 2026-11-11
+pages:
+  - name: Capabilities
+    flow: left-to-right
+    items:
+      - container: build
+        kind: capability-area
+        name: Build features
+        layout: column
+        items:
+          - {node: plan, kind: capability, name: Planning, heat: medium}
+          - {node: implement, kind: capability, name: Implementation, heat: low}
+          - {node: test, kind: capability, name: Testing, heat: low}
+          - {node: review, kind: capability, name: Code and security review, heat: low}
+      - container: govern
+        kind: capability-area
+        name: Govern
+        layout: column
+        items:
+          - {node: standards, kind: capability, name: Standards, heat: low}
+          - {node: architecture, kind: capability, name: Architecture design, heat: high}
+          - {node: trace, kind: capability, name: Traceability, heat: high}
+          - {node: evidence, kind: capability, name: Audit evidence, heat: high}
+      - container: deliver
+        kind: capability-area
+        name: Deliver
+        layout: column
+        items:
+          - {node: ci, kind: capability, name: Continuous integration, heat: low}
+          - {node: release, kind: capability, name: Versioned releases, heat: low}
+          - {node: cd, kind: capability, name: Deployment and IaC, heat: high}
+          - {node: supply, kind: capability, name: Supply chain, heat: medium}
+      - container: secure
+        kind: capability-area
+        name: Secure
+        layout: column
+        items:
+          - {node: guard, kind: capability, name: Secret and content guard, heat: low}
+          - {node: threat, kind: capability, name: Threat modelling, heat: high}
+          - {node: models, kind: capability, name: Model governance, heat: high}
+      - container: run
+        kind: capability-area
+        name: Run the factory
+        layout: column
+        items:
+          - {node: distribution, kind: capability, name: Distribution to teams, heat: high}
+          - {node: evals, kind: capability, name: Agent evals, heat: high}
+          - {node: cost, kind: capability, name: Cost control, heat: medium}
+          - {node: metrics, kind: capability, name: Metrics, heat: high}
+    edges: []

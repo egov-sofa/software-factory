@@ -1,0 +1,53 @@
+# Source of factory-overview.drawio and .png (docs/HOW-IT-WORKS.md, README.md). Regenerate: bash docs/diagrams/build.sh factory-overview
+diagram:
+  title: Software factory, how it works
+  statement: One repo is the source; install.sh copies Claude's part to each machine, new-project.sh scaffolds projects, and projects call the shared services at v1.
+  notation: c4
+  viewpoint: solution
+  status: approved
+  version: "2"
+  author: software-factory
+  date: 2026-11-11
+pages:
+  - name: Overview
+    flow: left-to-right
+    items:
+      - container: factory
+        kind: system-boundary
+        name: 1. Factory repo, egov-sofa/software-factory
+        layout: column
+        items:
+          - {node: standards, kind: component, name: standards/, qualifier: "coding, git, security, done"}
+          - {node: claude-dir, kind: component, name: claude/, qualifier: "agents, skills, global rules", lane: top}
+          - {node: templates, kind: component, name: templates/, qualifier: "_shared + typescript, python, generic", lane: mid}
+          - {node: services, kind: component, name: Shared services, qualifier: "reusable workflows, content guard"}
+      - container: scripts
+        kind: zone
+        name: 2. Scripts you run
+        layout: column
+        items:
+          - {node: install, kind: component, name: install.sh, qualifier: safe to re-run, lane: top}
+          - {node: newproj, kind: component, name: new-project.sh, qualifier: one command per project, lane: mid}
+      - container: machine
+        kind: zone
+        name: 3. Your machine
+        layout: column
+        items:
+          - {node: dotclaude, kind: data-store, name: ~/.claude, qualifier: "agents, skills, rules", lane: top}
+          - {node: session, kind: container, name: Claude Code, qualifier: /factory-build and others, lane: mid}
+      - container: projects
+        kind: zone
+        name: 4. Project repos, any org
+        layout: column
+        items:
+          - {node: project, kind: system, name: my-app, qualifier: "egov-rdc/<org>/my-app", lane: mid, size: tall}
+          - {node: callers, kind: component, name: Caller workflows, qualifier: "ci, claude-review, content-guard"}
+    edges:
+      - {from: session, to: project, kind: sync, label: builds features, primary: true}
+      - {from: claude-dir, to: install, kind: sync, label: read by}
+      - {from: install, to: dotclaude, kind: file, label: copies}
+      - {from: dotclaude, to: session, kind: sync, label: loaded by}
+      - {from: templates, to: newproj, kind: sync, label: read by}
+      - {from: newproj, to: project, kind: file, label: scaffolds}
+      - {from: callers, to: services, kind: sync, protocol: "uses: @v1", label: calls}
+      - {from: standards, to: claude-dir, kind: sync, label: summarised in}

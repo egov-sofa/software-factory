@@ -1,0 +1,65 @@
+# Source of shared-services.drawio and .png (docs/SHARED-SERVICES.md, docs/HOW-IT-WORKS.md Part 3).
+# Regenerate: bash docs/diagrams/build.sh shared-services
+diagram:
+  title: Shared services, what runs where
+  statement: Projects keep thin callers; the logic runs from the factory at v1, and the content guard reads a pull request only as data.
+  notation: c4
+  viewpoint: solution
+  status: approved
+  version: "1"
+  author: software-factory
+  date: 2026-11-11
+pages:
+  - name: Services
+    flow: left-to-right
+    items:
+      - container: people
+        kind: group
+        layout: column
+        items:
+          - {node: dev, kind: person, name: Contributor}
+      - container: project
+        kind: system-boundary
+        name: Project repo, any org
+        layout: column
+        items:
+          - container: untrusted
+            kind: trust-boundary
+            name: pull request
+            layout: column
+            items:
+              - {node: pr, kind: component, name: Pull request, qualifier: "commits, title, body"}
+          - container: callers
+            kind: zone
+            name: Callers, default branch
+            layout: column
+            items:
+              - {node: guard, kind: component, name: content-guard.yml, qualifier: pull_request_target}
+              - {node: ci, kind: component, name: ci.yml, qualifier: on push and PR}
+              - {node: review, kind: component, name: claude-review.yml, qualifier: once turned on}
+              - {node: mention, kind: component, name: claude-mention.yml, qualifier: "@claude comments"}
+      - container: factory
+        kind: system-boundary
+        name: Factory at v1, egov-sofa/software-factory
+        layout: column
+        items:
+          - {spacer: pr-gap, width: 160, height: 280}
+          - {node: aguard, kind: component, name: content-guard action, qualifier: "factory copy, python3 -I"}
+          - {node: rci, kind: component, name: reusable-<language>.yml, qualifier: "deps, lint, build, test"}
+          - {node: rreview, kind: component, name: reusable-claude-review.yml, qualifier: project checklist}
+          - {node: rmention, kind: component, name: reusable-claude-mention.yml, qualifier: write access only}
+      - container: anthropic
+        kind: external
+        name: Anthropic
+        layout: column
+        items:
+          - {node: api, kind: external-system, name: Claude API, qualifier: workload identity federation}
+    edges:
+      - {from: dev, to: pr, kind: sync, label: opens}
+      - {from: guard, to: aguard, kind: sync, label: "uses @v1", primary: true}
+      - {from: ci, to: rci, kind: sync, label: "uses @v1"}
+      - {from: review, to: rreview, kind: sync, label: "uses @v1"}
+      - {from: mention, to: rmention, kind: sync, label: "uses @v1"}
+      - {from: rreview, to: api, kind: identity, label: short-lived token}
+      - {from: rmention, to: api, kind: identity, label: short-lived token}
+      - {from: aguard, to: pr, kind: sync, label: reads as data, ports: {exit: [0.5, 0], entry: [1, 0.5]}}

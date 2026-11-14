@@ -1,0 +1,66 @@
+# Source of enterprise-landscape.drawio and .png (docs/ENTERPRISE-VISION.md, sections 1 and 5). Regenerate: bash docs/diagrams/build.sh enterprise-landscape
+diagram:
+  title: Enterprise factory, target landscape
+  statement: Teams get the factory from one marketplace with managed settings, designs read a shared architecture repository, and every run leaves evidence.
+  notation: c4
+  viewpoint: solution
+  status: draft
+  version: "1"
+  author: software-factory
+  date: 2026-11-11
+pages:
+  - name: Landscape
+    flow: left-to-right
+    items:
+      - container: people
+        kind: group
+        layout: column
+        items:
+          - {node: devs, kind: person, name: Project teams}
+          - {node: archs, kind: person, name: Architects}
+      - container: machines
+        kind: zone
+        name: Developer machines
+        layout: column
+        items:
+          - {node: claude, kind: container, name: Claude Code, qualifier: "factory plugin, factory.yaml"}
+          - {node: managed, kind: component, name: Managed settings, qualifier: "models, budget, rules", lifecycle: planned}
+      - container: ghe
+        kind: tenant
+        name: GitHub Enterprise, internal repos
+        layout: column
+        items:
+          - container: projectorgs
+            kind: zone
+            name: Project orgs
+            layout: column
+            items:
+              - {node: project, kind: component, name: Project repos, qualifier: "spec, plan, tasks"}
+          - container: platform
+            kind: zone
+            name: Platform org
+            layout: column
+            items:
+              - {node: market, kind: component, name: Plugin marketplace, qualifier: one factory version, lifecycle: planned}
+              - {node: factory, kind: system, name: software-factory, qualifier: "shared services, v1"}
+              - {node: archrepo, kind: component, name: Architecture repository, qualifier: "principles, ADRs, radar", lifecycle: planned}
+      - container: right
+        kind: group
+        layout: column
+        items:
+          - {node: evidence, kind: data-store, name: Evidence store, qualifier: per run, lifecycle: planned}
+          - container: models
+            kind: external
+            name: Approved model providers
+            layout: column
+            items:
+              - {node: llm, kind: external-system, name: Claude API, qualifier: "or Bedrock, Vertex AI"}
+    edges:
+      - {from: devs, to: claude, kind: sync, label: works in, primary: true}
+      - {from: claude, to: project, kind: sync, label: builds, primary: true}
+      - {from: project, to: factory, kind: sync, label: "uses @v1"}
+      - {from: market, to: claude, kind: file, label: plugin install, lifecycle: planned}
+      - {from: managed, to: claude, kind: sync, label: enforces, lifecycle: planned}
+      - {from: archs, to: archrepo, kind: sync, label: maintain, lifecycle: planned}
+      - {from: project, to: evidence, kind: file, label: every run, lifecycle: planned}
+      - {from: claude, to: llm, kind: identity, label: approved models only}

@@ -1,0 +1,55 @@
+# Source of architect-layers.drawio and .png (docs/ENTERPRISE-VISION.md, section 2). Regenerate: bash docs/diagrams/build.sh architect-layers
+diagram:
+  title: The architecture roles, by layer
+  statement: Strategic roles write reusable artifacts once; the Solution architect leads each design and calls specialists only when the change touches their area.
+  notation: archimate
+  viewpoint: layered
+  status: draft
+  version: "1"
+  author: software-factory
+  date: 2026-11-11
+pages:
+  - name: Roles
+    flow: top-to-bottom
+    items:
+      - container: strategic
+        kind: layer
+        name: "A. Strategic: per initiative or quarter"
+        layout: row
+        items:
+          - {node: business, kind: archimate-element, archimate: business-role, name: Business architect}
+          - {node: information, kind: archimate-element, archimate: business-role, name: Information architect}
+          - {node: enterprise, kind: archimate-element, archimate: business-role, name: Enterprise architect}
+          - {node: technology, kind: archimate-element, archimate: business-role, name: Technology architect}
+      - container: design
+        kind: layer
+        name: "B. Design: per epic or significant change"
+        layout: row
+        items:
+          - {node: security, kind: archimate-element, archimate: business-role, name: Security architect}
+          - {node: data, kind: archimate-element, archimate: business-role, name: Data architect}
+          - {node: solution, kind: archimate-element, archimate: business-role, name: Solution architect}
+          - {node: ai, kind: archimate-element, archimate: business-role, name: AI architect}
+          - {node: cloud, kind: archimate-element, archimate: business-role, name: Cloud architect}
+      - container: specialists
+        kind: layer
+        name: "C. Specialists: only when triggered"
+        layout: row
+        items:
+          - {spacer: sp-1, width: 150, height: 75}
+          - {spacer: sp-2, width: 150, height: 75}
+          - {node: database, kind: archimate-element, archimate: business-role, name: Database architect}
+          - {node: platform, kind: archimate-element, archimate: business-role, name: Platform architect}
+          - {node: network, kind: archimate-element, archimate: business-role, name: Network architect}
+      - container: delivery
+        kind: layer
+        name: Delivery, today's pipeline
+        layout: row
+        items:
+          - {node: agents, kind: archimate-element, archimate: application-component, name: /factory-build agents}
+    edges:
+      - {from: enterprise, to: solution, kind: "archimate:serving"}
+      - {from: solution, to: database, kind: "archimate:triggering", bus: specialists}
+      - {from: solution, to: platform, kind: "archimate:triggering", bus: specialists}
+      - {from: solution, to: network, kind: "archimate:triggering", bus: specialists}
+      - {from: solution, to: agents, kind: "archimate:serving", detour: left}
