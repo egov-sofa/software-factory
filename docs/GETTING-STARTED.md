@@ -140,5 +140,6 @@ Existing project    →  /factory-onboard
 |---|---|
 | `/factory-build` isn't recognized | Run `install.sh`, then restart Claude Code |
 | CI fails with "workflow was not found" | The factory has no `v1` tag yet (tag a release: see [SHARED-SERVICES.md](SHARED-SERVICES.md#versioning-and-releases-of-the-factory)), your project's Actions permissions block other orgs' workflows, or the factory repo is private and the project is in another org. See [CUSTOMIZING.md](CUSTOMIZING.md#why-the-factory-repo-is-public) |
+| The **Claude review** check fails with "Environment variable validation failed" | The review is turned on (`CLAUDE_REVIEW_ENABLED`) but the repository has no way to reach the Claude API yet. Set it up with [CLAUDE-SERVICES-AUTH.md](CLAUDE-SERVICES-AUTH.md), or set `CLAUDE_REVIEW_ENABLED` to `false` |
 | `gh: command not found` | Install the GitHub CLI from https://cli.github.com and run `gh auth login` |
 | The plan is wrong | Say what's wrong. The planner revises it before any code is written |

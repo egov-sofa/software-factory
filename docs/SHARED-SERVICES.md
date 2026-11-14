@@ -84,18 +84,23 @@ request cannot edit the check it is held to, or read the denylist secret.
 
 ### Turning on the Claude services
 
-The Claude review costs API credit on every push, so it is **off until you turn it on**:
+The Claude review costs API credit on every push, so it is **off until you turn it on**. Per repository:
 
 1. Install the Claude GitHub app on the repository: <https://github.com/apps/claude> (or `/install-github-app` in
    Claude Code).
-2. Give it access to the Claude API. Preferred: workload identity federation, which stores no secret. Create it in
-   the Claude Console (Workload identity → Connect workload → GitHub Actions), then set the repository variables
-   `ANTHROPIC_FEDERATION_RULE_ID`, `ANTHROPIC_ORGANIZATION_ID` and `ANTHROPIC_SERVICE_ACCOUNT_ID`
-   (and `ANTHROPIC_WORKSPACE_ID` if the rule covers several workspaces). Alternative: a secret `ANTHROPIC_API_KEY`
-   or `CLAUDE_CODE_OAUTH_TOKEN`. A secret wins over federation, so set only one.
-3. Set the repository variable `CLAUDE_REVIEW_ENABLED` to `true`.
-4. Optional, for `@claude` mentions: a second federation rule that matches only the mention workflow, with its ID in
-   the variable `ANTHROPIC_MENTION_FEDERATION_RULE_ID`. Until it is set, mentions are ignored.
+2. Give it access to the Claude API with **workload identity federation**, which stores no secret: a federation rule
+   for the repository, and its IDs as repository variables. Do it in the Claude Console, or run the factory's script:
+   ```bash
+   python3 scripts/claude_federation.py --repo OWNER/NAME --service-account svac_... --workspace wrkspc_... --mention
+   ```
+   It previews by default; add `--apply` to create the rules through the Admin API. The steps, the objects involved
+   and a troubleshooting table are in [CLAUDE-SERVICES-AUTH.md](CLAUDE-SERVICES-AUTH.md).
+3. Set the repository variable `CLAUDE_REVIEW_ENABLED` to `true` (the script prints this command too).
+4. Optional, for `@claude` mentions: the mention rule (`--mention`), with its ID in
+   `ANTHROPIC_MENTION_FEDERATION_RULE_ID`. Until it is set, mentions are ignored.
+
+Turning on step 3 without step 2 makes every review fail with "Environment variable validation failed", as it did on
+egov-sofa/software-factory#6.
 
 Each project edits **its own** checklist in `.claude/skills/pr-review/SKILL.md`. The review always reads it from the
 default branch, so a pull request cannot change how it is reviewed. The label `skip-review` skips the review for the
