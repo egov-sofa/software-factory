@@ -1,7 +1,8 @@
 # Claude reviews every pull request, following .claude/skills/pr-review/SKILL.md (edit it to fit this project).
 # The steps live in the shared software-factory repo at @v1 (docs/SHARED-SERVICES.md in the factory).
-# Off until you turn it on: install the Claude GitHub app, set up API access (federation variables below, or the
-# secret ANTHROPIC_API_KEY), then set the repository variable CLAUDE_REVIEW_ENABLED to true.
+# Off until you turn it on: install the Claude GitHub app, set up API access (federation variables below: run the
+# factory's scripts/claude_federation.py, see docs/CLAUDE-SERVICES-AUTH.md there), then set the repository variable
+# CLAUDE_REVIEW_ENABLED to true. Turning it on without the variables makes every review fail.
 # Each review costs API credit. The label skip-review turns it off for the pushes that follow.
 name: Claude review
 

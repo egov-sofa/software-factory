@@ -1,6 +1,6 @@
 # Claude reviews every pull request of the factory, following .claude/skills/pr-review/SKILL.md.
 # Uses the factory's own reusable workflow from this repository. Off until the variable CLAUDE_REVIEW_ENABLED is
-# true; setup in docs/SHARED-SERVICES.md ("Turning on the Claude services").
+# true; setup in docs/CLAUDE-SERVICES-AUTH.md (Console, or scripts/claude_federation.py).
 name: Claude review
 
 on:

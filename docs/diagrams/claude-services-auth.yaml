@@ -1,0 +1,93 @@
+# Source of claude-services-auth.drawio and claude-services-auth-1..2.png (docs/CLAUDE-SERVICES-AUTH.md).
+# Regenerate: bash docs/diagrams/build.sh claude-services-auth
+diagram:
+  title: Claude services, authentication
+  statement: A review run stores no key; GitHub signs who the run is, and a rule for that repository swaps it for a short-lived token.
+  notation: c4
+  viewpoint: solution
+  status: approved
+  version: "1"
+  author: software-factory
+  date: 2026-11-14
+pages:
+  - name: Run
+    title: How a review run reaches the Claude API
+    statement: GitHub signs who the run is; the repository's federation rule swaps that for a 10-minute token acting as one service account in one workspace.
+    flow: left-to-right
+    items:
+      - container: run
+        kind: zone
+        name: GitHub Actions run, project repo
+        layout: column
+        items:
+          - {node: caller, kind: component, name: claude-review.yml, qualifier: "variables: rule, org, account"}
+          - {node: action, kind: component, name: claude-code-action, qualifier: "in reusable-claude-review @v1"}
+      - container: github
+        kind: external
+        name: GitHub
+        layout: column
+        items:
+          - {node: oidc, kind: external-system, name: OIDC issuer, qualifier: "signs a JWT, about 5 min"}
+      - container: org
+        kind: system-boundary
+        name: Anthropic organization
+        layout: column
+        items:
+          - {node: rule, kind: component, name: Federation rule, qualifier: "one per repo and workflow"}
+          - {node: account, kind: component, name: Service account, qualifier: "svac_, no login"}
+          - {node: workspace, kind: component, name: Workspace, qualifier: "wrkspc_, spend limit"}
+          - {node: api, kind: system, name: Claude API, qualifier: billed to the workspace}
+    edges:
+      - {from: caller, to: action, kind: sync, label: "passes the IDs"}
+      - {from: action, to: oidc, kind: identity, label: "id-token: write", ports: {exit: [1, 0.25], entry: [0, 0.5]}}
+      - {from: action, to: rule, kind: identity, label: exchanges the JWT, primary: true, ports: {exit: [1, 0.75], entry: [0, 0.5]}}
+      - {from: rule, to: account, kind: sync, label: mints a token for}
+      - {from: account, to: workspace, kind: sync, label: member of}
+      - {from: action, to: api, kind: sync, label: "10-minute token", primary: true, ports: {exit: [0.5, 1], entry: [0, 0.5]}}
+  - name: Setup
+    title: Setting it up for a repository
+    statement: Create the repository's rules once, in the Console or with the factory's script; then give the repository the IDs as variables, never a secret.
+    flow: left-to-right
+    items:
+      - container: people
+        kind: group
+        layout: column
+        items:
+          - {node: admin, kind: person, name: Organization admin}
+      - container: ways
+        kind: group
+        layout: column
+        items:
+          - container: console
+            kind: zone
+            name: "A. Claude Console"
+            items:
+              - {node: wizard, kind: component, name: Workload identity, qualifier: "issuer, rule form"}
+          - container: scripted
+            kind: zone
+            name: "B. Script, Admin API"
+            layout: column
+            items:
+              - {node: login, kind: component, name: ant auth login, qualifier: "org:admin scope"}
+              - {node: script, kind: component, name: claude_federation.py, qualifier: "preview, then --apply"}
+      - container: org
+        kind: system-boundary
+        name: Anthropic organization
+        layout: column
+        items:
+          - {node: adminapi, kind: component, name: Admin API, qualifier: "beta, org:admin only"}
+          - {node: rules, kind: component, name: Federation rules, qualifier: "<repo>-pr-review, -pr-mention"}
+      - container: repo
+        kind: zone
+        name: Project repo on GitHub
+        layout: column
+        items:
+          - {node: vars, kind: data-store, name: Repository variables, qualifier: "rule, org, account, workspace"}
+    edges:
+      - {from: admin, to: script, kind: sync, label: runs, primary: true}
+      - {from: login, to: script, kind: identity, label: short-lived token}
+      - {from: script, to: adminapi, kind: sync, label: creates rules, primary: true}
+      - {from: adminapi, to: rules, kind: sync, label: stores}
+      - {from: admin, to: wizard, kind: sync, label: or fills in}
+      - {from: wizard, to: rules, kind: sync, label: creates}
+      - {from: script, to: vars, kind: file, label: "gh variable set"}

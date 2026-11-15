@@ -33,3 +33,8 @@ Plain-English definitions of every term used in the factory.
 | **Capability map** | A picture of what an organization (or the factory) can do, with "heat" marking where attention is needed. |
 | **Trust boundary** | A dashed line around something you do not trust, such as a pull request from someone else: nothing inside it may run with your secrets. |
 | **Change diagram** | A diagram that compares two versions and marks elements as new, changed, removed or planned. |
+| **Workload identity federation (WIF)** | A way for a CI job to use the Claude API without a stored key: the job proves who it is with a token GitHub signs, and Anthropic swaps it for a short-lived Claude token. See [CLAUDE-SERVICES-AUTH.md](CLAUDE-SERVICES-AUTH.md). |
+| **OIDC token** | The signed identity token (a JWT) GitHub gives a workflow run that has `id-token: write`. Its subject says which repository and event started the run. |
+| **Federation rule** | An Anthropic setting that says which GitHub tokens (repository, event, claims) may get a Claude token, for which service account and workspace. One per repository and workflow. |
+| **Service account** | A non-human identity in the Anthropic organization, with no login; federation rules mint tokens that act as it. |
+| **Admin API** | Anthropic's API for managing the organization itself (workspaces, service accounts, federation rules). `scripts/claude_federation.py` uses it. |

@@ -54,6 +54,7 @@ cd /c/DEV/PROJECTS/gitHub/egov-rdc/egov-sofa/my-app && claude
 - [docs/CUSTOMIZING.md](docs/CUSTOMIZING.md): add templates, change agents, tune the pipeline
 - [docs/GLOSSARY.md](docs/GLOSSARY.md): plain-English definitions of every term
 - [docs/SHARED-SERVICES.md](docs/SHARED-SERVICES.md): why and how other repositories use the factory's services
+- [docs/CLAUDE-SERVICES-AUTH.md](docs/CLAUDE-SERVICES-AUTH.md): how the Claude review reaches the Claude API without a stored key, and how to set it up
 - [docs/ROADMAP.md](docs/ROADMAP.md): planned improvements, ranked by value, with their status
 - [docs/ENTERPRISE-VISION.md](docs/ENTERPRISE-VISION.md): the proposed path to an enterprise-grade factory (architect roles, levels of rigour, spec-driven development)
 - [docs/diagrams/](docs/diagrams/README.md): every diagram, its YAML source and how to regenerate it

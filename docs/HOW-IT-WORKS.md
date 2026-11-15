@@ -90,7 +90,7 @@ Besides CI, every new project calls three more **shared services** the same way 
 
 | Service | When it runs | What it does |
 |---|---|---|
-| Claude review | every pull request (once turned on) | Claude reviews the change against the project's `.claude/skills/pr-review/SKILL.md` and comments |
+| Claude review | every pull request (once turned on, see [CLAUDE-SERVICES-AUTH.md](CLAUDE-SERVICES-AUTH.md)) | Claude reviews the change against the project's `.claude/skills/pr-review/SKILL.md` and comments |
 | Claude on demand | a PR comment starting with `@claude` | Answers the question or re-reviews the part named |
 | Content guard | every pull request, and before each commit (git hooks) | Blocks secrets, public IP addresses, internal host names and a private denylist |
 
