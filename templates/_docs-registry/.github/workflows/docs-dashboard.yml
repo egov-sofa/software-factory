@@ -1,0 +1,74 @@
+# Docs dashboard: every Monday, scans the documentation of every repository in registry.yml through the GitHub API and
+# keeps one issue in this repository, labelled docs-drift, as the overview of all projects. Closes it when every
+# document everywhere is fine. Setup: docs/DOCS-DRIFT.md in the software factory.
+#
+# A GitHub App token covers one owner (organization or user). Add one "Token for ..." step per owner in registry.yml,
+# and pass each token as DOCS_DRIFT_TOKEN_<OWNER>: upper case, - becomes _.
+name: Docs dashboard
+
+on:
+  schedule:
+    - cron: "41 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  dashboard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Token for example-org
+        id: example_org
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.DOCS_DRIFT_APP_CLIENT_ID }}
+          private-key: ${{ secrets.DOCS_DRIFT_APP_PRIVATE_KEY }}
+          owner: example-org
+          permission-contents: read
+
+      - name: Token for other-org
+        id: other_org
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.DOCS_DRIFT_APP_CLIENT_ID }}
+          private-key: ${{ secrets.DOCS_DRIFT_APP_PRIVATE_KEY }}
+          owner: other-org
+          permission-contents: read
+
+      - name: The factory's docs drift scripts, at v1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: egov-sofa/software-factory
+          ref: v1
+          path: .factory-tools
+          persist-credentials: false
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+
+      - run: python -m pip install --quiet --disable-pip-version-check "pyyaml==6.0.3"
+
+      - name: Scan every repository
+        env:
+          DOCS_DRIFT_TOKEN_EXAMPLE_ORG: ${{ steps.example_org.outputs.token }}
+          DOCS_DRIFT_TOKEN_OTHER_ORG: ${{ steps.other_org.outputs.token }}
+        run: >-
+          python -I .factory-tools/scripts/docs_drift.py dashboard --registry registry.yml
+          --json "$RUNNER_TEMP/dashboard.json" --markdown "$RUNNER_TEMP/dashboard.md"
+          && cat "$RUNNER_TEMP/dashboard.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Keep the dashboard issue up to date
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: >-
+          python -I .factory-tools/scripts/docs_drift_issue.py --title "Documentation dashboard"
+          --report "$RUNNER_TEMP/dashboard.json" --body "$RUNNER_TEMP/dashboard.md"

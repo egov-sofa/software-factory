@@ -71,6 +71,7 @@ existing project, copy the caller files from [`templates/_shared/`](../templates
 | Claude on demand | reusable workflow: `reusable-claude-mention.yml` | Answers a pull request comment starting with `@claude` (write access only) | `.github/workflows/claude-mention.yml` |
 | Content guard | composite action: `.github/actions/content-guard` | Blocks secrets, public IP addresses, internal host names and denylisted terms in a pull request | `.github/workflows/content-guard.yml` |
 | Local hooks | files copied into the project | Run the same guard before each commit | `scripts/hooks/`, `scripts/check_content.py` |
+| Docs drift | composite action: `.github/actions/docs-drift` | A kind of Dependabot for documentation: reports documents whose sources changed after them, on pull requests and as a weekly issue. Does nothing until the project adds `.factory/docs.yml`. Setup and the private dashboard of all projects: [DOCS-DRIFT.md](DOCS-DRIFT.md) | `.github/workflows/docs-drift.yml` |
 
 ![Shared services: four thin callers in the project call the factory at v1; the content guard reads the pull request, an untrusted zone, only as data; the two Claude workflows get a short-lived token for the Claude API](diagrams/shared-services.png)
 
