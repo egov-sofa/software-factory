@@ -50,6 +50,15 @@ Plus the shared variables `ANTHROPIC_ORGANIZATION_ID`, `ANTHROPIC_SERVICE_ACCOUN
   `egov-sofa/software-factory/.github/workflows/reusable-claude-mention.yml@refs/heads/main`; for a project calling
   it at `@v1`, presumably `…@refs/tags/v1`). This is from GitHub's OIDC documentation and not yet tested here:
   if an exchange is refused on that claim, copy the value from the refusal in the Console.
+- **Recommended hardening for the review rule:** on `pull_request`, GitHub takes the workflow from the pull
+  request's branch. Without a `job_workflow_ref` claim, anyone with write access can open a pull request that edits
+  the workflow (or adds a job with `id-token: write`) and exchange its token for Claude API credentials. For a
+  project calling the factory at `@v1`, require
+  `egov-sofa/software-factory/.github/workflows/reusable-claude-review.yml@refs/tags/v1`
+  (`--review-workflow-ref` in the script): the caller cannot add steps to the called job, and the tag is not under
+  the pull request's control. In the factory itself the reusable workflow is local, so its ref is the pull request's;
+  there the protection is the `protect-main` ruleset and keeping write access to maintainers. Fork pull requests get
+  no token at all.
 - **No secret.** A repository secret `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` wins over federation; delete
   both when moving to federation.
 - **API credit.** Usage is paid from the organization's API credit (Console, Billing), not from a Claude Pro or Max

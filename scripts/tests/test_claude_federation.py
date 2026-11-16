@@ -45,6 +45,21 @@ class Rules(unittest.TestCase):
                           "job_workflow_ref": "x/y/.github/workflows/z.yml@refs/heads/main"}, p["match"]["claims"])
         self.assertNotEqual(review["payload"]["name"], p["name"])
 
+    def test_review_rule_can_be_pinned_to_the_reusable_workflow(self):
+        ref = "egov-sofa/software-factory/.github/workflows/reusable-claude-review.yml@refs/tags/v1"
+        (rule,) = fed.build_rules(fed.parse_args(ARGS + ["--review-workflow-ref", ref]), PREFIX)
+        self.assertEqual({"repository_owner": "egov-sofa", "job_workflow_ref": ref}, rule["payload"]["match"]["claims"])
+
+    def test_preview_explains_an_unpinned_review_rule(self):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            self.assertEqual(0, fed.main(ARGS + ["--sub-prefix", PREFIX]))
+        self.assertIn("--review-workflow-ref", err.getvalue())
+        err = io.StringIO()
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+            fed.main(ARGS + ["--sub-prefix", PREFIX, "--review-workflow-ref", "o/r/.github/workflows/w.yml@refs/tags/v1"])
+        self.assertNotIn("--review-workflow-ref", err.getvalue())
+
     def test_rule_prefix_renames_the_rules(self):
         (rule,) = fed.build_rules(fed.parse_args(ARGS + ["--rule-prefix", "factory"]), PREFIX)
         self.assertEqual("factory-pr-review", rule["payload"]["name"])
