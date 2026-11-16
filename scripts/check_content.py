@@ -65,7 +65,53 @@ SECRET_RULES = [
     ("Slack token", re.compile(r"(?<!\w)xox[abprs]-[A-Za-z0-9-]{10,}")),
     ("Google API key", re.compile(r"(?<!\w)AIza[0-9A-Za-z_-]{35}(?![\w-])")),
     ("Stripe live key", re.compile(r"(?<!\w)[rs]k_live_[0-9A-Za-z]{20,}")),
+    ("OpenAI API key", re.compile(r"(?<!\w)(?:sk-(?:proj|svcacct|admin)-[A-Za-z0-9_-]{20,}"
+                                  r"|sk-[A-Za-z0-9]{20}T3BlbkFJ[A-Za-z0-9]{20})")),
+    ("GitLab token", re.compile(r"(?<!\w)gl(?:pat|dt|ptt|rt)-[A-Za-z0-9_-]{20,}")),
+    ("npm token", re.compile(r"(?<!\w)npm_[A-Za-z0-9]{36}(?!\w)")),
+    ("PyPI token", re.compile(r"(?<!\w)pypi-AgEIcHlwaS5vcmc[A-Za-z0-9_-]{50,}")),
+    ("Google OAuth client secret", re.compile(r"(?<!\w)GOCSPX-[A-Za-z0-9_-]{28}(?![\w-])")),
+    ("Slack webhook", re.compile(r"hooks\.slack\.com/(?:services|workflows)/T[A-Z0-9]+/[A-Z0-9]+/[A-Za-z0-9]{16,}")),
+    ("Discord webhook", re.compile(r"discord(?:app)?\.com/api/webhooks/\d+/[A-Za-z0-9_-]{30,}")),
+    ("Azure storage key", re.compile(r"(?i)\b(?:AccountKey|SharedAccessKey)=[A-Za-z0-9+/]{40,}={0,2}")),
+    ("JSON Web Token", re.compile(r"(?<![\w-])eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}")),
+    # no fixed prefix: the key name must sit right next to the 40-character value
+    ("AWS secret access key", re.compile(r"(?i)aws_?secret_?access_?key\W{0,3}[:=]\W{0,3}[A-Za-z0-9/+]{40}(?![A-Za-z0-9/+])")),
 ]
+
+# A password written into a URL (https://user:pass@host). Values that are clearly placeholders or variables are
+# fine: ${TOKEN}, $PASSWORD, <password>, {{secret}}, %s, ***, xxx, password.
+URL_CREDENTIALS_RE = re.compile(r"\b[a-z][a-z0-9+.-]*://[^\s/:@]+:([^\s/@]+)@[^\s/@]+", re.I)
+PLACEHOLDER_PASSWORDS = {"password", "passwd", "pass", "pwd", "pw", "secret", "token", "changeme", "example"}
+
+
+def url_password(line):
+    """True when a URL in the line carries a password that looks real."""
+    for m in URL_CREDENTIALS_RE.finditer(line):
+        value = m.group(1)
+        if value[0] in "$<{%*[(" or set(value) <= set("x*.") or value.lower() in PLACEHOLDER_PASSWORDS:
+            continue
+        return True
+    return False
+
+
+def utf16_text(data):
+    """data decoded as UTF-16 when it is UTF-16 (a byte-order mark, or a NUL in every other byte as Windows tools
+    write without one), else None. Read as UTF-8, a UTF-16 file has a NUL between every letter and no rule matches."""
+    if data[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        return data.decode("utf-16", "replace")
+    if len(data) >= 4 and data[1::2].count(0) >= len(data) // 2 * 0.9 and data[0::2].count(0) < len(data) // 4:
+        return data.decode("utf-16-le", "replace")
+    return None
+
+
+def without_nul(line):
+    """An added diff line with its NUL bytes handled: a UTF-16 line (a NUL between every letter) gets them removed so
+    its text can be read; any other NUL becomes a space, so it cannot hide the rest of the line."""
+    nuls = line.count(chr(0))
+    if nuls and nuls * 3 >= len(line):   # a third, not half: the byte-order mark and \r also take places
+        return line.replace(chr(0), "")
+    return line.replace(chr(0), " ")
 
 
 def denylist():
@@ -117,6 +163,8 @@ def findings(line, deny):
     if line.rstrip().endswith(MARKER):
         return found
     found += [f"possible secret ({kind})" for kind, pattern in SECRET_RULES if pattern.search(line)]
+    if url_password(line):
+        found.append("possible secret (password in a URL)")
     for m in (*IPV4_RE.finditer(line), *(m for m in IPV6_RE.finditer(line) if ipv6_like(m.group(1)))):
         try:
             ip = ipaddress.ip_address(m.group(1))
@@ -166,7 +214,7 @@ def added_lines(diff_args):
                     "--dst-prefix=b/", *diff_args).split("\n"):
         if left and line.startswith("+"):
             if path:
-                yield path, num, line[1:].replace(chr(0), " ")
+                yield path, num, without_nul(line[1:])
             num += 1
             left -= 1
         elif line.startswith("@@"):
@@ -219,9 +267,15 @@ def tracked_lines():
             continue
         yield rel, 0, rel   # the file name is content too
         try:
-            text = (ROOT / rel).read_text(encoding="utf-8")
-        except (UnicodeDecodeError, OSError):
-            continue   # binary or unreadable
+            data = (ROOT / rel).read_bytes()
+        except OSError:
+            continue   # unreadable
+        text = utf16_text(data)
+        if text is None:
+            try:
+                text = data.decode("utf-8")
+            except UnicodeDecodeError:
+                continue   # binary
         for num, line in enumerate(text.splitlines(), 1):
             yield rel, num, line
 
