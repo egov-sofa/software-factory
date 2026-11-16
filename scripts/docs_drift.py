@@ -12,7 +12,7 @@ A document has drifted when one of its sources changed after the document did.
         path: docs/architecture/payments/sad.md
         review_every_days: 180                 # optional: also report a document nobody touched for this long
         sources:
-          - path: docs/architecture/payments/sketches/   # a folder: every file below it
+          - path: docs/architecture/payments/sketches/   # a folder: every file below it (the / is optional)
           - path: src/payments/**/*.py                   # a glob
           - repo: example-org/platform-gitops            # another repository (needs a token that can read it)
             path: apps/payments/
@@ -122,12 +122,11 @@ def check_manifest(data):
 
 
 def matches(pattern, path):
-    """A source pattern matches a file path: a folder (ending in /) matches what is below it, otherwise a glob."""
-    if pattern.endswith("/"):
-        return path.startswith(pattern)
+    """A source pattern matches a file path: a glob by its wildcards, otherwise the file itself or anything below it
+    when it is a folder (with or without a trailing /), the same way git log -- PATH does in scan."""
     if any(c in pattern for c in "*?["):
         return fnmatch.fnmatchcase(path, pattern) or fnmatch.fnmatchcase(path, pattern.replace("**/", ""))
-    return path == pattern
+    return path == pattern or path.startswith(pattern.rstrip("/") + "/")
 
 
 def api_path(pattern):

@@ -72,7 +72,7 @@ runs:
     - name: Install PyYAML
       if: ${{ steps.manifest.outputs.found == 'true' }}
       shell: bash
-      run: python -m pip install --quiet --disable-pip-version-check "pyyaml==6.0.3"
+      run: python -I -m pip install --quiet --disable-pip-version-check "pyyaml==6.0.3"   # -I: no module from the checkout
 
     - name: Check the pull request
       if: ${{ steps.manifest.outputs.found == 'true' && inputs.mode == 'pr' }}

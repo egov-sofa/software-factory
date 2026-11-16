@@ -43,7 +43,7 @@ docs:
     path: docs/architecture/payments/sad.md
     review_every_days: 180                # optional
     sources:
-      - path: docs/architecture/payments/sketches/   # a folder: every file below it
+      - path: docs/architecture/payments/sketches/   # a folder: every file below it (the / is optional)
       - path: src/payments/**/*.py                   # a glob
       - repo: example-org/platform-gitops            # a path in another repository
         path: apps/payments/

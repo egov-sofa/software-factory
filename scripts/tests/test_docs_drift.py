@@ -110,6 +110,13 @@ class Patterns(unittest.TestCase):
         self.assertTrue(docs_drift.matches("README.md", "README.md"))
         self.assertFalse(docs_drift.matches("README.md", "docs/README.md"))
 
+    def test_a_folder_without_its_trailing_slash_still_matches_below_it(self):
+        self.assertTrue(docs_drift.matches("src/payments", "src/payments/api.py"))
+        self.assertFalse(docs_drift.matches("src/payments", "src/payments-old/api.py"))
+        found = docs_drift.pr_findings([{"id": "d", "path": "d.md", "sources": [{"path": "src/payments"}]}],
+                                       ["src/payments/api.py"])
+        self.assertEqual(found[0]["files"], ["src/payments/api.py"])
+
     def test_api_path_is_the_part_before_the_wildcard(self):
         self.assertEqual(docs_drift.api_path("apps/cdr/"), "apps/cdr")
         self.assertEqual(docs_drift.api_path("src/**/*.py"), "src")
