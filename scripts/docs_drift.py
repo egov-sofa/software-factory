@@ -49,9 +49,9 @@ or manifest error.
 import argparse
 import base64
 import calendar
-import fnmatch
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -125,8 +125,39 @@ def matches(pattern, path):
     """A source pattern matches a file path: a glob by its wildcards, otherwise the file itself or anything below it
     when it is a folder (with or without a trailing /), the same way git log -- PATH does in scan."""
     if any(c in pattern for c in "*?["):
-        return fnmatch.fnmatchcase(path, pattern) or fnmatch.fnmatchcase(path, pattern.replace("**/", ""))
+        return glob_regex(pattern).fullmatch(path) is not None
     return path == pattern or path.startswith(pattern.rstrip("/") + "/")
+
+
+def glob_regex(pattern):
+    """A glob as git's :(glob) pathspec reads it: * and ? stop at /, **/ is zero or more folders, a final /** is
+    everything below, [...] is a character class."""
+    out, i = [], 0
+    while i < len(pattern):
+        if pattern.startswith("**/", i):
+            out.append("(?:[^/]*/)*")
+            i += 3
+        elif pattern.startswith("/**", i) and i + 3 == len(pattern):
+            out.append("/.*")
+            i += 3
+        elif pattern.startswith("**", i):
+            out.append(".*")
+            i += 2
+        elif pattern[i] == "*":
+            out.append("[^/]*")
+            i += 1
+        elif pattern[i] == "?":
+            out.append("[^/]")
+            i += 1
+        elif pattern[i] == "[" and "]" in pattern[i + 2:]:
+            end = pattern.index("]", i + 2)
+            body = pattern[i + 1:end]
+            out.append("[" + ("^" + body[1:] if body.startswith("!") else body).replace("\\", "\\\\") + "]")
+            i = end + 1
+        else:
+            out.append(re.escape(pattern[i]))
+            i += 1
+    return re.compile("".join(out))
 
 
 def api_path(pattern):
@@ -250,7 +281,9 @@ def scan(docs, *, local=None, github=None, repo=None, ref=None, now=None):
                 change = local.last_change(src["path"])
             if isinstance(change, str):
                 result["unknown"].append({"source": label, "reason": change})
-            elif change and change[0] > doc_change[0]:
+            elif change is None:
+                result["unknown"].append({"source": label, "reason": "matches no file (a typo, or moved or deleted)"})
+            elif change[0] > doc_change[0]:
                 result["newer"].append({"source": label, "changed": change[0], "sha": change[1]})
         every = doc.get("review_every_days")
         if result["newer"]:

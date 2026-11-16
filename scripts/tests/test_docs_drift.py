@@ -110,6 +110,14 @@ class Patterns(unittest.TestCase):
         self.assertTrue(docs_drift.matches("README.md", "README.md"))
         self.assertFalse(docs_drift.matches("README.md", "docs/README.md"))
 
+    def test_globs_match_like_git_star_stops_at_a_slash(self):
+        self.assertFalse(docs_drift.matches("src/*.py", "src/payments/api.py"))
+        self.assertTrue(docs_drift.matches("src/*.py", "src/api.py"))
+        self.assertTrue(docs_drift.matches("src/**/*.py", "src/a/b/api.py"))
+        self.assertTrue(docs_drift.matches("src/**", "src/a/b.txt"))
+        self.assertFalse(docs_drift.matches("docs/?.md", "docs/ab.md"))
+        self.assertFalse(docs_drift.matches("docs/[!x].md", "docs/x.md"))
+
     def test_a_folder_without_its_trailing_slash_still_matches_below_it(self):
         self.assertTrue(docs_drift.matches("src/payments", "src/payments/api.py"))
         self.assertFalse(docs_drift.matches("src/payments", "src/payments-old/api.py"))
@@ -149,6 +157,12 @@ class ScanLocal(unittest.TestCase):
     def test_a_missing_document_is_reported(self):
         docs = [{**DOCS[0], "path": "docs/nothing.md"}]
         self.assertEqual(self.state(docs)["state"], "missing")
+
+    def test_a_source_that_matches_no_file_is_unknown_not_ok(self):
+        docs = [{**DOCS[0], "sources": [{"path": "src/paymnets/"}]}]
+        result = self.state(docs)
+        self.assertEqual(result["state"], "unknown")
+        self.assertIn("matches no file", result["unknown"][0]["reason"])
 
     def test_another_repository_without_access_is_unknown_not_ok(self):
         docs = [{**DOCS[0], "sources": [{"repo": "org/gitops", "path": "apps/"}]}]
