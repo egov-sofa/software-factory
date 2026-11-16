@@ -21,6 +21,7 @@ on:
 
 permissions:
   contents: write   # create the tag and the release, and move the major tag
+  actions: read     # check that the self-test passed on the released commit
 
 concurrency:
   group: release
@@ -42,6 +43,21 @@ jobs:
         run: |
           if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
             echo "::error::'$TAG' is not a version like v1.2.0 or v1.2.0-rc.1"
+            exit 1
+          fi
+
+      # Before any tag is created or moved: every project at @v1 follows this release
+      - name: Release moves forward
+        run: bash scripts/release-check.sh "$TAG" "$GITHUB_SHA"
+
+      - name: Self-test passed on this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          result=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow factory-selftest.yml --commit "$GITHUB_SHA" \
+            --event push --json status,conclusion --jq '.[0] | "\(.status) \(.conclusion)"')
+          if [ "$result" != "completed success" ]; then
+            echo "::error::the Factory self-test on main for $GITHUB_SHA is '${result:-not found}'; release once it has passed"
             exit 1
           fi
 
