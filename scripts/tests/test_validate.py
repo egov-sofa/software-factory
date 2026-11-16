@@ -44,6 +44,14 @@ class Frontmatter(unittest.TestCase):
         self.assertEqual([], found)
         self.assertGreater(count, 10)
 
+    def test_skills_with_side_effects_run_only_when_the_user_types_them(self):
+        """They push, open pull requests, create repositories or run a long, costly pipeline."""
+        for name in ("factory-build", "factory-new", "factory-onboard", "factory-ship"):
+            with self.subTest(skill=name):
+                text = (validate.ROOT / "claude" / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
+                fields, _ = validate.frontmatter(text)
+                self.assertEqual("true", fields.get("disable-model-invocation", ("missing",))[0])
+
     def test_valid_files(self):
         self.assertEqual([], self.agent(AGENT))
         self.assertEqual([], self.skill(SKILL))

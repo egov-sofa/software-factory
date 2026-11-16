@@ -2,6 +2,7 @@
 name: factory-new
 description: Scaffold a new project from a software-factory template (typescript, python, generic), with tests, lint, CI and CLAUDE.md preconfigured. Asks which GitHub org owns it; optionally creates the GitHub repo.
 argument-hint: "<project-name> [typescript|python|generic] [owner]"
+disable-model-invocation: true
 ---
 
 # Factory New Project

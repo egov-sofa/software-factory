@@ -1,6 +1,7 @@
 ---
 name: factory-onboard
 description: Add software-factory standards and shared services to an existing project - a project CLAUDE.md, CI using the factory's reusable workflows, the Claude PR review and @claude mentions, the content guard with its git hooks, a PR template, Dependabot, and .editorconfig. Use on projects not created with /factory-new.
+disable-model-invocation: true
 ---
 
 # Factory Onboard
