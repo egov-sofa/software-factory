@@ -73,7 +73,7 @@ existing project, copy the caller files from [`templates/_shared/`](../templates
 | Local hooks | files copied into the project | Run the same guard before each commit | `scripts/hooks/`, `scripts/check_content.py` |
 | Docs drift | composite action: `.github/actions/docs-drift` | A kind of Dependabot for documentation: reports documents whose sources changed after them, on pull requests and as a weekly issue. Does nothing until the project adds `.factory/docs.yml`. Setup and the private dashboard of all projects: [DOCS-DRIFT.md](DOCS-DRIFT.md) | `.github/workflows/docs-drift.yml` |
 
-![Shared services: four thin callers in the project call the factory at v1; the content guard reads the pull request, an untrusted zone, only as data; the two Claude workflows get a short-lived token for the Claude API](diagrams/shared-services.png)
+![Shared services: five thin callers in the project call the factory at v1, docs drift among them; the content guard reads the pull request, an untrusted zone, only as data; the two Claude workflows get a short-lived token for the Claude API](diagrams/shared-services.png)
 
 ### Why the content guard is an action, not a reusable workflow
 

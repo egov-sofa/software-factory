@@ -66,6 +66,11 @@ class FakeGitHub:
             return f"cannot read {repo} (404)"
         return self.table.get((repo, path))
 
+    def exists(self, repo, path, ref=None):
+        if repo not in self.readable:
+            return f"cannot read {repo} (403)"
+        return (repo, path) in self.table and (repo, path) not in getattr(self, "deleted", ())
+
 
 DOCS = [{"id": "sad", "title": "System SAD", "path": "docs/sad.md", "review_every_days": 30,
          "sources": [{"path": "docs/sketches/"}, {"path": "src/**/*.py"}]}]
@@ -187,6 +192,29 @@ class ScanRegistry(unittest.TestCase):
         docs = [{"id": "sad", "path": "docs/sad.md", "sources": [{"path": "docs/sketches/"}]}]
         result = docs_drift.scan(docs, github=github, repo="org/app", now=T0 + 3 * DAY)[0]
         self.assertEqual(result["state"], "drift")
+
+
+class ScanRegistryEdges(unittest.TestCase):
+    DOCS = [{"id": "sad", "path": "docs/sad.md", "sources": []}]
+
+    def test_a_document_deleted_on_the_branch_is_missing_not_ok(self):
+        github = FakeGitHub({("org/app", "docs/sad.md"): (T0, "de1")}, readable=["org/app"])
+        github.deleted = {("org/app", "docs/sad.md")}   # the commits API still returns the deleting commit
+        self.assertEqual(docs_drift.scan(self.DOCS, github=github, repo="org/app")[0]["state"], "missing")
+
+    def test_a_read_error_is_unknown_not_missing(self):
+        github = FakeGitHub({}, readable=[])
+        result = docs_drift.scan(self.DOCS, github=github, repo="org/app")[0]
+        self.assertEqual(result["state"], "unknown")
+        self.assertIn("403", result["unknown"][0]["reason"])
+
+
+class Escaping(unittest.TestCase):
+    def test_pipes_and_mentions_from_a_manifest_cannot_break_or_ping(self):
+        rows = [{"id": "x", "title": "A | B @team", "path": "a.md", "state": "missing", "newer": [], "unknown": []}]
+        text = docs_drift.scan_markdown(rows)
+        self.assertIn("A \\| B", text)
+        self.assertNotIn("@team", text)
 
 
 class PullRequest(unittest.TestCase):

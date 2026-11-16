@@ -220,6 +220,14 @@ class GitHub:
         when = data[0]["commit"]["committer"]["date"]
         return calendar.timegm(time.strptime(when, "%Y-%m-%dT%H:%M:%SZ")), data[0]["sha"][:7]
 
+    def exists(self, repo, path, ref=None):
+        """True or False, or an error string when GitHub cannot tell (no access, rate limit)."""
+        query = f"?ref={urllib.parse.quote(ref)}" if ref else ""
+        data = self.get(f"{API}/repos/{repo}/contents/{urllib.parse.quote(path)}{query}", repo)
+        if isinstance(data, dict) and "_error" in data:
+            return False if data["_error"] == 404 else f"cannot read {repo} ({data['_error']})"
+        return True
+
     def read_file(self, repo, path, ref=None):
         query = f"?ref={urllib.parse.quote(ref)}" if ref else ""
         data = self.get(f"{API}/repos/{repo}/contents/{urllib.parse.quote(path)}{query}", repo)
@@ -265,8 +273,16 @@ def scan(docs, *, local=None, github=None, repo=None, ref=None, now=None):
         if local:
             doc_change = local.last_change(doc["path"]) if local.exists(doc["path"]) else None
         else:
-            doc_change = github.last_change(repo, doc["path"], ref)
-            doc_change = doc_change if isinstance(doc_change, tuple) else None
+            # the commits API also returns the commit that deleted a file, so ask whether the file is there first;
+            # a read error is "unknown", never "missing"
+            there = github.exists(repo, doc["path"], ref)
+            doc_change = github.last_change(repo, doc["path"], ref) if there is True else None
+            problem = there if isinstance(there, str) else doc_change if isinstance(doc_change, str) else None
+            if problem:
+                result["state"] = "unknown"
+                result["unknown"].append({"source": doc["path"], "reason": problem})
+                results.append(result)
+                continue
         if doc_change is None:
             result["state"] = "missing"
             results.append(result)
@@ -339,6 +355,12 @@ def check_registry(data):
 
 # --- output ---------------------------------------------------------------------------------------------------------
 
+def md(text):
+    """Text from a manifest, safe in a Markdown table cell: | would break the table, and @name would ping someone
+    from the issue every week."""
+    return str(text).replace("|", "\\|").replace("@", "@\u200d")
+
+
 def day(ts):
     return time.strftime("%Y-%m-%d", time.gmtime(ts))
 
@@ -353,15 +375,15 @@ def scan_markdown(results, repo=None):
              "|---|" + ("---|" if by_repo else "") + "---|---|---|---|"]
     for r in worst:
         why = []
-        why += [f"`{n['source']}` changed {day(n['changed'])} ({n['sha']})" for n in r["newer"]]
-        why += [f"`{u['source']}`: {u['reason']}" for u in r["unknown"]]
+        why += [f"`{md(n['source'])}` changed {day(n['changed'])} ({n['sha']})" for n in r["newer"]]
+        why += [f"`{md(u['source'])}`: {md(u['reason'])}" for u in r["unknown"]]
         if r["state"] == "overdue":
             why.append("not reviewed within its review period")
         if r["state"] == "missing":
             why.append("the document does not exist")
         last = f"{day(r['changed'])} ({r['sha']})" if "changed" in r else "-"
-        lines.append(f"| {ICONS[r['state']]} | " + (f"{r['repo']} | " if by_repo else "")
-                     + f"{r['title']} (`{r['path']}`) | {r['state']} | {last} | "
+        lines.append(f"| {ICONS[r['state']]} | " + (f"{md(r['repo'])} | " if by_repo else "")
+                     + f"{md(r['title'])} (`{md(r['path'])}`) | {r['state']} | {last} | "
                      + ("<br>".join(why) or "-") + " |")
     lines += ["", ("A document drifts when a source it describes changed after it. Update the document (or confirm it "
                    "is still right with a commit that touches it), and this list updates on the next run.")]
@@ -373,7 +395,7 @@ def pr_markdown(findings):
         return "Docs drift: every document whose sources this pull request changes is updated too.\n"
     lines = ["Docs drift: this pull request changes what these documents describe, but not the documents.", ""]
     for f in findings:
-        lines.append(f"- **{f['title']}** (`{f['path']}`): " + ", ".join(f"`{x}`" for x in f["files"]))
+        lines.append(f"- **{md(f['title'])}** (`{md(f['path'])}`): " + ", ".join(f"`{md(x)}`" for x in f["files"]))
     lines += ["", "Update each document in this pull request, or say in the description why it is still right."]
     return "\n".join(lines) + "\n"
 
