@@ -15,12 +15,10 @@ SCRIPT = Path(__file__).resolve().parents[1] / "docs_drift.py"
 sys.path.insert(0, str(SCRIPT.parent))
 import docs_drift  # noqa: E402  (after the sys.path line above)
 
-try:
-    import yaml  # noqa: F401
-    HAS_YAML = True
-except ImportError:
-    HAS_YAML = False
-needs_yaml = unittest.skipUnless(HAS_YAML, "PyYAML not installed")
+# Checked the way the command-line tests run the script, with python -I: isolated mode ignores the user site-packages
+# (pip install --user), so PyYAML found there by this process would still be missing for the script.
+HAS_YAML = subprocess.run([sys.executable, "-I", "-c", "import yaml"], capture_output=True, check=False).returncode == 0
+needs_yaml = unittest.skipUnless(HAS_YAML, "PyYAML not installed (for python -I)")
 
 DAY = 86400
 T0 = 1_700_000_000
