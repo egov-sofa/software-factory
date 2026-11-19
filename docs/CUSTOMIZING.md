@@ -37,7 +37,8 @@ To include it in the pipeline, add a step to `claude/skills/factory-build/SKILL.
 ## Add a new template (e.g. Go, .NET, Java)
 
 1. Create `templates/<name>/` with the language-specific files.
-2. Put a `CLAUDE.md` in it (it replaces the shared one) listing the exact build, test and lint commands.
+2. Put an `AGENTS.md` in it listing the exact build, test and lint commands. Every AI coding agent reads it; the
+   shared `CLAUDE.md` imports it for Claude Code (`@AGENTS.md`).
 3. Add `.github/workflows/ci.yml`. Either call an existing reusable workflow or create `reusable-<name>.yml` in `.github/workflows/`.
 4. Add the template to the matrix in `.github/workflows/factory-selftest.yml`.
 5. Test it: `bash scripts/new-project.sh test-app <name> --dir /tmp`.

@@ -24,7 +24,7 @@ gh pr view <number> --json title,body,author,baseRefName,headRefName,files,commi
 gh pr diff <number>
 ```
 
-Read `CLAUDE.md`, the plan in `docs/plans/` if the description links one, and every changed file **in full**, not only
+Read `AGENTS.md` (the project's instructions) and `CLAUDE.md`, the plan in `docs/plans/` if the description links one, and every changed file **in full**, not only
 the diff. Open the code that calls what changed when a change cannot be judged from the diff alone.
 
 ## 2. Check, most important first

@@ -1,6 +1,6 @@
 ---
 name: factory-onboard
-description: Add software-factory standards and shared services to an existing project - a project CLAUDE.md, CI using the factory's reusable workflows, the Claude PR review and @claude mentions, the content guard with its git hooks, a PR template, Dependabot, and .editorconfig. Use on projects not created with /factory-new.
+description: Add software-factory standards and shared services to an existing project - project instructions (AGENTS.md, imported by CLAUDE.md), CI using the factory's reusable workflows, the Claude PR review and @claude mentions, the content guard with its git hooks, a PR template, Dependabot, and .editorconfig. Use on projects not created with /factory-new.
 disable-model-invocation: true
 ---
 
@@ -12,7 +12,7 @@ Factory location: `{{FACTORY_HOME}}`
 ## 1. Detect
 - Stack: `package.json` → typescript/node; `pyproject.toml` / `requirements.txt` → python; anything else → generic.
 - The real commands: read `package.json` scripts, `pyproject.toml`, `Makefile`, and existing CI files. **Use the commands the project actually has**; don't invent them.
-- Existing files: `CLAUDE.md`, `.github/workflows/*`, `.github/pull_request_template.md`, `.editorconfig`, `.github/dependabot.yml`, `.claude/skills/pr-review/SKILL.md`, `scripts/hooks/`, and `git config core.hooksPath` (another hook manager such as husky or pre-commit may already own the hooks).
+- Existing files: `AGENTS.md`, `CLAUDE.md`, `.github/workflows/*`, `.github/pull_request_template.md`, `.editorconfig`, `.github/dependabot.yml`, `.claude/skills/pr-review/SKILL.md`, `scripts/hooks/`, and `git config core.hooksPath` (another hook manager such as husky or pre-commit may already own the hooks).
 - GitHub owner: `gh api user -q .login`.
 
 ## 2. Propose
@@ -25,7 +25,7 @@ The shared services are opt-in, one by one (see `{{FACTORY_HOME}}/docs/SHARED-SE
 If the project would need project-specific changes to a shared workflow to fit, say so and suggest keeping its own workflow instead: forcing it into the shared one is worse for both.
 
 ## 3. Apply (on a branch `chore/factory-onboard`)
-- **CLAUDE.md:** base it on `{{FACTORY_HOME}}/templates/<stack>/CLAUDE.md`, rewritten with this project's real commands, folder structure (from `ls` and a quick look around) and conventions you observed in the code.
+- **AGENTS.md and CLAUDE.md:** `AGENTS.md` holds the project's instructions, so every AI coding agent (Claude Code, GitHub Copilot, Codex, Cursor) and every person reads the same ones. Base it on `{{FACTORY_HOME}}/templates/<stack>/AGENTS.md`, rewritten with this project's real commands, folder structure (from `ls` and a quick look around) and conventions you observed in the code. `CLAUDE.md` is `{{FACTORY_HOME}}/templates/_shared/CLAUDE.md`, which imports it with `@AGENTS.md`. If the project already has a `CLAUDE.md` with its own instructions, propose moving them into `AGENTS.md` (keeping anything Claude-specific in `CLAUDE.md` below the import) and ask before changing it; if it already has an `AGENTS.md`, extend that one.
 - **CI:** copy `{{FACTORY_HOME}}/templates/<stack>/.github/workflows/ci.yml` and replace the factory-repo placeholder (the text between double curly braces) with the factory's `owner/repo`, taken from `git -C "{{FACTORY_HOME}}" remote get-url origin`. If the project already has CI, show both and ask which to keep.
 - **From `{{FACTORY_HOME}}/templates/_shared/`:** `.editorconfig`, `.github/pull_request_template.md`, `.github/dependabot.yml` (keep only the ecosystems this project uses).
 - **Shared services the user chose**, from `{{FACTORY_HOME}}/templates/_shared/`, replacing the factory-repo placeholder as for CI (and `{{PROJECT_NAME}}` in the checklist):

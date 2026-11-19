@@ -17,7 +17,7 @@ Before each stage, tell the user in **one plain sentence** what is about to happ
 1. Confirm this is a git repo (`git rev-parse --is-inside-work-tree`). If not, offer to run `git init` and make an initial commit, then stop until the user answers.
 2. Run `git status --porcelain`. If there are uncommitted changes, ask the user whether to commit them, stash them, or continue on top of them.
 3. Find the base branch (`main`, or `master`). Create and switch to `feat/<kebab-slug-of-request>` (or `fix/…` for bug fixes). If already on a non-main feature branch, ask whether to stay on it.
-4. Read the project's `CLAUDE.md` to learn the test and lint commands. If there is none, suggest `/factory-onboard` afterwards, and continue.
+4. Read the project's `AGENTS.md` (`CLAUDE.md` in projects from before AGENTS.md) to learn the test and lint commands. If there is none, suggest `/factory-onboard` afterwards, and continue.
 
 ## Stage 1: Plan 🧭
 Launch the `planner` agent with the full request and the current date. Wait for the plan path.

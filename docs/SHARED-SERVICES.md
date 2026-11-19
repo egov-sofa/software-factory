@@ -41,7 +41,7 @@ on a release:
 
 | Project | Uses from the factory | Keeps locally |
 |---|---|---|
-| New projects (from `new-project.sh`) | CI pipeline, Claude review, `@claude` mentions, content guard, hooks, standards | Their code, their `CLAUDE.md` and review checklist |
+| New projects (from `new-project.sh`) | CI pipeline, Claude review, `@claude` mentions, content guard, hooks, standards | Their code, their `AGENTS.md` and review checklist |
 | Existing projects (via `/factory-onboard`) | The same, chosen one by one | Anything they already do differently |
 | `claude-skills` | Claude review, `@claude` mentions, content guard; later the evals runner, Dependabot setup and lint jobs | `validate.py`, `build.py`, taxonomy and catalog, draw.io golden PNG tests, skill packaging and release zips, `version_check.py`, its skill eval cases |
 

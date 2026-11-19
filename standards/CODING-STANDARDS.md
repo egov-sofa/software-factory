@@ -1,6 +1,7 @@
 # Coding Standards
 
-Language-agnostic rules. Each project's `CLAUDE.md` adds language-specific details.
+Language-agnostic rules. Each project's `AGENTS.md` (`CLAUDE.md` in projects from before AGENTS.md) adds
+language-specific details.
 
 ## Principles
 1. **Clarity over cleverness.** Code is read 10× more than it's written.
