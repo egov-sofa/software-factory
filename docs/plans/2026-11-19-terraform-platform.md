@@ -111,18 +111,19 @@ That evidence settles D2.
 - **Per team:** a workspace with a spend limit and a service account. **Per organization:** Actions workflow
   permissions, organization variables, rulesets where the plan allows them.
 - **Credentials:** Anthropic through one `org:admin` federation rule, made once in the Console and matching only the
-  jobs on `main` (subject of the platform repository's `production` environment, whose deployment branch is `main`,
-  and `job_workflow_ref` of the platform workflow on `main`);
+  two jobs on `main`: the platform workflow's `job_workflow_ref` on `refs/heads/main`, and a CEL condition that the
+  job's `environment` claim is `production-plan` or `production` (both environments limited to the `main` branch;
+  the exact claim values to be confirmed against a real token in phase 4);
   GitHub through a GitHub App installed on each organization, whose private key is an environment secret: the one
   stored secret of the platform.
 - **Where each plan runs.** Reading federation rules needs the `org:admin` token too (there is no read-only scope),
   and that token must never be reachable from code a pull request controls. So:
   - **pull requests** run `terraform plan` for `github/` only (a GitHub App token with read permissions) and
     `terraform validate` for `anthropic/`, which needs no credential;
-  - **after a merge, on `main`,** a plan job (environment `production`) runs `terraform plan -out` for both roots and
-    shows the Anthropic plan in the job summary; nothing is changed;
-  - an **apply job** then waits for **your approval** (required reviewer on the environment) and applies exactly that
-    saved plan, so what you approved is what runs.
+  - **after a merge, on `main`,** a plan job in the environment `production-plan` (no reviewer) runs
+    `terraform plan -out` for both roots and shows the plan in the job summary; nothing is changed;
+  - an **apply job** in the environment `production` waits for **your approval** (its required reviewer: the one
+    approval per change) and applies exactly that saved plan, so what you approved is what runs.
   The Anthropic part of a change is therefore reviewed after the merge, before anything is applied; its code was
   reviewed in the pull request.
 
@@ -143,7 +144,7 @@ Each phase is useful on its own and can stop there.
 | 1. Spike | this document's spike | GitHub: done. Anthropic: both providers import with `0 to change`; D2 decided | S, half done |
 | 2. Anthropic in code | the chosen provider manages the rules, service account (and workspaces, if the provider allows it keyless) of the three repositories, applied locally with your `ant` login | `plan` clean after import; one new rule created by Terraform works on a real pull request; `claude_federation.py` documented as the fallback | S |
 | 3. GitHub in code | org workflow permissions and variables of all six organizations, repository settings and variables of the factory repositories; the GitHub App | `plan` clean after import; the egov-sofa default token permission set to `read` through a reviewed change | M |
-| 4. CI apply | platform repository (D1), state backend (D3), the Console `org:admin` rule, the `production` environment | a pull request shows the GitHub plan and validates the Anthropic code; after a merge the plan on `main` shows both, and the saved plan is applied only after your approval, with no local login; a test pull request that edits the workflow cannot get an `org:admin` token | M |
+| 4. CI apply | platform repository (D1), state backend (D3), the Console `org:admin` rule, the environments `production-plan` and `production` | a pull request shows the GitHub plan and validates the Anthropic code; after a merge the plan on `main` shows both, and the saved plan is applied only after your approval, with no local login; a test pull request that edits the workflow cannot get an `org:admin` token | M |
 | 5. `/factory-new` through the platform | the skill opens the platform pull request instead of running commands | a new repository from `/factory-new` gets its review working with no command and no login | S |
 
 ## Risks / out of scope
@@ -153,9 +154,11 @@ Each phase is useful on its own and can stop there.
   `use_immutable_subject`.
 - **R2 community providers on a beta API.** Pin exact versions (at least two weeks old), review upgrades like code,
   run `plan` on a schedule to catch API changes early. Keep `claude_federation.py` working as the fallback.
-- **R3 the `org:admin` credential reachable from CI** (phase 4). Mitigations: the rule matches only the apply job of
-  one protected repository and environment; you approve each run; the token lives ten minutes; the platform
-  repository's `main` is protected (D1).
+- **R3 the `org:admin` credential reachable from CI** (phase 4). Both jobs on `main` hold it: the plan job (no
+  approval, but it only runs code already merged to the protected `main`) and the apply job (after your approval).
+  Mitigations: the rule matches only those two jobs of one protected repository (workflow on `main`, two named
+  environments limited to `main`); no pull request run matches it; the token lives ten minutes; the platform
+  repository's `main` is protected and needs a review (D1).
 - **R4 drift is reverted.** A setting changed in the GitHub UI or the Console is undone at the next apply. The team
   changes settings through pull requests from phase 3 on; a scheduled `plan` reports drift without applying.
 - **R5 ippontech duplicates on retried creates** (#378): applies stay supervised; check the Console after a failed
