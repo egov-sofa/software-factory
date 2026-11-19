@@ -10,7 +10,7 @@ repositories." Then: "write the Terraform plan up and start the one-day test."
 
 Today every repository is set up by hand or by a command a person runs: create the repository, its federation rules,
 its variables, its rulesets; and each organization's Actions settings are clicked in the UI. After this plan, all of it
-is **code in one platform repository**: a pull request shows the plan, a merge you approve applies it, and nothing
+is **code in one platform repository**: a pull request is reviewed with its plan, a merge you approve applies it, and nothing
 else is needed per repository. Two side effects matter as much as the automation: settings changed by hand become
 visible (drift), and every change is reviewed like code.
 
@@ -101,7 +101,7 @@ That evidence settles D2.
 
 ## Target architecture
 
-![How an approved change reaches GitHub and Anthropic: you read the plan of a pull request and approve the apply job on main; the job gets a GitHub App installation token to change the organizations and repositories, and exchanges its GitHub OIDC token at a Console-made org:admin federation rule for a 10-minute token to the Anthropic Admin API; state lives in a remote backend without secrets](../diagrams/terraform-platform.png)
+![How an approved change reaches GitHub and Anthropic: you review the pull request, whose job plans GitHub and validates the Anthropic code; after the merge the jobs on main plan both, wait for your approval and apply the saved plan; they get a GitHub App installation token to change the organizations and repositories, and exchanges its GitHub OIDC token at a Console-made org:admin federation rule for a 10-minute token to the Anthropic Admin API; state lives in a remote backend without secrets](../diagrams/terraform-platform.png)
 
 - **One platform repository** (D1), one Terraform root per concern: `github/` (one provider alias per organization)
   and `anthropic/`. A module `factory-repo` holds everything one repository needs: the repository settings, its
@@ -110,19 +110,29 @@ That evidence settles D2.
   last, the order `claude_federation.py --set-variables` already enforces.
 - **Per team:** a workspace with a spend limit and a service account. **Per organization:** Actions workflow
   permissions, organization variables, rulesets where the plan allows them.
-- **Credentials:** Anthropic through one `org:admin` federation rule, made once in the Console and pinned to the apply
-  job (subject of the platform repository's `production` environment, `job_workflow_ref` of the apply workflow);
+- **Credentials:** Anthropic through one `org:admin` federation rule, made once in the Console and matching only the
+  jobs on `main` (subject of the platform repository's `production` environment, whose deployment branch is `main`,
+  and `job_workflow_ref` of the platform workflow on `main`);
   GitHub through a GitHub App installed on each organization, whose private key is an environment secret: the one
   stored secret of the platform.
-- **Pull requests run `terraform plan`** with read-only credentials; **merges run `apply`** in an environment with you
-  as required reviewer.
+- **Where each plan runs.** Reading federation rules needs the `org:admin` token too (there is no read-only scope),
+  and that token must never be reachable from code a pull request controls. So:
+  - **pull requests** run `terraform plan` for `github/` only (a GitHub App token with read permissions) and
+    `terraform validate` for `anthropic/`, which needs no credential;
+  - **after a merge, on `main`,** a plan job (environment `production`) runs `terraform plan -out` for both roots and
+    shows the Anthropic plan in the job summary; nothing is changed;
+  - an **apply job** then waits for **your approval** (required reviewer on the environment) and applies exactly that
+    saved plan, so what you approved is what runs.
+  The Anthropic part of a change is therefore reviewed after the merge, before anything is applied; its code was
+  reviewed in the pull request.
 
 ### A new repository, once the platform exists
 
-![A new repository with the Terraform platform: /factory-new opens a platform pull request; platform CI runs terraform plan; you review and merge, then approve the run; terraform apply creates the repository, its rules and its variables; the review is running](../diagrams/terraform-new-repo.png)
+![A new repository with the Terraform platform: /factory-new opens a platform pull request; platform CI plans the GitHub side; you review and merge; CI plans both sides on main; you approve the saved plan; CI applies it and creates the repository, its rules and its variables; the review is running](../diagrams/terraform-new-repo.png)
 
 `/factory-new` stops running `gh repo create` and handing over a command: it adds one `module "<name>"` block to the
-platform repository in a pull request. You review the plan, merge, approve. No login, no command per repository.
+platform repository in a pull request. You review it, merge, and approve the saved plan. No login, no command per
+repository.
 
 ## Phases
 
@@ -133,7 +143,7 @@ Each phase is useful on its own and can stop there.
 | 1. Spike | this document's spike | GitHub: done. Anthropic: both providers import with `0 to change`; D2 decided | S, half done |
 | 2. Anthropic in code | the chosen provider manages the rules, service account (and workspaces, if the provider allows it keyless) of the three repositories, applied locally with your `ant` login | `plan` clean after import; one new rule created by Terraform works on a real pull request; `claude_federation.py` documented as the fallback | S |
 | 3. GitHub in code | org workflow permissions and variables of all six organizations, repository settings and variables of the factory repositories; the GitHub App | `plan` clean after import; the egov-sofa default token permission set to `read` through a reviewed change | M |
-| 4. CI apply | platform repository (D1), state backend (D3), the Console `org:admin` rule, the `production` environment | a merge applies after your approval with no local login; a pull request shows the plan | M |
+| 4. CI apply | platform repository (D1), state backend (D3), the Console `org:admin` rule, the `production` environment | a pull request shows the GitHub plan and validates the Anthropic code; after a merge the plan on `main` shows both, and the saved plan is applied only after your approval, with no local login; a test pull request that edits the workflow cannot get an `org:admin` token | M |
 | 5. `/factory-new` through the platform | the skill opens the platform pull request instead of running commands | a new repository from `/factory-new` gets its review working with no command and no login | S |
 
 ## Risks / out of scope

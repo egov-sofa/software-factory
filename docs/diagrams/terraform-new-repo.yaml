@@ -2,7 +2,7 @@
 # Regenerate: bash docs/diagrams/build.sh terraform-new-repo
 diagram:
   title: A new repository, with the Terraform platform
-  statement: No command and no login per repository; you review a plan and approve one run.
+  statement: No command and no login per repository; you review the pull request, then approve the saved plan that runs.
   notation: bpmn
   viewpoint: process
   status: draft
@@ -31,8 +31,9 @@ pages:
             layout: row
             align: middle
             items:
-              - {node: plan, kind: task, name: terraform plan, step: 3}
-              - {node: apply, kind: task, name: terraform apply, step: 6}
+              - {node: plan, kind: task, name: "Plan, GitHub only", step: 3}
+              - {node: mainplan, kind: task, name: Plan on main, step: 5}
+              - {node: apply, kind: task, name: Apply the saved plan, step: 7}
           - container: you
             kind: lane
             name: You
@@ -40,20 +41,21 @@ pages:
             align: middle
             items:
               - {node: review, kind: task, name: Review and merge, step: 4}
-              - {node: approve, kind: task, name: Approve the run, step: 5}
+              - {node: approve, kind: task, name: Approve the plan, step: 6}
           - container: result
             kind: lane
             name: GitHub and Anthropic
             layout: row
             align: middle
             items:
-              - {node: made, kind: task, name: "Repo, rules, variables", step: 7}
-              - {node: done, kind: end-event, name: Review running, step: 8}
+              - {node: made, kind: task, name: "Repo, rules, variables", step: 8}
+              - {node: done, kind: end-event, name: Review running, step: 9}
     edges:
       - {from: start, to: pr, kind: sequence}
       - {from: pr, to: plan, kind: sequence}
       - {from: plan, to: review, kind: sequence}
-      - {from: review, to: approve, kind: sequence}
+      - {from: review, to: mainplan, kind: sequence}
+      - {from: mainplan, to: approve, kind: sequence}
       - {from: approve, to: apply, kind: sequence}
       - {from: apply, to: made, kind: sequence}
       - {from: made, to: done, kind: sequence}
