@@ -89,6 +89,8 @@ class Findings(unittest.TestCase):
         secret = joined("AKIA", "ABCDEFGHIJKLMNOP")
         line = "�" * 80 + chr(0).join(secret) + chr(0)   # replacement characters: the non-Latin bytes
         self.assertIn("possible secret (AWS access key ID)", self.check(check_content.without_nul(line)))
+        big_endian = "�" * 80 + "".join(chr(0) + c for c in secret)
+        self.assertIn("possible secret (AWS access key ID)", self.check(check_content.without_nul(big_endian)))
 
     def test_nul_bytes_in_binary_do_not_make_up_findings(self):
         """Only runs of UTF-16 text are read without their NULs: stray NULs in binary content stay spaces."""

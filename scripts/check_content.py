@@ -117,7 +117,8 @@ def utf16_text(data):
     return None
 
 
-UTF16_RUN_RE = re.compile(r"(?:[\x20-\x7e]\x00){4,}")
+# little-endian (the letter, then its NUL) or big-endian (the NUL first)
+UTF16_RUN_RE = re.compile(r"(?:[\x20-\x7e]\x00){4,}|(?:\x00[\x20-\x7e]){4,}")
 
 
 def without_nul(line):
