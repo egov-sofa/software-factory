@@ -46,5 +46,24 @@ class ClaudeReview(unittest.TestCase):
         self.assertIn("persist-credentials: false", checkout)
 
 
+class PythonCI(unittest.TestCase):
+    """Existing @v1 callers keep pip; uv is chosen by the caller, never switched on by a file in the repository."""
+
+    def setUp(self):
+        self.text = (GITHUB / "workflows" / "reusable-python.yml").read_text(encoding="utf-8")
+
+    def test_pip_is_the_default(self):
+        lines = self.text.splitlines()
+        start = lines.index("      package-manager:")   # the input, under workflow_call.inputs
+        self.assertIn("        default: pip", lines[start + 1:start + 4])
+
+    def test_uv_is_not_chosen_by_the_lockfile_alone(self):
+        self.assertNotIn("if [ -f uv.lock ]; then echo \"uv=true\"", self.text)
+
+    def test_template_opts_in_to_uv(self):
+        template = GITHUB.parent / "templates" / "python" / ".github" / "workflows" / "ci.yml"
+        self.assertIn("package-manager: uv", template.read_text(encoding="utf-8"))
+
+
 if __name__ == "__main__":
     unittest.main()

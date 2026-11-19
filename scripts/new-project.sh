@@ -119,6 +119,24 @@ rm -f "$tmp"
 find "$TARGET" -name '*.sh' -exec chmod +x {} +
 chmod +x "$TARGET/scripts/check_content.py" "$TARGET/scripts/hooks/"*
 
+# ---- Lockfile --------------------------------------------------------------
+# Versions are pinned by a lockfile (standards/CODING-STANDARDS.md), and it is in the first commit, so CI installs
+# exactly what was resolved here. Without the tool, or offline, the project is still created: lock it later.
+lock() {   # lock <tool> <lockfile> <command...>
+  local tool="$1" file="$2"; shift 2
+  if ! command -v "$tool" >/dev/null; then
+    echo "⚠️  $tool not found: no $file yet. Install $tool, run '${*}' in the project and commit $file."
+  elif (cd "$TARGET" && "$@" >/dev/null 2>&1) && [[ -f "$TARGET/$file" ]]; then
+    echo "🔒 $file created"
+  else
+    echo "⚠️  '${*}' failed (offline?): no $file yet. Run it in the project and commit $file."
+  fi
+}
+case "$TEMPLATE" in
+  typescript) lock npm package-lock.json npm install --package-lock-only --no-audit --no-fund ;;
+  python)     lock uv uv.lock uv lock ;;
+esac
+
 # ---- Git -------------------------------------------------------------------
 if $INIT_GIT; then
   git -C "$TARGET" init -q -b main
@@ -149,8 +167,7 @@ echo "Next steps:"
 echo "  cd \"$TARGET\""
 case "$TEMPLATE" in
   typescript) echo "  npm install && npm test" ;;
-  python)     echo "  python -m venv .venv && source .venv/Scripts/activate   # macOS/Linux: .venv/bin/activate"
-              echo "  pip install -e \".[dev]\" && pytest" ;;
+  python)     echo "  uv sync && uv run pytest" ;;
   generic)    echo "  edit scripts/check.sh and CLAUDE.md for your language" ;;
 esac
 echo "  claude    # then: /factory-build <your first feature>"

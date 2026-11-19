@@ -1,6 +1,10 @@
-# Reusable CI for Python projects (pyproject.toml with a [dev] extra).
+# Reusable CI for Python projects.
 # Called from a project's ci.yml with:
 #   uses: <owner>/software-factory/.github/workflows/reusable-python.yml@v1
+#
+# package-manager: pip (the default, unchanged since v1.0.0: pyproject.toml with a [dev] extra), or uv (the python
+# template's choice): installed exactly as uv.lock pins, plus a type check (when pyproject.toml has [tool.mypy]), an
+# audit of the runtime dependencies and a build. A project opts in to uv, so no existing caller changes by itself.
 name: Reusable Python CI
 
 on:
@@ -14,6 +18,10 @@ on:
         description: Folder containing pyproject.toml
         type: string
         default: "."
+      package-manager:
+        description: "pip (default) or uv (needs a committed uv.lock)"
+        type: string
+        default: pip
 
 permissions:
   contents: read
@@ -26,24 +34,91 @@ jobs:
     defaults:
       run:
         working-directory: ${{ inputs.working-directory }}
+    env:
+      UV_PYTHON: ${{ inputs.python-version }}   # uv uses the Python set up below, not one it downloads
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Package manager
+        id: tool
+        env:
+          PACKAGE_MANAGER: ${{ inputs.package-manager }}
+        run: |
+          case "$PACKAGE_MANAGER" in
+            pip) ;;
+            uv)
+              if [ ! -f uv.lock ]; then
+                echo "::error::package-manager is uv but there is no uv.lock: run 'uv lock' and commit uv.lock"
+                exit 1
+              fi
+              echo "uv=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::package-manager must be pip or uv, not '$PACKAGE_MANAGER'"; exit 1 ;;
+          esac
 
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: ${{ inputs.python-version }}
-          cache: pip
+          cache: ${{ steps.tool.outputs.uv != 'true' && 'pip' || '' }}
 
+      # ---- uv: the project has a uv.lock ----
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        if: steps.tool.outputs.uv == 'true'
+        with:
+          version: "0.13.7"
+          working-directory: ${{ inputs.working-directory }}
+          enable-cache: true
+          cache-dependency-glob: ${{ inputs.working-directory }}/uv.lock
+
+      - name: Install dependencies (locked)
+        if: steps.tool.outputs.uv == 'true'
+        # --locked: fail if uv.lock does not match pyproject.toml, instead of quietly resolving new versions
+        run: uv sync --locked --all-extras
+
+      - name: Lint
+        if: steps.tool.outputs.uv == 'true'
+        run: uv run --no-sync ruff check .
+
+      - name: Format check
+        if: steps.tool.outputs.uv == 'true'
+        run: uv run --no-sync ruff format --check .
+
+      - name: Type check
+        if: steps.tool.outputs.uv == 'true'
+        run: |
+          if grep -q '^\[tool\.mypy\]' pyproject.toml; then uv run --no-sync mypy; else echo "no [tool.mypy]: skipped"; fi
+
+      - name: Test
+        if: steps.tool.outputs.uv == 'true'
+        run: uv run --no-sync pytest
+
+      - name: Audit runtime dependencies
+        if: steps.tool.outputs.uv == 'true'
+        # The locked runtime dependencies, optional extras included (what CI installs; no dev tools, as
+        # npm audit --omit=dev). The export already lists every
+        # transitive dependency pinned with ==, so pip-audit has nothing to resolve (--no-deps, --disable-pip).
+        run: |
+          uv export --locked --no-dev --all-extras --no-emit-project --format requirements-txt > "$RUNNER_TEMP/runtime.txt"
+          uvx pip-audit@2.10.1 --disable-pip --no-deps --requirement "$RUNNER_TEMP/runtime.txt"
+
+      - name: Build
+        if: steps.tool.outputs.uv == 'true'
+        run: uv build
+
+      # ---- pip: the default ----
       - name: Install dependencies
+        if: steps.tool.outputs.uv != 'true'
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
       - name: Lint
+        if: steps.tool.outputs.uv != 'true'
         run: ruff check .
 
       - name: Format check
+        if: steps.tool.outputs.uv != 'true'
         run: ruff format --check .
 
       - name: Test
+        if: steps.tool.outputs.uv != 'true'
         run: pytest

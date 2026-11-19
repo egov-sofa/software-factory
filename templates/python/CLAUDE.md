@@ -3,18 +3,21 @@
 Python project scaffolded by software-factory.
 
 ## Commands
-Activate the virtual environment first: `source .venv/Scripts/activate` (Windows Git Bash) or `source .venv/bin/activate` (macOS/Linux).
+Uses [uv](https://docs.astral.sh/uv/): it creates `.venv`, installs exactly what `uv.lock` pins, and `uv run` runs a
+command inside that environment (no activation needed).
 
 | Task | Command |
 |---|---|
-| Create venv | `python -m venv .venv` |
-| Install | `pip install -e ".[dev]"` |
-| Test | `pytest` |
-| Test + coverage | `pytest --cov={{PACKAGE_NAME}}` |
-| Lint | `ruff check .` |
-| Format | `ruff format .` (check only: `ruff format --check .`) |
+| Install | `uv sync` |
+| Test | `uv run pytest` |
+| Test + coverage | `uv run pytest --cov={{PACKAGE_NAME}}` |
+| Lint | `uv run ruff check .` |
+| Format | `uv run ruff format .` (check only: `uv run ruff format --check .`) |
+| Type check | `uv run mypy` |
+| Add a dependency | `uv add <package>` (dev-only tool: `uv add --dev <tool>`) |
 
-Run `ruff check . && ruff format --check . && pytest` before declaring any change done.
+Run `uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest` before declaring any
+change done.
 
 ## Structure
 - `src/{{PACKAGE_NAME}}/`: application code (import as `{{PACKAGE_NAME}}`).
@@ -26,4 +29,6 @@ Run `ruff check . && ruff format --check . && pytest` before declaring any chang
 - Raise specific exceptions (`ValueError`, custom ones), never a bare `Exception`.
 - Use `pathlib` for paths and `logging` instead of `print` in library code.
 - Config comes from environment variables (`os.environ`); document every variable in `.env.example`.
-- Add runtime dependencies to `[project].dependencies` in `pyproject.toml`; dev-only tools to `[project.optional-dependencies].dev`.
+- Add dependencies with `uv add` (runtime) or `uv add --dev` (dev-only tools), never by editing `pyproject.toml`
+  alone: uv updates `uv.lock` too, and CI installs with `--locked`, so a stale lockfile fails the build. Commit
+  `uv.lock` with the change.

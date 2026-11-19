@@ -75,7 +75,8 @@ jobs:
 ```
 
 That one line runs the full pipeline defined in the factory repo: checkout, install the runtime, install
-dependencies (cached), lint, build, test (and, for Node, an audit of production dependencies).
+dependencies (cached), lint, build, test, and an audit of production dependencies (Node always; Python with `package-manager: uv`, which
+also adds a type check and a build).
 
 The factory also has its own **self-test** workflow ([factory-selftest.yml](../.github/workflows/factory-selftest.yml)). On every change to the factory, it creates a project from each template and runs its tests. If you break a template, you find out immediately. It also checks the frontmatter of every agent and skill (`scripts/validate.py`) and runs the tests in `scripts/tests/`, which exercise `install.sh`, `uninstall.sh` and the options of `new-project.sh` in temporary folders.
 

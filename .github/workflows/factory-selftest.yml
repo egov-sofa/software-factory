@@ -52,6 +52,10 @@ jobs:
         with:
           python-version: "3.12"
 
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.7"
+
       - name: Configure git identity
         run: |
           git config --global user.name "factory-selftest"
@@ -74,11 +78,22 @@ jobs:
           test -x scripts/hooks/pre-commit && test -x scripts/hooks/commit-msg
           python3 scripts/check_content.py --all
 
+      - name: Lockfile is in the first commit
+        working-directory: ${{ runner.temp }}/selftest-app
+        run: |
+          case "${{ matrix.template }}" in
+            typescript) git ls-files --error-unmatch package-lock.json ;;
+            python)     git ls-files --error-unmatch uv.lock ;;
+            generic)    echo "no lockfile for the generic template" ;;
+          esac
+
+      # the same commands as the reusable CI, from the lockfile
       - name: Run project checks
         working-directory: ${{ runner.temp }}/selftest-app
         run: |
           case "${{ matrix.template }}" in
-            typescript) npm install && npm run lint && npm run build && npm test ;;
-            python)     pip install -e ".[dev]" && ruff check . && ruff format --check . && pytest ;;
+            typescript) npm ci && npm run lint && npm run build && npm test ;;
+            python)     uv sync --locked && uv run --no-sync ruff check . && uv run --no-sync ruff format --check . \
+                          && uv run --no-sync mypy && uv run --no-sync pytest && uv build ;;
             generic)    bash scripts/check.sh ;;
           esac

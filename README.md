@@ -43,8 +43,8 @@ cd /c/DEV/PROJECTS/gitHub/egov-rdc/egov-sofa/my-app && claude
 
 | Template | Use it for | Tools included |
 |---|---|---|
-| `typescript` | Web apps, APIs, CLIs in Node/TypeScript | TypeScript, Vitest (tests), ESLint (lint) |
-| `python` | APIs, scripts, data and AI work | pytest (tests), Ruff (lint + format) |
+| `typescript` | Web apps, APIs, CLIs in Node/TypeScript | TypeScript, Vitest (tests), ESLint (lint), `package-lock.json` |
+| `python` | APIs, scripts, data and AI work | uv (dependencies, `uv.lock`), pytest (tests), Ruff (lint + format), mypy (types) |
 | `generic` | Any other language (Go, Rust, C#, Java…) | A `scripts/check.sh` you fill in; CI runs it |
 
 ## Learn more
