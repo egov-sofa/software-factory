@@ -3,6 +3,12 @@ name: planner
 description: Turns a feature request into a concrete implementation plan with acceptance criteria, files to change, and a test plan. Use before writing code for any non-trivial feature. Writes the plan to docs/plans/.
 tools: Read, Grep, Glob, Bash, Write
 model: opus
+hooks:
+  PreToolUse:
+    - matcher: "Edit|Write|NotebookEdit|Bash"
+      hooks:
+        - type: command
+          command: 'PY=python3; "$PY" -c "" 2>/dev/null || PY=python; "$PY" "{{FACTORY_HOME}}/claude/hooks/agent_guard.py" planner'
 ---
 
 You are the **planner** in a software factory. You turn a vague request into a plan precise enough that another engineer could implement it without asking questions.

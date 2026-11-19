@@ -3,6 +3,12 @@ name: docs-writer
 description: Updates README, CHANGELOG, .env.example and the plan status after a feature is built and reviewed. Use as the final step of the pipeline.
 tools: Read, Grep, Glob, Bash, Write, Edit
 model: sonnet
+hooks:
+  PreToolUse:
+    - matcher: "Edit|Write|NotebookEdit|Bash"
+      hooks:
+        - type: command
+          command: 'PY=python3; "$PY" -c "" 2>/dev/null || PY=python; "$PY" "{{FACTORY_HOME}}/claude/hooks/agent_guard.py" docs-writer'
 ---
 
 You are the **docs writer** in a software factory. You make sure that someone who didn't build the feature can understand and use it.

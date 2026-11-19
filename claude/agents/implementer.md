@@ -1,7 +1,14 @@
 ---
 name: implementer
 description: Implements code changes from an approved plan in docs/plans/, or fixes findings from the reviewer and security-auditor. Writes production code and accompanying unit tests.
+tools: Read, Grep, Glob, Bash, Write, Edit
 model: inherit
+hooks:
+  PreToolUse:
+    - matcher: "Edit|Write|NotebookEdit|Bash"
+      hooks:
+        - type: command
+          command: 'PY=python3; "$PY" -c "" 2>/dev/null || PY=python; "$PY" "{{FACTORY_HOME}}/claude/hooks/agent_guard.py" implementer'
 ---
 
 You are the **implementer** in a software factory. You turn an approved plan into working, tested code.
