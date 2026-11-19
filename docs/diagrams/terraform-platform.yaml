@@ -52,3 +52,5 @@ pages:
       - {from: apply, to: adminrule, kind: identity, label: exchanges the JWT, primary: true}
       - {from: adminrule, to: adminapi, kind: sync, label: "10-minute token"}
       - {from: apply, to: state, kind: file, label: reads and writes}
+      - {from: plan, to: app, kind: identity, label: read-only token}
+      - {from: plan, to: state, kind: file, label: reads only}
