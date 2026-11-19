@@ -109,6 +109,19 @@ class Options(Base):
         self.assertEqual("scripts/hooks", support.git(project, "config", "core.hooksPath").strip())
         self.assertTrue(support.git(project, "ls-files", "-s", "scripts/hooks/pre-commit").startswith("100755 "))
 
+    def test_agents_md_holds_the_instructions_and_claude_md_imports_it(self):
+        """Every AI coding agent reads AGENTS.md; Claude Code reads it through CLAUDE.md."""
+        for template in TEMPLATES:
+            with self.subTest(template):
+                self.created(NAME, template, "--dir", posix(self.out / template), "--no-git")
+                project = self.out / template / NAME
+                agents = (project / "AGENTS.md").read_text(encoding="utf-8")
+                self.assertTrue(agents.startswith(f"# {NAME}\n"))
+                self.assertIn("## Commands", agents)
+                claude = (project / "CLAUDE.md").read_text(encoding="utf-8").splitlines()
+                self.assertIn("@AGENTS.md", claude)
+                self.assertNotIn("## Commands", claude)   # one source: the commands live in AGENTS.md only
+
     def test_failed_first_commit_removes_the_partial_project(self):
         """Commit signing that fails (a common local setup): the half-built folder must not block a second run."""
         env = {"GIT_CONFIG_PARAMETERS": "'commit.gpgsign=true' 'gpg.program=false'"}

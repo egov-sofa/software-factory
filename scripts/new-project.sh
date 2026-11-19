@@ -183,6 +183,6 @@ echo "  cd \"$TARGET\""
 case "$TEMPLATE" in
   typescript) echo "  npm install && npm test" ;;
   python)     echo "  uv sync && uv run pytest" ;;
-  generic)    echo "  edit scripts/check.sh and CLAUDE.md for your language" ;;
+  generic)    echo "  edit scripts/check.sh and AGENTS.md for your language" ;;
 esac
 echo "  claude    # then: /factory-build <your first feature>"

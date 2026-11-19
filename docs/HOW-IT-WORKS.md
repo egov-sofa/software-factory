@@ -105,9 +105,10 @@ The files in [`standards/`](../standards/) are written for **both humans and AI*
 
 - The global `~/.claude/CLAUDE.md` summarizes them, so Claude follows them in every session
 - The agents are told to read them, for example the reviewer checks against `DEFINITION-OF-DONE.md`
-- Each project's `CLAUDE.md` adds project-specific details (commands, folder layout)
+- Each project's `AGENTS.md` adds project-specific details (commands, folder layout). Claude Code reads it through
+  the project's `CLAUDE.md` (`@AGENTS.md`); GitHub Copilot, Codex and Cursor read it directly
 
 ![Where Claude's rules come from: standards, the global CLAUDE.md block, the project's CLAUDE.md which wins, and the agents that check against the standards](diagrams/rules-and-standards.png)
 
-The global block says how to work everywhere; a project's `CLAUDE.md` says how this project works, and wins where the
+The global block says how to work everywhere; a project's `AGENTS.md` says how this project works, and wins where the
 two conflict.
