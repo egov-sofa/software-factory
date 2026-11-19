@@ -51,6 +51,8 @@ GIT_READ_FORMS = {"tag": {"-l", "--list"}, "stash": {"list", "show"}, "reflog": 
                   "restore": None, "config": None}
 GIT_BRANCH_WRITES = {"-d", "-D", "-m", "-M", "-c", "-C", "-f", "--delete", "--move", "--copy", "--force",
                      "--set-upstream-to", "-u", "--unset-upstream", "--edit-description", "-t", "--track"}
+GIT_TAG_WRITES = {"-d", "--delete", "-a", "--annotate", "-s", "--sign", "-u", "--local-user", "-f", "--force", "-m",
+                  "--message", "-F", "--file", "-e", "--edit"}
 GIT_BRANCH_VALUE_OPTIONS = {"--contains", "--no-contains", "--merged", "--no-merged", "--points-at", "--sort",
                             "--format", "--color", "--column", "--abbrev"}
 GIT_CONFIG_READS = {"--get", "--get-all", "--get-regexp", "--get-urlmatch", "--list", "-l", "get", "list"}
@@ -72,6 +74,8 @@ GIT_TEXT_RE = re.compile(
     r"(?<![\w.-])git(?:\.exe)?"
     r"((?:\s+(?:-[Cc]\s+\S+|--(?:git-dir|work-tree|namespace|exec-path|config-env)(?:=\S+|\s+\S+)|-\S+))*)"
     r"\s+([\w][\w.-]*)([^;&|\n`)]*)")
+# git run by xargs gets its subcommand at run time (echo push | xargs git): refused wherever it appears
+XARGS_GIT_RE = re.compile(r"(?<![\w.-])xargs\b[^;&|\n]*?(?<![\w.-])git(?:\.exe)?(?![\w.-])")
 
 
 def deny(reason):
@@ -158,10 +162,12 @@ def segments(command):
 def git_write(tokens):
     """The git subcommand in tokens if it changes history or the branch, else None."""
     i = 0
+    via_xargs = False
     while i < len(tokens):
         if "=" in tokens[i] and not tokens[i].startswith("-"):
             i += 1   # VAR=value
         elif Path(tokens[i]).name in WRAPPERS:
+            via_xargs = via_xargs or Path(tokens[i]).name == "xargs"
             i += 1   # env, sudo, nice, ... and their options: env -i, nice -n 5, sudo -u me
             while i < len(tokens) and tokens[i].startswith("-"):
                 i += 2 if tokens[i] in WRAPPER_OPTIONS_WITH_VALUE else 1
@@ -182,6 +188,8 @@ def git_write(tokens):
         return None
     if name not in ("git", "git.exe"):
         return None
+    if via_xargs:
+        return "(arguments from xargs)"   # the subcommand arrives at run time: the guard cannot see what runs
     i += 1
     options = []
     while i < len(tokens):
@@ -212,8 +220,14 @@ def git_refusal(sub, args, options):
         return sub   # writes, or an alias or command the guard does not know
     forms = GIT_READ_FORMS[sub]
     if forms is not None:
+        if sub == "remote":
+            # git remote, git remote -v, git remote show|get-url ...: not -v followed by add, set-url, remove, ...
+            rest = [a for a in args if a not in ("-v", "--verbose")]
+            return None if not rest or rest[0] in ("show", "get-url") else f"remote {rest[0]}"
+        if sub == "tag" and any(a.split("=")[0] in GIT_TAG_WRITES for a in args):
+            return "tag " + next(a for a in args if a.split("=")[0] in GIT_TAG_WRITES)
         # with no arguments these list, except stash (git stash = git stash push)
-        return None if (not args and sub in ("tag", "reflog", "remote", "worktree")) or \
+        return None if (not args and sub in ("tag", "reflog", "worktree")) or \
             (args and args[0] in forms) else f"{sub} {args[0] if args else ''}".strip()
     if sub == "branch":
         names, k = [], 0
@@ -246,6 +260,8 @@ def git_write_in(command):
 
 def git_write_text(command):
     """A writing git command that appears anywhere in the command text, else None (the second layer)."""
+    if XARGS_GIT_RE.search(command):
+        return "(arguments from xargs)"
     for m in GIT_TEXT_RE.finditer(command):
         found = git_refusal(m.group(2), m.group(3).split(), m.group(1).split())
         if found:

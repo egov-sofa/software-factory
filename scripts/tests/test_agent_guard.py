@@ -116,7 +116,11 @@ class Git(Base):
                         "git -c alias.x=push x", "git config alias.p push", "git p", "git co main",
                         "git notes add -m x", "git reflog expire --all", "git branch new-feature", "git stash",
                         "git -c core.pager=less log", "git -c core.fsmonitor=./evil.sh status",
-                        "git config user.email x@example.org"):
+                        "git config user.email x@example.org",
+                        # xargs gives git its subcommand at run time; a read form must not hide a write after it
+                        "echo push | xargs git", "printf 'push' | xargs -n1 git", "git remote -v add up https://x",
+                        "git remote -v set-url origin https://x", "git remote add up https://x",
+                        "git tag -l -d v1", "git tag -a v2 -m x"):
             with self.subTest(command):
                 self.assertIsNotNone(self.bash("tester", command))
 
@@ -133,7 +137,9 @@ class Git(Base):
                         "gitk --all", "mygit push", "git config --get user.name", "git config --list",
                         "git remote -v", "git remote", "git reflog", "git branch --contains HEAD",
                         "git branch --merged main", "git tag", "git -c core.pager=cat log", "git notes list",
-                        "git worktree list", "git grep -n TODO", "git rev-parse --show-toplevel"):
+                        "git worktree list", "git grep -n TODO", "git rev-parse --show-toplevel",
+                        "git remote show origin", "git remote get-url origin", "git remote --verbose",
+                        "ls | xargs wc -l"):
             with self.subTest(command):
                 self.assertIsNone(self.bash("tester", command))
 
