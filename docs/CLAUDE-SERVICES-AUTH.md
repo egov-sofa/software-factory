@@ -126,7 +126,7 @@ One person with the Anthropic **`org:admin`** role and **admin access to the Git
 you to it: Claude prepares and previews, you run the command. Claude never runs it itself, because it uses your
 admin login.
 
-![Setting a repository up for the Claude review, as a process: Claude Code previews the rules and hands over one command; the organization admin logs in with org:admin and runs it; claude_federation.py creates or reuses the rules, sets the ID variables, turns the review on last and checks for an API key secret, which the admin deletes if there is one; the next pull request is reviewed](diagrams/claude-services-setup.png)
+![Setting a repository up for the Claude review, as a process: Claude Code previews the rules and hands over one command; the organization admin logs in with org:admin and runs it; claude_federation.py creates or reuses the rules and checks for an API key secret; if there is one it sets nothing, and the admin deletes it and runs the command again; otherwise it sets the ID variables and turns the review on last; the next pull request is reviewed](diagrams/claude-services-setup.png)
 
 ![Setting a repository up, in one command: Claude Code previews and hands over the command; the organization admin runs claude_federation.py with --apply --set-variables, which creates the rules through the Admin API and sets the repository variables with gh, review switch last; the Claude Console remains the way to do it by hand](diagrams/claude-services-auth-3.png)
 
