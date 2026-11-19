@@ -1,7 +1,8 @@
 ---
 name: factory-build
-description: Run the full software-factory pipeline for a feature - plan, user approval, implement, test, parallel code and security review, fix loop, docs. Use when the user wants to build a feature end to end.
+description: Run the full software-factory pipeline for a feature - plan, user approval, implement, test, parallel code and security review, fix loop, docs. Started by typing /factory-build <feature>.
 argument-hint: "[--auto] <feature description>"
+disable-model-invocation: true
 ---
 
 # Factory Build Pipeline
@@ -26,11 +27,15 @@ Show the user the plan summary and the plan file path. Ask them to **approve**, 
 - Changes → send their feedback to the `planner` agent to revise the same file, then ask again.
 - Cancel → stop and leave the branch for them.
 Explain briefly: "Approving the plan is the cheapest point to catch a misunderstanding; fixing it after the code is written costs much more."
+Once approved (with `--auto`, straight away), commit the plan on its own: `git add -- <plan path> && git commit -m "docs: plan for <title>"`. Any later change to the approved plan then shows up in the diff.
 
 ## Stage 3: Implement 🔨
-Launch the `implementer` agent with the plan path. When it reports back, commit:
-`git add -A && git commit -m "feat: <summary>"` (use the right Conventional Commit type).
-Committing between stages gives a checkpoint to return to if a later stage goes wrong.
+Launch the `implementer` agent with the plan path. When it reports back, **check the report before committing**:
+- If it says it stopped (the plan was wrong or impossible), or any line under **Commands run** failed, do not commit. Show the user the report and offer: send it back to the `planner` to revise the plan (then Stage 2 again), let the implementer try again, or stop.
+- Otherwise stage only the files under **Files changed**: `git add -- <file> <file> …`. Then run `git status --porcelain`; if anything else changed, show it to the user and ask whether it belongs in the commit.
+- Commit: `git commit -m "feat: <summary>"` (use the right Conventional Commit type).
+
+Committing between stages gives a checkpoint to return to if a later stage goes wrong; checking the report first keeps a half-done change out of that checkpoint.
 
 ## Stage 4: Test 🧪
 Launch the `tester` agent with the plan path. If it added tests, commit them (`test: …`).
@@ -43,7 +48,10 @@ Combine their findings into one list. Blocking = reviewer BLOCKER/MAJOR + securi
 ## Stage 6: Fix loop 🔁 (max 2 rounds)
 If there are blocking findings:
 1. Send the blocking findings to the `implementer` agent.
-2. Commit (`fix: address review findings`).
+2. Stage the files under **Files changed** (as in Stage 3) and commit (`fix: address review findings`), even when a
+   command under **Commands run** still fails: the tester and reviewers see that failure in step 3 as a blocker, and
+   it counts toward the 2 rounds. Stop and ask the user only if the implementer reports that it stopped or cannot
+   fix a finding.
 3. Re-run the `tester` agent, then the reviewers in parallel again.
 After 2 rounds, if blockers remain, **stop** and present them to the user with your recommendation. Never loop forever.
 List MINOR/LOW findings in the summary without fixing them automatically.
