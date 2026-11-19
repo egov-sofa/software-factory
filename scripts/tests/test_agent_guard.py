@@ -82,6 +82,15 @@ class Paths(Base):
     def test_temp_folder_is_allowed(self):
         self.assertIsNone(self.edit("tester", Path(tempfile.gettempdir()) / "scratch.py"))
 
+    def test_project_inside_the_temp_folder_keeps_its_limits(self):
+        """The temp exception is for scratch files outside the project, not for a project that lives in temp."""
+        with tempfile.TemporaryDirectory() as tmp:   # under the system temp folder
+            project = Path(tmp) / "project"
+            (project / "src").mkdir(parents=True)
+            support.git(project, "init", "-q")
+            self.assertIn("src/app.py is not one", decide("tester", "Edit", {"file_path": "src/app.py"}, project))
+            self.assertIsNone(decide("tester", "Edit", {"file_path": "tests/test_app.py"}, project))
+
     @unittest.skipIf(os.name == "nt", "symlinks need extra rights on Windows")
     def test_symlink_into_production_code_is_followed(self):
         (self.root / "tests").mkdir()

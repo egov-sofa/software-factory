@@ -131,10 +131,11 @@ def check_path(agent, file_path, cwd):
     if allowed is None:
         return None
     full = os.path.realpath(os.path.join(cwd, file_path))   # resolves .., symlinks; keeps an absolute path as is
-    if inside(full, os.path.realpath(tempfile.gettempdir())):
-        return None
     root = os.path.realpath(project_root(cwd))
     if not inside(full, root):
+        # the temp folder is allowed for scratch files, but only outside the project: a project can live in it
+        if inside(full, os.path.realpath(tempfile.gettempdir())):
+            return None
         return f"{agent} may only edit {WHAT[agent]} inside the project; {file_path} is outside it."
     rel = Path(os.path.relpath(full, root)).as_posix()
     if any(matches(rel, p) for p in allowed):
