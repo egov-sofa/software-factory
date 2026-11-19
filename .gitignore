@@ -7,3 +7,6 @@ __pycache__/
 
 # Diagram SVG exports: the .drawio is the source, the PNG is what the docs embed (docs/diagrams/README.md)
 docs/diagrams/*.svg
+
+# Personal Claude Code settings (permissions on this machine only)
+.claude/settings.local.json

@@ -109,6 +109,23 @@ class Options(Base):
         self.assertEqual("scripts/hooks", support.git(project, "config", "core.hooksPath").strip())
         self.assertTrue(support.git(project, "ls-files", "-s", "scripts/hooks/pre-commit").startswith("100755 "))
 
+    def test_failed_first_commit_removes_the_partial_project(self):
+        """Commit signing that fails (a common local setup): the half-built folder must not block a second run."""
+        env = {"GIT_CONFIG_PARAMETERS": "'commit.gpgsign=true' 'gpg.program=false'"}
+        result = self.new_project(NAME, "generic", "--dir", posix(self.out), env=env)
+        self.assertNotEqual(0, result.returncode, result.stdout)
+        self.assertIn("removed the partial", result.stderr)
+        self.assertFalse((self.out / NAME).exists())
+        self.created(NAME, "generic", "--dir", posix(self.out))   # the retry works
+
+    def test_generic_check_script_does_not_claim_checks_passed(self):
+        check = self.home / "templates" / "generic" / "scripts" / "check.sh"
+        result = run(check)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertNotIn("All checks passed", result.stdout)
+        self.assertIn("No checks configured yet", result.stdout)
+        self.assertIn("::warning::", run(check, env={"GITHUB_ACTIONS": "true"}).stdout)
+
     def test_rejected_arguments(self):
         out = posix(self.out)
         cases = {

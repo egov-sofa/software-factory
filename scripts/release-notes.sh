@@ -5,12 +5,13 @@
 #
 # Usage: bash scripts/release-notes.sh <tag> [<previous-tag>]
 #   <tag>           the release being made, e.g. v1.1.0 (it does not have to exist yet; HEAD is used then)
-#   <previous-tag>  default: the latest vX.Y.Z tag before <tag>
+#   <previous-tag>  default: the latest vX.Y.Z tag before <tag>, pre-releases (v1.2.0-rc.1) left out: the notes of
+#                   v1.2.0 list everything since v1.1.0
 set -euo pipefail
 
 TAG="${1:?usage: release-notes.sh <tag> [<previous-tag>]}"
 if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then TO="$TAG"; else TO="HEAD"; fi
-PREV="${2:-$(git describe --tags --abbrev=0 --match 'v[0-9]*.[0-9]*.[0-9]*' "$TO^" 2>/dev/null || true)}"
+PREV="${2:-$(git describe --tags --abbrev=0 --match 'v[0-9]*.[0-9]*.[0-9]*' --exclude '*-*' "$TO^" 2>/dev/null || true)}"
 RANGE="${PREV:+$PREV..}$TO"
 
 # One line per commit: <sha> <subject>, plus a marker when its body has a breaking-change footer.

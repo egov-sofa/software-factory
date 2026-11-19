@@ -123,6 +123,12 @@ class Install(Base):
         self.assertEqual(original, agent.read_bytes())
         self.assertIn("edited by hand\n", self.backups("agents/reviewer.md"))
 
+    def test_unknown_option_is_refused_before_anything_is_installed(self):
+        result = self.install("--dryrun")   # a typo of --dry-run
+        self.assertEqual(2, result.returncode, result.stdout)
+        self.assertIn("Unknown option: --dryrun", result.stderr)
+        self.assertFalse(self.dir.exists())
+
     def test_dry_run_writes_nothing(self):
         result = self.install("--dry-run")
         self.assertEqual(0, result.returncode, result.stderr)
