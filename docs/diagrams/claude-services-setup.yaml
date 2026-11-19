@@ -2,7 +2,7 @@
 # Regenerate: bash docs/diagrams/build.sh claude-services-setup
 diagram:
   title: Setting a repository up for the Claude review
-  statement: Claude Code prepares and previews; a person with the org:admin login runs one command; the script turns the review on only once everything else is in place.
+  statement: Claude Code prepares and previews; a person with the org:admin login runs one command; the script turns the review on last, and never while a stored key would win over federation.
   notation: bpmn
   viewpoint: process
   status: approved
@@ -34,7 +34,7 @@ pages:
             items:
               - {node: login, kind: task, name: "Log in, org:admin", step: 4}
               - {node: run, kind: task, name: "Run it with !", step: 5}
-              - {node: delete, kind: task, name: Delete the secret, step: 10}
+              - {node: delete, kind: task, name: Delete the secret, step: 8}
           - container: script
             kind: lane
             name: claude_federation.py
@@ -42,9 +42,9 @@ pages:
             align: middle
             items:
               - {node: rules, kind: task, name: Create or reuse rules, step: 6}
-              - {node: ids, kind: task, name: Set the ID variables, step: 7}
-              - {node: enable, kind: task, name: Turn the review on, step: 8}
-              - {node: secret, kind: gateway, name: "API key secret?", step: 9}
+              - {node: secret, kind: gateway, name: "API key secret?", step: 7}
+              - {node: ids, kind: task, name: Set the ID variables, step: 9}
+              - {node: enable, kind: task, name: Turn the review on, step: 10}
           - container: github
             kind: lane
             name: GitHub
@@ -59,10 +59,10 @@ pages:
       - {from: handover, to: login, kind: sequence}
       - {from: login, to: run, kind: sequence}
       - {from: run, to: rules, kind: sequence}
-      - {from: rules, to: ids, kind: sequence}
+      - {from: rules, to: secret, kind: sequence}
+      - {from: secret, to: ids, kind: sequence, label: "no"}
+      - {from: secret, to: delete, kind: sequence, label: "yes: review stays off"}
+      - {from: delete, to: run, kind: sequence, label: run again}
       - {from: ids, to: enable, kind: sequence}
-      - {from: enable, to: secret, kind: sequence}
-      - {from: secret, to: review, kind: sequence, label: "no"}
-      - {from: secret, to: delete, kind: sequence, label: "yes, warns"}
-      - {from: delete, to: review, kind: sequence}
+      - {from: enable, to: review, kind: sequence}
       - {from: review, to: done, kind: sequence}

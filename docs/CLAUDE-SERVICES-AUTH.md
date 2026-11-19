@@ -163,11 +163,12 @@ admin login.
    1. reads the repository's OIDC subject prefix and the owner's numeric ID with `gh`;
    2. creates the review rule and the mention rule on the existing GitHub issuer, or reuses rules that already
       exist under the same names (it never deletes anything, so running it twice is safe);
-   3. sets the variables with `gh variable set`: the rule IDs, the organization, the service account, the workspace,
+   3. checks that the repository has no `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` secret: either would win
+      over federation, and every review would fail with `401`;
+   4. sets the variables with `gh variable set`: the rule IDs, the organization, the service account, the workspace,
       and **`CLAUDE_REVIEW_ENABLED` last**. If one fails, it stops there, so the review is never turned on without
-      the IDs it needs;
-   4. warns if the repository has an `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` secret, which would win over
-      federation. Delete it: `gh secret delete NAME --repo OWNER/NAME`.
+      the IDs it needs. If step 3 found such a secret, it sets the IDs but leaves the review off and stops with an
+      error: delete the secret (`gh secret delete NAME --repo OWNER/NAME`) and run the same command again.
 5. **Check it works:** the next pull request gets the Claude review. The rule's authentication history in the Console
    shows each token exchange, and the reason for a refused one ([Troubleshooting](#troubleshooting)).
 
@@ -314,7 +315,7 @@ To turn the Claude review off instead, set `CLAUDE_REVIEW_ENABLED` to anything b
 | `401 Invalid bearer token` while federation is set up | A secret `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` exists and wins | Delete the secret |
 | `Credit balance is too low` | No API credit in the organization | Console, Billing |
 | The script stops with `gh could not set ... needs admin access` | `--set-variables` runs `gh variable set`, which needs admin access to the repository | Run it as a repository admin; it reuses the rules it already created, and nothing after the failed variable was set, `CLAUDE_REVIEW_ENABLED` included |
-| The script warns that the repository has an `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` secret | An older setup with a stored key; the secret wins over federation | `gh secret delete NAME --repo OWNER/NAME` |
+| The script stops with `has the secret(s) ... the review is not turned on` | An older setup with a stored key; the secret would win over federation, so the script set the IDs but left the review off | `gh secret delete NAME --repo OWNER/NAME`, then run the same command again (it reuses the rules) |
 | `--service-account must be a service account ID ... or set FACTORY_CLAUDE_SERVICE_ACCOUNT` | Neither the option nor the environment variable is set | Pass the option, or export the variable (see [Once per machine](#once-per-machine)) |
 | No review and no message | Claude's messages are hidden by default | Set `CLAUDE_REVIEW_DEBUG` to `true`, rerun, read the log, then delete the variable |
 | The mention job is skipped | `ANTHROPIC_MENTION_FEDERATION_RULE_ID` is not set | Create the mention rule and set the variable |

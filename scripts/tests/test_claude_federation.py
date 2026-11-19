@@ -4,6 +4,7 @@
 Run: python3 -m unittest discover -s scripts/tests
 """
 import contextlib
+import functools
 import io
 import json
 import os
@@ -125,7 +126,8 @@ class Variables(unittest.TestCase):
         run, calls = self.gh()
         with mock.patch.object(fed.shutil, "which", return_value="/usr/bin/gh"), \
                 contextlib.redirect_stdout(io.StringIO()):
-            self.assertEqual([], fed.set_variables("o/r", self.VALUES, run=run))
+            fed.set_variables("o/r", self.VALUES, run=run)
+        self.assertEqual(["secret", "list"], calls[0][1:3])   # checked before anything is set
         sets = [c for c in calls if c[1:3] == ["variable", "set"]]
         self.assertEqual([n for n, _ in self.VALUES], [c[3] for c in sets])
         self.assertEqual(["gh", "variable", "set", "ANTHROPIC_FEDERATION_RULE_ID", "--repo", "o/r", "--body", "fdrl_1"],
@@ -138,24 +140,39 @@ class Variables(unittest.TestCase):
             fed.set_variables("o/r", self.VALUES, run=run)
         self.assertNotIn("CLAUDE_REVIEW_ENABLED", [c[3] for c in calls if c[1:3] == ["variable", "set"]])
 
-    def test_secrets_that_override_federation_are_reported(self):
-        run, _ = self.gh(secrets="CONTENT_DENYLIST\nANTHROPIC_API_KEY\n")
+    def test_an_overriding_secret_keeps_the_review_off(self):
+        run, calls = self.gh(secrets="CONTENT_DENYLIST\nANTHROPIC_API_KEY\n")
         with mock.patch.object(fed.shutil, "which", return_value="/usr/bin/gh"), \
-                contextlib.redirect_stdout(io.StringIO()):
-            self.assertEqual(["ANTHROPIC_API_KEY"], fed.set_variables("o/r", self.VALUES, run=run))
+                contextlib.redirect_stdout(io.StringIO()), \
+                self.assertRaisesRegex(fed.SetupError, "ANTHROPIC_API_KEY.*not turned on"):
+            fed.set_variables("o/r", self.VALUES, run=run)
+        sets = [c[3] for c in calls if c[1:3] == ["variable", "set"]]
+        self.assertEqual(["ANTHROPIC_FEDERATION_RULE_ID", "ANTHROPIC_ORGANIZATION_ID"], sets)   # IDs set, switch not
+
+    def test_the_main_command_fails_when_a_secret_keeps_the_review_off(self):
+        run, _ = self.gh(secrets="CLAUDE_CODE_OAUTH_TOKEN\n")
+        err = io.StringIO()
+        with mock.patch.object(fed, "make_client", return_value=FakeAdmin(issuers=[GH_ISSUER])), \
+                mock.patch.object(fed.shutil, "which", return_value="/usr/bin/gh"), \
+                mock.patch.object(fed, "set_variables", functools.partial(fed.set_variables, run=run)), \
+                contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+            self.assertEqual(1, fed.main(ARGS + ["--sub-prefix", PREFIX, "--owner-id", OWNER_ID, "--apply",
+                                                 "--set-variables"]))
+        self.assertIn("gh secret delete", err.getvalue())
 
     def test_unreadable_secrets_are_a_note_not_an_error(self):
-        run, _ = self.gh(secret_list_fails=True)
+        run, calls = self.gh(secret_list_fails=True)
         err = io.StringIO()
         with mock.patch.object(fed.shutil, "which", return_value="/usr/bin/gh"), \
                 contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
-            self.assertEqual([], fed.set_variables("o/r", self.VALUES, run=run))
+            fed.set_variables("o/r", self.VALUES, run=run)
         self.assertIn("check by hand", err.getvalue())
+        self.assertIn("CLAUDE_REVIEW_ENABLED", [c[3] for c in calls if c[1:3] == ["variable", "set"]])
 
     def test_apply_with_set_variables_sets_them_instead_of_printing(self):
         out = io.StringIO()
         with mock.patch.object(fed, "make_client", return_value=FakeAdmin(issuers=[GH_ISSUER])), \
-                mock.patch.object(fed, "set_variables", return_value=[]) as setter, \
+                mock.patch.object(fed, "set_variables", return_value=None) as setter, \
                 contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
             self.assertEqual(0, fed.main(ARGS + ["--sub-prefix", PREFIX, "--owner-id", OWNER_ID, "--apply",
                                                  "--set-variables"]))
