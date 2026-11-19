@@ -189,6 +189,20 @@ class Variables(unittest.TestCase):
                 org_list = next(c for c in calls if c[1] == "api" and not c[2].startswith("users/"))
                 self.assertIn("--paginate", org_list)   # more than 30 organization secrets need several pages
 
+    def test_the_advice_never_deletes_an_organization_secret(self):
+        # other repositories may still review with the organization's key: take this one out of its access instead
+        for kw, says, never in (({"secrets": "ANTHROPIC_API_KEY\n"}, "gh secret delete ANTHROPIC_API_KEY --repo o/r",
+                                 "Repository access"),
+                                ({"org_secrets": "ANTHROPIC_API_KEY\n"}, "Repository access", "gh secret delete")):
+            with self.subTest(**kw):
+                run, _ = self.gh(**kw)
+                with mock.patch.object(fed.shutil, "which", return_value="/usr/bin/gh"), \
+                        contextlib.redirect_stdout(io.StringIO()), self.assertRaises(fed.SetupError) as ex:
+                    fed.set_variables("o/r", self.VALUES, run=run)
+                self.assertIn(says, str(ex.exception))
+                self.assertNotIn(never, str(ex.exception))
+                self.assertNotIn("--org", str(ex.exception))
+
     def test_a_user_account_has_no_organization_secrets(self):
         run, calls = self.gh(owner_type="User")
         with mock.patch.object(fed.shutil, "which", return_value="/usr/bin/gh"), \

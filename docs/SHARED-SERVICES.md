@@ -104,7 +104,7 @@ The Claude review costs API credit on every push, so it is **off until you turn 
 4. `@claude` mentions use the mention rule (`--mention`), with its ID in `ANTHROPIC_MENTION_FEDERATION_RULE_ID`.
    Until it is set, mentions are ignored.
 
-Turning on step 3 without step 2 makes every review fail with "Environment variable validation failed", as it did on
+Turning on `CLAUDE_REVIEW_ENABLED` before the rules and the other variables exist makes every review fail with "Environment variable validation failed", as it did on
 egov-sofa/software-factory#6.
 
 Each project edits **its own** checklist in `.claude/skills/pr-review/SKILL.md`. The review always reads it from the

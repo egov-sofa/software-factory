@@ -199,9 +199,10 @@ OVERRIDING_SECRETS = ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN")
 
 
 def overriding_secrets(repo, run=None):
-    """(found, unread): the secrets visible to the repository's workflows that would win over federation (its own, and
-    its organization's), and the lists that could not be read. A user account has no organization secrets; that is
-    read from the owner's type, never guessed from a 404, which GitHub also answers for missing permissions."""
+    """(found, unread): the secrets visible to the repository's workflows that would win over federation, as
+    (name, "repository" or "organization") pairs, and the lists that could not be read. A user account has no
+    organization secrets; that is read from the owner's type, never guessed from a 404, which GitHub also answers for
+    missing permissions."""
     run = run or subprocess.run   # looked up at call time, so a test that replaces subprocess reaches it
     sources = [("repository", ["gh", "secret", "list", "--repo", repo, "--json", "name", "--jq", ".[].name"])]
     owner = repo.split("/")[0]
@@ -210,14 +211,30 @@ def overriding_secrets(repo, run=None):
         # --paginate: the API returns 30 secrets per page, and a key on a later page must not slip through
         sources.append(("organization", ["gh", "api", "--paginate", f"repos/{repo}/actions/organization-secrets",
                                          "--jq", ".secrets[].name"]))
-    present, unread = set(), []
+    found, unread = [], []
     for where, cmd in sources:
         done = run(cmd, capture_output=True, text=True, check=False)
         if done.returncode != 0:
             unread.append(where)
             continue
-        present |= set((done.stdout or "").split())
-    return [s for s in OVERRIDING_SECRETS if s in present], unread
+        present = set((done.stdout or "").split())
+        found += [(s, where) for s in OVERRIDING_SECRETS if s in present]
+    return found, unread
+
+
+def remedy(repo, found):
+    """How to remove each secret from the repository's reach. An organization secret is never deleted: other
+    repositories may still review with it; this repository is taken out of its access instead."""
+    owner = repo.split("/")[0]
+    steps = []
+    for name, where in found:
+        if where == "repository":
+            steps.append(f"delete the repository secret: gh secret delete {name} --repo {repo}")
+        else:
+            steps.append(f"take {repo} out of the organization secret {name}'s access, without deleting it (other "
+                         f"repositories may use it): {owner}'s organization settings, Secrets and variables, Actions, "
+                         f"{name}, Repository access (Selected repositories)")
+    return "; ".join(steps)
 
 
 def set_variables(repo, values, run=None, secrets_checked=False):
@@ -235,11 +252,11 @@ def set_variables(repo, values, run=None, secrets_checked=False):
                          "Nothing was set. Check by hand (repository and organization settings, Secrets and variables, "
                          "Actions), then run the same command again with --secrets-checked")
     if blocking:
-        raise SetupError(f"{repo} can use the secret(s) {', '.join(blocking)} (its own or its organization's), which "
-                         "win over federation; with the federation variables also set, every review would fail with "
-                         "401. Nothing was set, so the review works as before. Delete the secret (gh secret delete "
-                         f"NAME --repo {repo}, or --org for an organization secret), then run the same command again; "
-                         "it reuses the rules")
+        names = ", ".join(f"{name} ({where})" for name, where in blocking)
+        raise SetupError(f"{repo} can use the secret(s) {names}, which win over federation; with the federation "
+                         "variables also set, every review would fail with 401. Nothing was set, so the review works "
+                         f"as before. To switch to federation, {remedy(repo, blocking)}. Then run the same command "
+                         "again; it reuses the rules")
     for name, value in values:
         # list arguments, no shell: the values never pass through a command line parser
         done = run(["gh", "variable", "set", name, "--repo", repo, "--body", value],
