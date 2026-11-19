@@ -248,7 +248,9 @@ class Local:
 
     def last_change(self, pattern):
         spec = pattern if not any(c in pattern for c in "*?[") else f":(glob){pattern}"
-        out = self.git("log", "-1", "--format=%ct %h", "--", spec).strip()
+        # --first-parent: the date a change reached this branch, so a merged pull request dates the document and
+        # its sources at the same merge commit, not at the branch's own (earlier) commits
+        out = self.git("log", "-1", "--first-parent", "--format=%ct %h", "--", spec).strip()
         if not out:
             return None
         when, sha = out.split()

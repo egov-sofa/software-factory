@@ -154,6 +154,15 @@ class ScanLocal(unittest.TestCase):
         self.assertEqual(result["state"], "drift")
         self.assertEqual([n["source"] for n in result["newer"]], ["src/**/*.py"])
 
+    def test_a_pr_merged_with_a_merge_commit_that_updated_its_document_is_ok(self):
+        # the branch updates the document first and the source after it; the main line sees both at the merge
+        self.repo.git("checkout", "-q", "-b", "feature")
+        self.repo.commit({"docs/sad.md": "doc 2"}, T0 + 2 * DAY)
+        self.repo.commit({"src/app/main.py": "2"}, T0 + 3 * DAY)
+        self.repo.git("checkout", "-q", "main")
+        self.repo.git("merge", "-q", "--no-ff", "-m", "merge", "feature", when=T0 + 4 * DAY)
+        self.assertEqual(self.state(now=T0 + 5 * DAY)["state"], "ok")
+
     def test_untouched_for_too_long_is_overdue(self):
         self.assertEqual(self.state(now=T0 + 40 * DAY)["state"], "overdue")
 
