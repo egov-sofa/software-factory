@@ -44,6 +44,10 @@ matter most are also enforced:
 - The planner, tester, docs-writer and implementer carry a hook ([agent_guard.py](../claude/hooks/agent_guard.py))
   that refuses an edit outside their paths (none for the implementer) and any git command that is not a known read
   (`status`, `diff`, `log`, …): the conductor does all git work. The refusal tells the agent why, so it can report instead.
+- The git check reads the command as written. It catches git typed directly, also behind wrappers, `bash -c`,
+  `eval`, backticks and aliases, but not git whose name is assembled at run time (`G=git; $G push`) or started by
+  another program (a Python script calling git). It stops mistakes and casual prompt injection; it is not a
+  security boundary.
 - Still only asked: what an agent does with Bash beyond git (a script could write a file), and everything in the
   main conversation. The `protect-main` ruleset on GitHub remains the boundary for `main`.
 
