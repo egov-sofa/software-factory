@@ -56,7 +56,8 @@ PASCAL_SUFFIX_RE = re.compile(r"[A-Z][a-z]+")
 PASCAL_ID_RE = re.compile(r"[A-Z][A-Za-z]*[a-z][A-Za-z]*")
 
 
-# High-confidence formats only: each one has a fixed prefix, so ordinary code and prose do not match.
+# High-confidence formats only: a fixed prefix, or (AWS secret key, password in a URL) a fixed context next to the
+# value, so ordinary code and prose do not match.
 SECRET_RULES = [
     ("private key", re.compile(r"-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----")),
     ("AWS access key ID", re.compile(r"(?<![A-Z0-9])(?:AKIA|ASIA)[0-9A-Z]{16}(?![A-Z0-9])")),
@@ -65,7 +66,62 @@ SECRET_RULES = [
     ("Slack token", re.compile(r"(?<!\w)xox[abprs]-[A-Za-z0-9-]{10,}")),
     ("Google API key", re.compile(r"(?<!\w)AIza[0-9A-Za-z_-]{35}(?![\w-])")),
     ("Stripe live key", re.compile(r"(?<!\w)[rs]k_live_[0-9A-Za-z]{20,}")),
+    ("OpenAI API key", re.compile(r"(?<!\w)(?:sk-(?:proj|svcacct|admin)-[A-Za-z0-9_-]{20,}"
+                                  r"|sk-[A-Za-z0-9]{20}T3BlbkFJ[A-Za-z0-9]{20})")),
+    ("GitLab token", re.compile(r"(?<!\w)gl(?:pat|dt|ptt|rt)-[A-Za-z0-9_-]{20,}")),
+    ("npm token", re.compile(r"(?<!\w)npm_[A-Za-z0-9]{36}(?!\w)")),
+    ("PyPI token", re.compile(r"(?<!\w)pypi-AgEIcHlwaS5vcmc[A-Za-z0-9_-]{50,}")),
+    ("Google OAuth client secret", re.compile(r"(?<!\w)GOCSPX-[A-Za-z0-9_-]{28}(?![\w-])")),
+    ("Slack webhook", re.compile(r"hooks\.slack\.com/(?:services|workflows)/T[A-Z0-9]+/[A-Z0-9]+/[A-Za-z0-9]{16,}")),
+    ("Discord webhook", re.compile(r"discord(?:app)?\.com/api/webhooks/\d+/[A-Za-z0-9_-]{30,}")),
+    ("Azure storage key", re.compile(r"(?i)\b(?:AccountKey|SharedAccessKey)=[A-Za-z0-9+/]{40,}={0,2}")),
+    ("JSON Web Token", re.compile(r"(?<![\w-])eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}")),
+    # no fixed prefix: the key name must sit right next to the 40-character value
+    ("AWS secret access key", re.compile(r"(?i)aws_?secret_?access_?key\W{0,3}[:=]\W{0,3}[A-Za-z0-9/+]{40}(?![A-Za-z0-9/+])")),
 ]
+
+# A password written into a URL (https://user:pass@host, or redis://:pass@host with no user). Not a secret:
+# placeholders and variables (${TOKEN}, $PASSWORD, <password>, {{secret}}, %s, ***, xxx), the well-known defaults of
+# local and CI services (postgres:postgres, guest:guest, a password equal to the user name), and local hosts.
+URL_CREDENTIALS_RE = re.compile(r"\b[a-z][a-z0-9+.-]*://([^\s/:@]*):([^\s/@]+)@([^\s/@:?#]+)", re.I)
+PLACEHOLDER_PASSWORDS = {"password", "passwd", "pass", "pwd", "pw", "secret", "token", "changeme", "example",
+                         "postgres", "guest", "root", "admin", "test", "dev", "user", "mysql"}
+# The Azurite storage emulator's account and key are public (Microsoft's documentation), found in dev configs
+AZURITE_ACCOUNT = "devstoreaccount1"
+LOCAL_HOSTS = {"localhost", "127.0.0.1", "0.0.0.0", "[::1]", "host.docker.internal"}  # content-ok
+
+
+def url_password(line):
+    """True when a URL in the line carries a password that looks real."""
+    for m in URL_CREDENTIALS_RE.finditer(line):
+        user, value, host = m.group(1), m.group(2), m.group(3).lower()
+        if (value[0] in "$<{%*[(" or set(value) <= set("x*.") or value.lower() in PLACEHOLDER_PASSWORDS
+                or value == user or host in LOCAL_HOSTS):
+            continue
+        return True
+    return False
+
+
+def utf16_text(data):
+    """data decoded as UTF-16 when it is UTF-16 (a byte-order mark, or a NUL in every other byte as Windows tools
+    write without one), else None. Read as UTF-8, a UTF-16 file has a NUL between every letter and no rule matches."""
+    if data[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        return data.decode("utf-16", "replace")
+    if len(data) >= 4:
+        half = len(data) // 2
+        for nuls, letters, encoding in ((data[1::2], data[0::2], "utf-16-le"), (data[0::2], data[1::2], "utf-16-be")):
+            if nuls.count(0) >= half * 0.9 and letters.count(0) < half // 2:
+                return data.decode(encoding, "replace")
+    return None
+
+
+def without_nul(line):
+    """An added diff line with its NUL bytes handled: a UTF-16 line (a NUL between every letter) gets them removed so
+    its text can be read; any other NUL becomes a space, so it cannot hide the rest of the line."""
+    nuls = line.count(chr(0))
+    if nuls and nuls * 3 >= len(line):   # a third, not half: the byte-order mark and \r also take places
+        return line.replace(chr(0), "")
+    return line.replace(chr(0), " ")
 
 
 def denylist():
@@ -116,7 +172,10 @@ def findings(line, deny):
         return found   # an IP or host finding would print its value, which can contain the term
     if line.rstrip().endswith(MARKER):
         return found
-    found += [f"possible secret ({kind})" for kind, pattern in SECRET_RULES if pattern.search(line)]
+    found += [f"possible secret ({kind})" for kind, pattern in SECRET_RULES
+              if pattern.search(line) and not (kind == "Azure storage key" and AZURITE_ACCOUNT in line)]
+    if url_password(line):
+        found.append("possible secret (password in a URL)")
     for m in (*IPV4_RE.finditer(line), *(m for m in IPV6_RE.finditer(line) if ipv6_like(m.group(1)))):
         try:
             ip = ipaddress.ip_address(m.group(1))
@@ -166,7 +225,7 @@ def added_lines(diff_args):
                     "--dst-prefix=b/", *diff_args).split("\n"):
         if left and line.startswith("+"):
             if path:
-                yield path, num, line[1:].replace(chr(0), " ")
+                yield path, num, without_nul(line[1:])
             num += 1
             left -= 1
         elif line.startswith("@@"):
@@ -219,9 +278,15 @@ def tracked_lines():
             continue
         yield rel, 0, rel   # the file name is content too
         try:
-            text = (ROOT / rel).read_text(encoding="utf-8")
-        except (UnicodeDecodeError, OSError):
-            continue   # binary or unreadable
+            data = (ROOT / rel).read_bytes()
+        except OSError:
+            continue   # unreadable
+        text = utf16_text(data)
+        if text is None:
+            try:
+                text = data.decode("utf-8")
+            except UnicodeDecodeError:
+                continue   # binary
         for num, line in enumerate(text.splitlines(), 1):
             yield rel, num, line
 
