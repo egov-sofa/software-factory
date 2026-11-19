@@ -136,7 +136,7 @@ class Variables(unittest.TestCase):
                 return SimpleNamespace(returncode=1, stdout="", stderr="HTTP 403")
             if cmd[1:3] == ["secret", "list"]:
                 return SimpleNamespace(returncode=1 if secret_list_fails else 0, stdout=secrets, stderr="")
-            if cmd[1] == "api" and cmd[2].endswith("/actions/organization-secrets"):
+            if cmd[1] == "api" and any(a.endswith("/actions/organization-secrets") for a in cmd):
                 return SimpleNamespace(returncode=org_status, stdout=org_secrets, stderr=org_stderr)
             return SimpleNamespace(returncode=0, stdout="", stderr="")
         return run, calls
@@ -176,6 +176,8 @@ class Variables(unittest.TestCase):
                         self.assertRaisesRegex(fed.SetupError, "ANTHROPIC_API_KEY.*Nothing was set"):
                     fed.set_variables("o/r", self.VALUES, run=run)
                 self.assertEqual([], [c for c in calls if c[1:3] == ["variable", "set"]])
+                org_list = next(c for c in calls if c[1] == "api")
+                self.assertIn("--paginate", org_list)   # more than 30 organization secrets need several pages
 
     def test_a_user_account_has_no_organization_secrets(self):
         run, calls = self.gh(org_status=1, org_stderr="gh: Not Found (HTTP 404)")

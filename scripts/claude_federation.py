@@ -200,7 +200,8 @@ def overriding_secrets(repo, run=None):
     than setting variables."""
     run = run or subprocess.run   # looked up at call time, so a test that replaces subprocess reaches it
     sources = [("repository", ["gh", "secret", "list", "--repo", repo, "--json", "name", "--jq", ".[].name"]),
-               ("organization", ["gh", "api", f"repos/{repo}/actions/organization-secrets",
+               # --paginate: the API returns 30 secrets per page, and a key on a later page must not slip through
+               ("organization", ["gh", "api", "--paginate", f"repos/{repo}/actions/organization-secrets",
                                  "--jq", ".secrets[].name"])]
     present = set()
     for where, cmd in sources:
