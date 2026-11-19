@@ -176,9 +176,10 @@ admin login.
       organization secret, which other repositories may still use: take this repository out of its access
       (organization settings, Secrets and variables, Actions, the secret, Repository access). Then run the same
       command again;
-   4. sets the variables with `gh variable set`: the rule IDs, the organization, the service account, the workspace,
-      and **`CLAUDE_REVIEW_ENABLED` last**. If one fails, it stops there, so the review is never turned on without
-      the IDs it needs.
+   4. sets the variables with `gh variable set`: the review rule ID, the organization, the service account, the
+      workspace, then the two on switches: the mention rule ID (it turns `@claude` on) and **`CLAUDE_REVIEW_ENABLED`
+      last**. If one fails, it stops there, so neither the review nor the mentions are turned on without the IDs
+      they need.
 5. **Check it works:** the next pull request gets the Claude review. The rule's authentication history in the Console
    shows each token exchange, and the reason for a refused one ([Troubleshooting](#troubleshooting)).
 

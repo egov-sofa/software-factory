@@ -180,11 +180,14 @@ def build_rules(args, sub_prefix, owner_id):
 def variable_values(rule_ids, org_id, args):
     """(name, value) pairs for the repository, in the order they must be set: CLAUDE_REVIEW_ENABLED comes last, so a
     pull request opened meanwhile never finds the review turned on without the IDs it needs."""
-    values = [(var, rid) for var, rid in rule_ids.items()]
+    # ANTHROPIC_MENTION_FEDERATION_RULE_ID is the @claude workflow's on switch, so it comes after the shared IDs too
+    switches = {"ANTHROPIC_MENTION_FEDERATION_RULE_ID"}
+    values = [(var, rid) for var, rid in rule_ids.items() if var not in switches]
     values += [("ANTHROPIC_ORGANIZATION_ID", org_id),
                ("ANTHROPIC_SERVICE_ACCOUNT_ID", args.service_account),
-               ("ANTHROPIC_WORKSPACE_ID", args.workspace),
-               ("CLAUDE_REVIEW_ENABLED", "true")]
+               ("ANTHROPIC_WORKSPACE_ID", args.workspace)]
+    values += [(var, rid) for var, rid in rule_ids.items() if var in switches]
+    values += [("CLAUDE_REVIEW_ENABLED", "true")]
     return values
 
 

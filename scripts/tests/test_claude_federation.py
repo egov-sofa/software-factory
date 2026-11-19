@@ -154,6 +154,14 @@ class Variables(unittest.TestCase):
         self.assertEqual("CLAUDE_REVIEW_ENABLED", names[-1])
         self.assertEqual(5, len(names))
 
+    def test_both_switches_come_after_the_shared_ids(self):
+        # the mention rule ID turns @claude on, CLAUDE_REVIEW_ENABLED the review: a failure before them leaves both off
+        names = [n for n, _ in fed.variable_values({"ANTHROPIC_FEDERATION_RULE_ID": "fdrl_1",
+                                                     "ANTHROPIC_MENTION_FEDERATION_RULE_ID": "fdrl_2"},
+                                                    "org-uuid", fed.parse_args(ARGS))]
+        self.assertEqual(["ANTHROPIC_MENTION_FEDERATION_RULE_ID", "CLAUDE_REVIEW_ENABLED"], names[-2:])
+        self.assertLess(names.index("ANTHROPIC_WORKSPACE_ID"), names.index("ANTHROPIC_MENTION_FEDERATION_RULE_ID"))
+
     def test_variables_are_set_in_order_without_a_shell(self):
         run, calls = self.gh()
         with mock.patch.object(fed.shutil, "which", return_value="/usr/bin/gh"), \
