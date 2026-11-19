@@ -61,7 +61,7 @@ pages:
       - {from: run, to: rules, kind: sequence}
       - {from: rules, to: secret, kind: sequence}
       - {from: secret, to: ids, kind: sequence, label: "no"}
-      - {from: secret, to: delete, kind: sequence, label: "yes: review stays off"}
+      - {from: secret, to: delete, kind: sequence, label: "yes: nothing set"}
       - {from: delete, to: run, kind: sequence, label: run again}
       - {from: ids, to: enable, kind: sequence}
       - {from: enable, to: review, kind: sequence}

@@ -38,9 +38,9 @@ Usage:
                  federation endpoints reject API keys, and some clients prefer the key when both are set.
   --set-variables
                  with --apply, also set the repository variables with gh (needs admin access to the repository),
-                 CLAUDE_REVIEW_ENABLED last; while the repository has an ANTHROPIC_API_KEY or
-                 CLAUDE_CODE_OAUTH_TOKEN secret (it would win over federation), it sets the IDs, leaves the review
-                 off and stops with an error: delete the secret and run it again
+                 CLAUDE_REVIEW_ENABLED last; while the repository can use an ANTHROPIC_API_KEY or
+                 CLAUDE_CODE_OAUTH_TOKEN secret (its own or its organization's, which would win over federation),
+                 it sets nothing and stops with an error: delete the secret and run it again
 
 Exit code 0 on success, 1 on an error, 2 on a usage error.
 """
@@ -189,34 +189,46 @@ def variable_commands(repo, rule_ids, org_id, args):
     return [f"gh variable set {var} --repo {repo} --body {val}" for var, val in variable_values(rule_ids, org_id, args)]
 
 
-# A repository secret with one of these names wins over federation (docs/CLAUDE-SERVICES-AUTH.md).
+# A secret with one of these names, of the repository or of its organization, wins over federation, and with the
+# federation variables also set every review fails with 401 (docs/CLAUDE-SERVICES-AUTH.md).
 OVERRIDING_SECRETS = ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN")
 
 
 def overriding_secrets(repo, run=None):
-    """The secrets of the repository that would win over federation. An unreadable list is a note, not an error:
-    reading secrets can need more access than setting variables."""
+    """The secrets visible to the repository's workflows that would win over federation: its own, and the
+    organization's that it may use. An unreadable list is a note, not an error: reading secrets can need more access
+    than setting variables."""
     run = run or subprocess.run   # looked up at call time, so a test that replaces subprocess reaches it
-    done = run(["gh", "secret", "list", "--repo", repo, "--json", "name", "--jq", ".[].name"],
-               capture_output=True, text=True, check=False)
-    if done.returncode != 0:
-        print(f"note: could not list the secrets of {repo}; check by hand that it has no "
-              f"{' or '.join(OVERRIDING_SECRETS)} secret", file=sys.stderr)
-        return []
-    present = set((done.stdout or "").split())
+    sources = [("repository", ["gh", "secret", "list", "--repo", repo, "--json", "name", "--jq", ".[].name"]),
+               ("organization", ["gh", "api", f"repos/{repo}/actions/organization-secrets",
+                                 "--jq", ".secrets[].name"])]
+    present = set()
+    for where, cmd in sources:
+        done = run(cmd, capture_output=True, text=True, check=False)
+        if done.returncode != 0 and where == "organization" and "404" in (done.stderr or ""):
+            continue   # a repository of a user account: there are no organization secrets
+        if done.returncode != 0:
+            print(f"note: could not list the {where} secrets {repo} can use; check by hand that there is no "
+                  f"{' or '.join(OVERRIDING_SECRETS)} secret", file=sys.stderr)
+            continue
+        present |= set((done.stdout or "").split())
     return [s for s in OVERRIDING_SECRETS if s in present]
 
 
 def set_variables(repo, values, run=None):
     """Set the repository variables with gh, in order. The review is never turned on half-configured: it stops at the
-    first failure, before CLAUDE_REVIEW_ENABLED, and it does not set CLAUDE_REVIEW_ENABLED while a secret that wins
-    over federation exists (every review would fail with 401 until it is deleted)."""
+    first failure, before CLAUDE_REVIEW_ENABLED. While a secret that wins over federation exists, it sets nothing at
+    all: with both, every review fails with 401, so even the IDs would break a review that works with that key today."""
     run = run or subprocess.run   # looked up at call time, so a test that replaces subprocess reaches it
     if not shutil.which("gh"):
         raise SetupError("gh is not installed; set the variables with the commands printed without --set-variables")
     blocking = overriding_secrets(repo, run=run)
     if blocking:
-        values = [(name, value) for name, value in values if name != "CLAUDE_REVIEW_ENABLED"]
+        raise SetupError(f"{repo} can use the secret(s) {', '.join(blocking)} (its own or its organization's), which "
+                         "win over federation; with the federation variables also set, every review would fail with "
+                         "401. Nothing was set, so the review works as before. Delete the secret (gh secret delete "
+                         f"NAME --repo {repo}, or --org for an organization secret), then run the same command again; "
+                         "it reuses the rules")
     for name, value in values:
         # list arguments, no shell: the values never pass through a command line parser
         done = run(["gh", "variable", "set", name, "--repo", repo, "--body", value],
@@ -226,10 +238,6 @@ def set_variables(repo, values, run=None):
                              "variable needs admin access to the repository. Nothing after it was set, "
                              "CLAUDE_REVIEW_ENABLED included")
         print(f"variable: {name} set")
-    if blocking:
-        raise SetupError(f"{repo} has the secret(s) {', '.join(blocking)}, which win over federation: the IDs are set "
-                         f"but the review is not turned on. Delete them (gh secret delete NAME --repo {repo}), then "
-                         "run the same command again; it reuses the rules")
 
 
 def make_client():

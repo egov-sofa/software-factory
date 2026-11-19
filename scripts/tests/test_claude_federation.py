@@ -125,8 +125,9 @@ class Variables(unittest.TestCase):
               ("CLAUDE_REVIEW_ENABLED", "true")]
 
     @staticmethod
-    def gh(fail_on=None, secrets="", secret_list_fails=False):
-        """A fake subprocess.run for gh: records the calls, fails `variable set` for one name if asked."""
+    def gh(fail_on=None, secrets="", secret_list_fails=False, org_secrets="", org_status=0, org_stderr=""):
+        """A fake subprocess.run for gh: records the calls, answers the repository and organization secret lists,
+        fails `variable set` for one name if asked."""
         calls = []
 
         def run(cmd, **kw):
@@ -135,6 +136,8 @@ class Variables(unittest.TestCase):
                 return SimpleNamespace(returncode=1, stdout="", stderr="HTTP 403")
             if cmd[1:3] == ["secret", "list"]:
                 return SimpleNamespace(returncode=1 if secret_list_fails else 0, stdout=secrets, stderr="")
+            if cmd[1] == "api" and cmd[2].endswith("/actions/organization-secrets"):
+                return SimpleNamespace(returncode=org_status, stdout=org_secrets, stderr=org_stderr)
             return SimpleNamespace(returncode=0, stdout="", stderr="")
         return run, calls
 
@@ -162,14 +165,26 @@ class Variables(unittest.TestCase):
             fed.set_variables("o/r", self.VALUES, run=run)
         self.assertNotIn("CLAUDE_REVIEW_ENABLED", [c[3] for c in calls if c[1:3] == ["variable", "set"]])
 
-    def test_an_overriding_secret_keeps_the_review_off(self):
-        run, calls = self.gh(secrets="CONTENT_DENYLIST\nANTHROPIC_API_KEY\n")
+    def test_an_overriding_secret_sets_nothing(self):
+        # with the key and the federation IDs both set every review fails with 401, so even the IDs would break a
+        # review that works with the key today
+        for kw in ({"secrets": "CONTENT_DENYLIST\nANTHROPIC_API_KEY\n"}, {"org_secrets": "ANTHROPIC_API_KEY\n"}):
+            with self.subTest(**kw):
+                run, calls = self.gh(**kw)
+                with mock.patch.object(fed.shutil, "which", return_value="/usr/bin/gh"), \
+                        contextlib.redirect_stdout(io.StringIO()), \
+                        self.assertRaisesRegex(fed.SetupError, "ANTHROPIC_API_KEY.*Nothing was set"):
+                    fed.set_variables("o/r", self.VALUES, run=run)
+                self.assertEqual([], [c for c in calls if c[1:3] == ["variable", "set"]])
+
+    def test_a_user_account_has_no_organization_secrets(self):
+        run, calls = self.gh(org_status=1, org_stderr="gh: Not Found (HTTP 404)")
+        err = io.StringIO()
         with mock.patch.object(fed.shutil, "which", return_value="/usr/bin/gh"), \
-                contextlib.redirect_stdout(io.StringIO()), \
-                self.assertRaisesRegex(fed.SetupError, "ANTHROPIC_API_KEY.*not turned on"):
-            fed.set_variables("o/r", self.VALUES, run=run)
-        sets = [c[3] for c in calls if c[1:3] == ["variable", "set"]]
-        self.assertEqual(["ANTHROPIC_FEDERATION_RULE_ID", "ANTHROPIC_ORGANIZATION_ID"], sets)   # IDs set, switch not
+                contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+            fed.set_variables("someone/r", self.VALUES, run=run)
+        self.assertEqual("", err.getvalue())
+        self.assertIn("CLAUDE_REVIEW_ENABLED", [c[3] for c in calls if c[1:3] == ["variable", "set"]])
 
     def test_the_main_command_fails_when_a_secret_keeps_the_review_off(self):
         run, _ = self.gh(secrets="CLAUDE_CODE_OAUTH_TOKEN\n")
