@@ -55,7 +55,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           result=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow factory-selftest.yml --commit "$GITHUB_SHA" \
-            --event push --json status,conclusion --jq '.[0] | "\(.status) \(.conclusion)"')
+            --event push --json status,conclusion --jq '.[0] // empty | "\(.status) \(.conclusion)"')
           if [ "$result" != "completed success" ]; then
             echo "::error::the Factory self-test on main for $GITHUB_SHA is '${result:-not found}'; release once it has passed"
             exit 1

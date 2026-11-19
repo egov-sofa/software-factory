@@ -126,6 +126,10 @@ Findings never print a denylisted term, only its number.
 - Every merge to `main` is **not** a release. A release is a tag `vX.Y.Z` on `main`.
 - The [Release workflow](../.github/workflows/release.yml) checks the tag is on `main`, publishes release notes grouped
   by Conventional Commit type, and moves the major tag (`v1`) to the new release.
+- Before any tag is created or moved, it refuses a release that would not move forward
+  ([release-check.sh](../scripts/release-check.sh)): the version must be newer than the latest release of the same
+  major, and the commit must contain the one `v1` points to now. It also waits for the **Factory self-test** to have
+  passed on `main` for that commit: right after a merge, wait for the self-test to finish, then release.
 - **Compatible** change (new optional input, a fix, a stricter check that existing projects pass): minor or patch
   release, `v1` moves, every project picks it up on its next run.
 - **Breaking** change (a removed or renamed input, a new required secret, different behavior a project relies on):

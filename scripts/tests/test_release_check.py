@@ -56,6 +56,13 @@ class ReleaseCheck(unittest.TestCase):
         self.assertEqual(1, result.returncode, result.stdout)
         self.assertIn("releasing it would move v1 back", result.stdout)
 
+    def test_maintenance_release_of_an_older_major_after_a_new_major(self):
+        """Projects still on @v1 can get a fix after v2.0.0: versions compare within the same major."""
+        support.git(self.repo, "tag", "v2.0.0", self.commits[2])
+        result = self.check("v1.0.1", self.commits[2])
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        self.assertEqual(1, self.check("v2.0.0-rc.1", self.commits[2]).returncode)
+
     def test_first_release_of_a_major_passes(self):
         result = self.check("v2.0.0", self.commits[0])   # no v2 tag yet, nothing to move back
         self.assertEqual(0, result.returncode, result.stdout + result.stderr)
