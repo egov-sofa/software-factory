@@ -63,6 +63,17 @@ class ReleaseCheck(unittest.TestCase):
         self.assertEqual(0, result.returncode, result.stdout + result.stderr)
         self.assertEqual(1, self.check("v2.0.0-rc.1", self.commits[2]).returncode)
 
+    def test_release_notes_skip_pre_releases(self):
+        """v1.1.0's notes list everything since v1.0.0, not only what came after v1.1.0-rc.1."""
+        support.git(self.repo, "commit", "-q", "--allow-empty", "-m", "feat: before the rc")
+        support.git(self.repo, "tag", "v1.1.0-rc.1")
+        support.git(self.repo, "commit", "-q", "--allow-empty", "-m", "fix: after the rc")
+        result = support.run(support.SCRIPTS / "release-notes.sh", "v1.1.0", cwd=self.repo)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("Changes since v1.0.0", result.stdout)
+        self.assertIn("feat: before the rc", result.stdout)
+        self.assertIn("fix: after the rc", result.stdout)
+
     def test_first_release_of_a_major_passes(self):
         result = self.check("v2.0.0", self.commits[0])   # no v2 tag yet, nothing to move back
         self.assertEqual(0, result.returncode, result.stdout + result.stderr)

@@ -10,6 +10,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 SCRIPT = Path(__file__).resolve().parents[1] / "check_content.py"
 sys.path.insert(0, str(SCRIPT.parent))
@@ -74,6 +75,40 @@ class Findings(unittest.TestCase):
                      joined("AccountName=devstoreaccount1;Account", "Key=", "Eby8" * 22, "==")):
             with self.subTest(line=line):
                 self.assertEqual([], self.check(line))
+
+    def test_denylist_numbers_can_be_hidden_for_forks(self):
+        deny = [re.compile(r"(?<!\w)acme(?!\w)", re.I)]
+        self.assertEqual(["denylist term 1"], self.check("Acme notes", deny))
+        with mock.patch.dict(os.environ, {"CONTENT_DENYLIST_QUIET": "1"}):
+            self.assertEqual(["a denylist term"], self.check("Acme notes", deny))
+            self.assertEqual(["a denylist term (split across this line and the next)"],
+                             check_content.wrapped("Big", "Corp", [re.compile(r"(?<!\w)Big\s+Corp(?!\w)", re.I)]))
+
+    def test_mostly_non_latin_utf16_line_cannot_hide_a_secret(self):
+        """Fewer than a third of the characters are NUL: both readings of the line are checked."""
+        secret = joined("AKIA", "ABCDEFGHIJKLMNOP")
+        line = "�" * 80 + chr(0).join(secret) + chr(0)   # replacement characters: the non-Latin bytes
+        self.assertIn("possible secret (AWS access key ID)", self.check(check_content.without_nul(line)))
+        big_endian = "�" * 80 + "".join(chr(0) + c for c in secret)
+        self.assertIn("possible secret (AWS access key ID)", self.check(check_content.without_nul(big_endian)))
+        # the line still ends with its marker, so an intended example keeps passing
+        marked = check_content.without_nul("x" + chr(0) + "y" + chr(0) * 2 + "text dns 8.8.8.8  content-ok")  # content-ok
+        self.assertTrue(marked.endswith("content-ok"))
+        self.assertEqual([], self.check(marked))
+
+    def test_nul_bytes_in_binary_do_not_make_up_findings(self):
+        """Only runs of UTF-16 text are read without their NULs: stray NULs in binary content stay spaces."""
+        for line in ("1.1" + chr(0) + ".1.1", "\x7fELF" + chr(0) * 2 + "8.8" + chr(0) + ".8.8"):
+            with self.subTest(line=repr(line)):
+                self.assertEqual([], self.check(check_content.without_nul(line)))
+
+    def test_marker_on_a_secret_is_named(self):
+        line = joined("token = 'ghp", "_", "a" * 36, "'  content-ok")
+        self.assertEqual([], self.check(line))
+        self.assertEqual(["GitHub token"], check_content.marker_skipped(line))
+        self.assertEqual([], check_content.marker_skipped("dns = 8.8.8.8  content-ok"))  # content-ok
+        azurite = joined("AccountName=devstoreaccount1;Account", "Key=", "Eby8" * 22, "==  content-ok")
+        self.assertEqual([], check_content.marker_skipped(azurite))   # public emulator key: no note
 
     def test_utf16_text_is_decoded(self):
         secret = joined("AKIA", "ABCDEFGHIJKLMNOP")
@@ -150,6 +185,28 @@ class CommandLine(unittest.TestCase):
         tracked = self.guard("--all")
         self.assertEqual(1, tracked.returncode, tracked.stdout)
         self.assertIn("possible secret (AWS access key ID)", tracked.stdout)
+
+    def test_quiet_denylist_findings_show_no_number_and_no_location(self):
+        """A fork's pull request: one guess per line must not tell which lines (so which guesses) matched."""
+        # each guess next to a public IP: a matching line would drop its IP finding, so that must not show either
+        (self.repo / "guesses.md").write_text("Globex 8.8.8.8\nAcme 8.8.8.8\nInitech 8.8.8.8\n")  # content-ok
+        self.git("add", "guesses.md")
+        result = self.guard("--staged", env={"CONTENT_DENYLIST": "acme", "CONTENT_DENYLIST_QUIET": "1"})
+        self.assertEqual(1, result.returncode, result.stdout)
+        self.assertNotIn("guesses.md", result.stdout)
+        self.assertNotIn("term 1", result.stdout)
+        self.assertNotIn("problem(s)", result.stdout)
+        self.assertIn("Denylisted terms found", result.stdout)
+        # without a match, a fork still gets the normal findings
+        clean = self.guard("--staged", env={"CONTENT_DENYLIST": "umbrella", "CONTENT_DENYLIST_QUIET": "1"})
+        self.assertIn("guesses.md:1: public IP address 8.8.8.8", clean.stdout)  # content-ok
+
+    def test_marker_on_a_secret_passes_with_a_note(self):
+        (self.repo / "docs.md").write_text(joined("example: ghp", "_", "q" * 36, "  content-ok\n"))
+        self.git("add", "docs.md")
+        result = self.guard("--staged")
+        self.assertEqual(0, result.returncode, result.stdout)
+        self.assertIn("docs.md:1: note: 'content-ok' allows a possible secret (GitHub token)", result.stdout)
 
     def test_clean_change_passes(self):
         (self.repo / "app.py").write_text("print('hi')\n")
