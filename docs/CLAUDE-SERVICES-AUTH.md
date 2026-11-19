@@ -144,6 +144,10 @@ admin login.
 
 ### For each repository
 
+0. **The Claude GitHub app is installed on the repository** (<https://github.com/apps/claude>, or
+   `/install-github-app` in Claude Code). Installing it once for the whole organization with "All repositories"
+   covers new repositories too. Without it the review fails even with everything below in place, and the script
+   cannot check it for you.
 1. **Claude previews.** The skill runs the script without `--apply`. Nothing is created and no Anthropic API is
    called; it shows the rules it would create and the variables it would set. Check the repository name and the IDs.
 2. **You log in** with the `org:admin` scope (once per session; the login lasts until it expires):

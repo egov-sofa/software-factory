@@ -228,7 +228,8 @@ class Variables(unittest.TestCase):
         self.assertEqual("egov-sofa/software-factory", repo)
         self.assertEqual(("CLAUDE_REVIEW_ENABLED", "true"), values[-1])
         self.assertNotIn("gh variable set", out.getvalue())
-        self.assertIn("is set up", out.getvalue())
+        self.assertIn("can now reach the Claude API", out.getvalue())
+        self.assertIn("github.com/apps/claude", out.getvalue())   # the one prerequisite it cannot check
 
     def test_preview_with_set_variables_says_what_would_be_set(self):
         out = io.StringIO()

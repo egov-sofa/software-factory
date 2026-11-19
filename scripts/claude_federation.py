@@ -318,8 +318,10 @@ def main(argv):
                   "win over federation.")
             return 0
         set_variables(args.repo, variable_values(ids, org_id, args))
-        print(f"\n{args.repo} is set up: its next pull request is reviewed (if it has the claude-review workflow). "
-              "Each token exchange shows in the rule's authentication history in the Claude Console.")
+        print(f"\n{args.repo} can now reach the Claude API: its next pull request is reviewed if it has the "
+              "claude-review workflow and the Claude GitHub app is installed on it (https://github.com/apps/claude; "
+              "this script cannot check that). Each token exchange shows in the rule's authentication history in the "
+              "Claude Console.")
         return 0
     except SetupError as ex:
         print(f"error: {ex}", file=sys.stderr)
