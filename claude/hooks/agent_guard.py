@@ -14,7 +14,6 @@ and security-auditor need no hook: they have no tool that writes.
 
 Exit code 0 in both cases (the decision is in the JSON), 2 on a usage error.
 """
-import fnmatch
 import json
 import os
 import re
@@ -40,15 +39,25 @@ WHAT = {
     "docs-writer": "documentation (READMEs, CHANGELOGs, docs/, root *.md, .env.example)",
 }
 
-# git subcommands that change history, the index or the branch. Read-only ones (status, diff, log, show, blame,
-# ls-files, rev-parse) are not listed and stay allowed.
-GIT_WRITES = {"push", "commit", "reset", "checkout", "switch", "rebase", "merge", "cherry-pick", "revert", "am",
-              "stash", "tag", "clean", "pull", "apply", "rm", "mv", "add", "update-ref", "filter-branch", "worktree",
-              "update-index", "symbolic-ref", "replace", "read-tree"}
-# read-only forms of subcommands listed above: git tag -l, git stash list
-GIT_READ_FORMS = {"tag": {"-l", "--list"}, "stash": {"list", "show"}}
+# The git an agent may run is an allowlist: subcommands that only read. Anything else is refused, so an alias
+# (git -c alias.x=push x, or one in the user's own config), a plumbing command or a new git command cannot get past.
+GIT_READS = {"status", "diff", "log", "show", "blame", "ls-files", "ls-tree", "rev-parse", "rev-list", "grep",
+             "describe", "shortlog", "cat-file", "merge-base", "name-rev", "for-each-ref", "check-ignore",
+             "check-attr", "diff-tree", "diff-files", "diff-index", "whatchanged", "show-ref", "count-objects",
+             "range-diff", "version", "help", "var"}
+# Subcommands that read in some forms only: the forms (first argument) that read. None: see git_refusal.
+GIT_READ_FORMS = {"tag": {"-l", "--list"}, "stash": {"list", "show"}, "reflog": {"show"}, "notes": {"list", "show"},
+                  "worktree": {"list"}, "remote": {"-v", "--verbose", "show", "get-url"}, "branch": None,
+                  "restore": None, "config": None}
 GIT_BRANCH_WRITES = {"-d", "-D", "-m", "-M", "-c", "-C", "-f", "--delete", "--move", "--copy", "--force",
-                     "--set-upstream-to", "-u", "--unset-upstream"}
+                     "--set-upstream-to", "-u", "--unset-upstream", "--edit-description", "-t", "--track"}
+GIT_BRANCH_VALUE_OPTIONS = {"--contains", "--no-contains", "--merged", "--no-merged", "--points-at", "--sort",
+                            "--format", "--color", "--column", "--abbrev"}
+GIT_CONFIG_READS = {"--get", "--get-all", "--get-regexp", "--get-urlmatch", "--list", "-l", "get", "list"}
+# `git -c key=value` keys that make git run a command; allowed only with a harmless value (cat, false, true, empty)
+GIT_COMMAND_KEYS = re.compile(r"^(?:alias\..*|.*\.pager|pager\..*|core\.(?:editor|fsmonitor|sshcommand|hookspath|"
+                              r"askpass|gitproxy)|sequence\.editor|diff\..*\.(?:command|textconv)|"
+                              r"credential\..*|gpg\..*program|.*\.cmd)$", re.I)
 GIT_OPTIONS_WITH_VALUE = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--config-env"}
 WRAPPERS = {"env", "command", "exec", "time", "nohup", "sudo", "nice", "xargs", "stdbuf", "timeout", "doas"}
 # options of those wrappers that take a value: env -u NAME, nice -n 5, sudo -u me, xargs -I {}, timeout -s KILL
@@ -56,13 +65,13 @@ WRAPPER_OPTIONS_WITH_VALUE = {"-u", "-g", "-n", "-C", "-I", "-P", "-L", "-s", "-
                               "--user", "--group", "--chdir", "--unset", "--adjustment", "--signal", "--split-string"}
 SHELLS = {"bash", "sh", "zsh", "dash", "ksh"}
 
-# Second layer, over the whole command text (inside quotes, backticks, $( ) and eval too): git, any options, then a
-# subcommand that writes. Stricter than the parser on purpose: an echo that quotes such a command is refused as well.
-GIT_WRITE_RE = re.compile(
+# Second layer, over the whole command text (inside quotes, backticks, $( ) and eval too): every `git <options>
+# <subcommand> <arguments>` in it must pass the same check. Stricter than the parser on purpose: an echo that quotes a
+# writing git command is refused as well.
+GIT_TEXT_RE = re.compile(
     r"(?<![\w.-])git(?:\.exe)?"
-    r"(?:\s+(?:-[Cc]\s+\S+|--(?:git-dir|work-tree|namespace|exec-path|config-env)(?:=\S+|\s+\S+)|-\S+))*"
-    r"\s+(" + "|".join(sorted(map(re.escape, GIT_WRITES), key=len, reverse=True)) + r"|branch|restore)(?![\w-])"
-    r"([^;&|\n`)]*)")
+    r"((?:\s+(?:-[Cc]\s+\S+|--(?:git-dir|work-tree|namespace|exec-path|config-env)(?:=\S+|\s+\S+)|-\S+))*)"
+    r"\s+([\w][\w.-]*)([^;&|\n`)]*)")
 
 
 def deny(reason):
@@ -89,10 +98,27 @@ def inside(path, folder):
         return False
 
 
+def glob_re(pattern):
+    """A glob as a regular expression: * and ? stay within one folder, **/ is any number of folders (none too), a
+    trailing /** is everything below. fnmatch would let * cross folders: src/test_runner/app.py would match
+    **/test_*.py."""
+    out, i = "", 0
+    while i < len(pattern):
+        if pattern.startswith("**/", i):
+            out, i = out + "(?:[^/]+/)*", i + 3
+        elif pattern.startswith("/**", i) and i + 3 == len(pattern):
+            out, i = out + "/.+", i + 3
+        elif pattern[i] == "*":
+            out, i = out + "[^/]*", i + 1
+        elif pattern[i] == "?":
+            out, i = out + "[^/]", i + 1
+        else:
+            out, i = out + re.escape(pattern[i]), i + 1
+    return re.compile(out + r"\Z")
+
+
 def matches(rel, pattern):
-    if "/" not in pattern:
-        return "/" not in rel and fnmatch.fnmatchcase(rel, pattern)
-    return fnmatch.fnmatchcase(rel, pattern) or (pattern.startswith("**/") and fnmatch.fnmatchcase(rel, pattern[3:]))
+    return bool(glob_re(pattern).match(rel))
 
 
 def check_path(agent, file_path, cwd):
@@ -157,24 +183,57 @@ def git_write(tokens):
     if name not in ("git", "git.exe"):
         return None
     i += 1
+    options = []
     while i < len(tokens):
         tok = tokens[i]
         if tok in GIT_OPTIONS_WITH_VALUE:
+            options += tokens[i:i + 2]
             i += 2
         elif tok.startswith("-"):
-            i += 1   # --no-pager, -p, --git-dir=..., -c=... spellings
+            options.append(tok)   # --no-pager, -p, --git-dir=..., -c=... spellings
+            i += 1
         else:
             break
     if i >= len(tokens):
+        return None   # git alone, or only options: prints help or a version
+    return git_refusal(tokens[i], tokens[i + 1:], options)
+
+
+def git_refusal(sub, args, options):
+    """None if `git <options> <sub> <args>` only reads, else the command to name in the refusal."""
+    for j, opt in enumerate(options):
+        setting = options[j + 1] if opt == "-c" and j + 1 < len(options) else opt[3:] if opt.startswith("-c=") else ""
+        key, _, value = setting.partition("=")
+        if key and GIT_COMMAND_KEYS.match(key) and value.strip("'\"").lower() not in ("", "cat", "false", "true"):
+            return f"-c {key}=…"
+    if sub in GIT_READS:
         return None
-    sub, args = tokens[i], tokens[i + 1:]
-    if sub in GIT_WRITES and not (args and args[0] in GIT_READ_FORMS.get(sub, ())):
-        return sub
-    if sub == "branch" and any(a in GIT_BRANCH_WRITES or a.split("=")[0] in GIT_BRANCH_WRITES for a in args):
-        return "branch " + next(a for a in args if a in GIT_BRANCH_WRITES or a.split("=")[0] in GIT_BRANCH_WRITES)
-    if sub == "restore" and any(a in ("--staged", "-S") for a in args):
-        return "restore --staged"
-    return None
+    if sub not in GIT_READ_FORMS:
+        return sub   # writes, or an alias or command the guard does not know
+    forms = GIT_READ_FORMS[sub]
+    if forms is not None:
+        # with no arguments these list, except stash (git stash = git stash push)
+        return None if (not args and sub in ("tag", "reflog", "remote", "worktree")) or \
+            (args and args[0] in forms) else f"{sub} {args[0] if args else ''}".strip()
+    if sub == "branch":
+        names, k = [], 0
+        while k < len(args):
+            a = args[k]
+            if a in GIT_BRANCH_WRITES or a.split("=")[0] in GIT_BRANCH_WRITES:
+                return f"branch {a}"
+            if a in GIT_BRANCH_VALUE_OPTIONS:
+                k += 2
+                continue
+            if not a.startswith("-"):
+                names.append(a)
+            k += 1
+        listing = not names or any(a in ("-l", "--list", "-a", "--all", "-r", "--remotes") for a in args)
+        return None if listing else "branch " + names[0]   # git branch <name> creates a branch
+    if sub == "restore":
+        return "restore --staged" if any(a in ("--staged", "-S") for a in args) else None
+    if sub == "config":
+        return None if any(a in GIT_CONFIG_READS for a in args) else "config " + " ".join(args[:2])
+    return sub
 
 
 def git_write_in(command):
@@ -186,16 +245,11 @@ def git_write_in(command):
 
 
 def git_write_text(command):
-    """The writing git subcommand that appears anywhere in the command text, else None (the second layer)."""
-    for m in GIT_WRITE_RE.finditer(command):
-        sub, rest = m.group(1), m.group(2).split()
-        if sub in GIT_READ_FORMS and rest and rest[0] in GIT_READ_FORMS[sub]:
-            continue
-        if sub == "branch" and not any(a.split("=")[0] in GIT_BRANCH_WRITES for a in rest):
-            continue
-        if sub == "restore" and not any(a in ("--staged", "-S") for a in rest):
-            continue
-        return sub
+    """A writing git command that appears anywhere in the command text, else None (the second layer)."""
+    for m in GIT_TEXT_RE.finditer(command):
+        found = git_refusal(m.group(2), m.group(3).split(), m.group(1).split())
+        if found:
+            return found
     return None
 
 

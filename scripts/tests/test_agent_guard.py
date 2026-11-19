@@ -54,6 +54,10 @@ class Paths(Base):
         reason = self.edit("tester", "src/app.ts")
         self.assertIn("tester may only edit test files", reason)
         self.assertIn("src/app.ts is not one", reason)
+        # * stays within one folder: these are production code, not tests (review of #24)
+        for path in ("src/test_runner/app.py", "src/a.test.d/evil.py", "src/a.spec/x.js"):
+            with self.subTest(path):
+                self.assertIsNotNone(self.edit("tester", path))
 
     def test_docs_writer_edits_docs_only(self):
         for path in ("README.md", "src/README.md", "CHANGELOG.md", "docs/guide/a.md", "NOTES.md", ".env.example"):
@@ -107,7 +111,12 @@ class Git(Base):
                         "env -i git push", "nice -n 5 git push", "sudo -u me git push", "timeout 10 git push",
                         'bash -lc "git push"', 'sh -ec "git commit -m x"', "echo `git push`", "x=$(git push)",
                         'eval "git push"', "eval git push", "env -S 'git push'",
-                        "git update-index --assume-unchanged a.py", "git symbolic-ref HEAD refs/heads/x"):
+                        "git update-index --assume-unchanged a.py", "git symbolic-ref HEAD refs/heads/x",
+                        # aliases and commands the guard does not know: only known reads pass (review of #24)
+                        "git -c alias.x=push x", "git config alias.p push", "git p", "git co main",
+                        "git notes add -m x", "git reflog expire --all", "git branch new-feature", "git stash",
+                        "git -c core.pager=less log", "git -c core.fsmonitor=./evil.sh status",
+                        "git config user.email x@example.org"):
             with self.subTest(command):
                 self.assertIsNotNone(self.bash("tester", command))
 
@@ -121,7 +130,10 @@ class Git(Base):
                         "git restore src/a.py", "npm test", "pytest -q", "git tag -l", "git tag --list 'v*'",
                         "git stash list", "git stash show -p", "echo \"pushing is the conductor's job\"",
                         "nice -n 5 npm test", "env -i PATH=/usr/bin pytest", 'bash -lc "npm test"',
-                        "gitk --all", "mygit push"):
+                        "gitk --all", "mygit push", "git config --get user.name", "git config --list",
+                        "git remote -v", "git remote", "git reflog", "git branch --contains HEAD",
+                        "git branch --merged main", "git tag", "git -c core.pager=cat log", "git notes list",
+                        "git worktree list", "git grep -n TODO", "git rev-parse --show-toplevel"):
             with self.subTest(command):
                 self.assertIsNone(self.bash("tester", command))
 

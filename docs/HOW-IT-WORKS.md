@@ -42,8 +42,8 @@ matter most are also enforced:
 - The reviewer and security auditor have only Read, Grep and Glob. The conductor writes what they need (the diff,
   the changed files, test and audit results) to `.git/factory-review/` before calling them.
 - The planner, tester, docs-writer and implementer carry a hook ([agent_guard.py](../claude/hooks/agent_guard.py))
-  that refuses an edit outside their paths (none for the implementer) and any git command that changes history or
-  the branch: the conductor does all git work. The refusal tells the agent why, so it can report instead.
+  that refuses an edit outside their paths (none for the implementer) and any git command that is not a known read
+  (`status`, `diff`, `log`, …): the conductor does all git work. The refusal tells the agent why, so it can report instead.
 - Still only asked: what an agent does with Bash beyond git (a script could write a file), and everything in the
   main conversation. The `protect-main` ruleset on GitHub remains the boundary for `main`.
 

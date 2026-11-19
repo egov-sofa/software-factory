@@ -52,13 +52,15 @@ reviewers have no tool that writes, and a hook refuses the other agents' forbidd
 5. **Planner:** Write only under `docs/plans/`.
 6. **Implementer:** `tools: Read, Grep, Glob, Bash, Write, Edit`, so it no longer inherits web or MCP tools. Its edits
    are not path-limited.
-7. **Planner, tester, docs-writer and implementer:** Bash `git` commands that change history, the index or the
-   branch are denied: `push`, `pull`, `commit`, `add`, `rm`, `mv`, `apply`, `am`, `reset`, `checkout`, `switch`,
-   `restore --staged`, `rebase`, `merge`, `cherry-pick`, `revert`, `stash`, `tag`, `clean`, `worktree`,
-   `update-ref`, `filter-branch`, and `branch` with a flag that deletes, moves, copies or sets an upstream, also when
-   written as `git -C <dir> …`, `git -c key=value …`, after `env` or `VAR=value`, or inside `bash -c "…"`. The
-   conductor does all git work. Read-only git (`status`, `diff`, `log`, `show`, `blame`, `ls-files`) and the
-   project's own commands still work.
+7. **Planner, tester, docs-writer and implementer:** only git commands that read are allowed, an allowlist: `status`,
+   `diff`, `log`, `show`, `blame`, `grep`, `ls-files`, `rev-parse` and similar, and the read forms of `branch`, `tag`,
+   `stash`, `config`, `remote`, `reflog`, `notes` and `worktree` (listing, never creating or deleting). Everything
+   else is refused, so an alias (`git -c alias.x=push x`, or one in the user's config) or a command the guard does
+   not know cannot get past; so are `git -c` settings that run a command (an alias, a pager, an editor,
+   `core.fsmonitor`) unless their value is harmless. This holds behind `-C <dir>`, `env` and other wrappers with
+   their options, `VAR=value`, `bash -c` in any flag combination, `eval`, backticks and `$( )`. The conductor does
+   all git work; the project's own commands still work. (A blocklist first; changed to an allowlist after the
+   review of #24 showed aliases past it.)
 8. A denied call returns a reason the agent can act on, for example: "tester may only edit test files (tests/**,
    **/*.test.*, …); src/app.ts is production code. Report what needs to change instead."
 9. If Python cannot be found, the hook warns and allows the call (fail open), so a broken setup never blocks the
