@@ -26,7 +26,7 @@ rule is written down but not enforced.
 
 | ID | Improvement | Why | Source in claude-skills | Effort | Status |
 |---|---|---|---|---|---|
-| I1 | **Evals for agents and skills.** `claude plugin eval` cases per agent: reviewer finds a planted off-by-one, security auditor finds a planted key and SQL injection, planner writes testable acceptance criteria, `/factory-build` triggers from a natural request. Each case runs with and without the agent, so the report shows what it adds. Run by hand from a `workflow_dispatch` job with a cost ceiling. | A change to an agent's instructions can make it worse and nothing would notice. | `skills/*/evals/`, `scripts/ci_evals.sh`, `.github/workflows/evals.yml` | M | open |
+| I1 | **Evals for agents and skills.** `claude plugin eval` cases per agent: reviewer finds a planted off-by-one, security auditor finds a planted key and SQL injection, planner writes testable acceptance criteria, `/factory-build` does not start by itself from a natural request (it runs only when typed, I23). Each case runs with and without the agent, so the report shows what it adds. Run by hand from a `workflow_dispatch` job with a cost ceiling. | A change to an agent's instructions can make it worse and nothing would notice. | `skills/*/evals/`, `scripts/ci_evals.sh`, `.github/workflows/evals.yml` | M | open |
 | I2 | **Claude PR review as a shared service.** A reusable workflow that reviews each pull request against the project's own `.claude/skills/pr-review/SKILL.md`, skips drafts, has a `skip-review` label and cancels a running review on a new push. Plus an `@claude` mention workflow. Authenticates with workload identity federation, so no API key is stored. | The reviewer and security auditor already exist as checklists; CI can apply them on every pull request. | `.github/workflows/claude-code-review.yml`, `claude-mention.yml`, `docs/claude-code-review-auth.md` | M | done (#2) |
 | I3 | **Versions and releases.** Tag releases `vX.Y.Z`, keep a moving major tag `v1`, have templates call `@v1` instead of `@main`, and generate release notes from Conventional Commit subjects. | `@main` means one bad push breaks every project's CI at once. | `.github/workflows/release.yml`, `scripts/release_notes.py` | S | done (#2) |
 | I4 | **Supply-chain hygiene.** Pin every action to a commit SHA with its version in a comment, and add Dependabot for the factory's own workflows. | Floating `@v4` tags can change under you; only the templates had Dependabot. | every workflow, `.github/dependabot.yml` | XS | done (#2) |
@@ -50,9 +50,59 @@ separate from personal content across several plugins. The factory is a single t
 
 ---
 
+## Second review (2026-11-16): fixes and architecture
+
+A review of the whole repository (scripts, workflows, agents, skills, templates, GitHub settings) and a comparison
+with similar initiatives (Spec Kit, OpenSpec, Kiro, BMAD, Agent OS, Claude Code plugins, Copier and cruft, Factory.ai,
+public-sector programmes). Nothing below repeats I1 to I16 or the enterprise track.
+
+### Fix now (security and correctness)
+
+| ID | Fix | Where | Effort | Status |
+|---|---|---|---|---|
+| I17 | **Protect the repository.** Turn on secret scanning and push protection (free on public repositories); a ruleset on `main` (pull request required, no force-push, no deletion); only maintainers and the Release workflow create `v*` tags. | GitHub settings | XS | open |
+| I18 | **Content guard misses common secrets.** GitLab `glpat-`, npm `npm_`, OpenAI `sk-proj-`, credentials in URLs (`user:pw@host`), AWS secret keys, Azure `AccountKey=`, Slack webhooks, JWTs; UTF-16 files (common on Windows) hide every secret. | `scripts/check_content.py` | S | open |
+| I19 | **The review rule trusts any pull request run.** Anyone with write access can edit the caller workflow in a pull request and get Claude API tokens. For projects calling `@v1`, the rule should also require `job_workflow_ref` on the factory's reusable workflow at `refs/tags/v1`; in the factory itself the I17 ruleset is the protection. | `scripts/claude_federation.py`, [CLAUDE-SERVICES-AUTH.md](CLAUDE-SERVICES-AUTH.md) | S | open |
+| I20 | **Review guard lets `pull_request_target` through** (`!github.event.pull_request` is false for it), which would give fork code the secrets; fork pull requests also get a red check. Allow `pull_request` only and skip forks. Set `persist-credentials: false` on the review checkout, as the mention workflow does. | `reusable-claude-review.yml` | XS | open |
+| I21 | **A release can move `v1` backwards or untested.** Require the new tag to descend from the current `vN` target, to be a higher version, and the self-test to pass. | `release.yml` | S | open |
+| I22 | **`/factory-build` commits whatever the implementer did,** including a stopped or failed attempt (`git add -A`). Read the report first and stage only the files it lists. Commit the approved plan before Stage 3. | `claude/skills/factory-build/SKILL.md` | XS | open |
+| I23 | **Skills with side effects can run on the model's own initiative.** `factory-ship` pushes and opens pull requests, `factory-new` can create repositories, `factory-build` is long and costly: add `disable-model-invocation: true`. `factory-ship` must not pre-tick "Reviewed" unless a review is recorded. | `claude/skills/*/SKILL.md` | XS | open |
+| I24 | **Templates break the factory's own lockfile rule** (`CODING-STANDARDS.md`). TypeScript: commit `package-lock.json` at scaffold. Python: `uv` with `uv.lock`, a type checker (mypy) and `pip-audit`, as the TypeScript template already has `tsc` and `npm audit`. | `templates/`, `scripts/new-project.sh`, `reusable-*.yml` | M | open |
+| I25 | **Smaller findings from the same review.** `generic` template prints "All checks passed" with no checks; `install.sh` ignores unknown options; `new-project.sh` leaves a half-built folder when `git commit` fails; release notes cut short after a pre-release tag; `content-ok` silences the token rules; denylist term numbers are printed on fork pull requests; `gh pr comment` in the mention workflow is not limited to the current pull request; mention rule assumes `main`. | several | S | open |
+
+### Architecture
+
+| ID | Improvement | Why | Effort | Status |
+|---|---|---|---|---|
+| I26 | **Enforce with Claude Code hooks, not prompts.** Ship a `settings.json` with a PreToolUse path check per agent (tester edits tests, docs-writer edits docs, planner edits `docs/plans/`), a block on pushing to `main` and on `--force`, and an explicit `tools` list for the implementer. | "Read-only" and "never" are prose today; the reviewers have Bash. Hooks hold whatever the model does. | M | open |
+| I27 | **Cost guards in the shared Claude workflows:** `timeout-minutes`, `--max-turns` and a budget cap as `@v1` inputs with safe defaults. | One review cost $0.51 on #8; a fix loop runs up to six Opus reviews per feature. | XS | open |
+| I28 | **`AGENTS.md` as the canonical project instructions,** imported by `CLAUDE.md`; standards shipped into the project instead of read from `{{FACTORY_HOME}}`. | Copilot, Codex and Cursor read `AGENTS.md`; CI cannot reach a local factory path. | S | open |
+| I29 | **Pipeline state and typed handoffs.** `Stage:` and `Round:` in the plan, a "Review rounds" log, `/factory-build --resume`, re-reviews that receive earlier findings, strict `Verdict:` and `Blocking:` headers, the base branch passed to every agent. | State lives only in the conversation; a crash or compaction loses it and re-reviews move the target. | M | open |
+| I30 | **Update path for existing projects.** `.factory-answers.yml` at scaffold, files marked managed or seeded, `/factory-update` with a 3-way merge, and a weekly drift workflow that opens a pull request (the Copier and cruft pattern); or adopt Copier. | Scaffolded files, including each project's local copy of the content guard, drift with no way back. | M | open |
+| I31 | **Stack manifest and a real self-test.** One `stacks.yaml` drives templates, CI, the self-test matrix, `new-project.sh` and the catalog (I10). The self-test calls the real `reusable-*.yml` and the content-guard action, on Linux, macOS and Windows. | Adding a stack means five edits; a broken reusable workflow is found by the projects after `v1` moves. | M | open |
+
+### Changes to existing items
+
+- **I1 (evals) before the enterprise track,** with a "triggers from a natural request" case per skill and a cost
+  ceiling.
+- **E3 to E5:** the twelve architects become **triggered checklists or skills** loaded by one Solution architect
+  agent, not twelve agents. BMAD and Agent OS both reduced their agent counts in 2026; coverage stays, cost and upkeep
+  drop.
+- **E1.2:** an autonomy ceiling per profile, separate from the level of rigour (as Factory.ai caps autonomy per
+  organization).
+- **E2.1:** OpenSpec-style delta specs, merged into the living spec when a change is archived.
+- **E1.3:** its ruleset part is brought forward as I17 (protect `main`, secret scanning); CODEOWNERS per area,
+  required reviews and release approval stay in E1.3.
+
+---
+
 ## Order of work
 
-### Phase 1: shared services foundation (now)
+### Phase 0: fix now (from the 2026-11-16 review)
+
+I17 to I25, then I26, I27, I28 and I1; then I29, I30 and I31; then the enterprise track.
+
+### Phase 1: shared services foundation
 
 | Step | Items | Status |
 |---|---|---|
@@ -72,7 +122,7 @@ separate from personal content across several plugins. The factory is a single t
 
 ### Phase 2: confidence in the factory
 
-I6 (validation and script tests, done in #5), I1 (evals), I10 (generated catalog), I13 (I6 follow-ups), I14 (diagrams
+I6 (validation and script tests, done in #5), I1 (evals, moved to Phase 0), I10 (generated catalog), I13 (I6 follow-ups), I14 (diagrams
 from sketches, done), I15 (diagram follow-ups).
 
 ### Phase 3: distribution
@@ -92,7 +142,7 @@ Phase 1 to 3 items above continue in parallel; I1 (evals) and I7 (plugin marketp
 |---|---|---|---|---|
 | E1.1 | **Separate organization and personal setup.** Split `claude/CLAUDE.md` into organization standards and an optional personal layer; remove "About me" from the shared rules; rewrite README and docs for roles (platform team, project teams, architects). | E1 Foundations | S | proposed |
 | E1.2 | **Profiles and `factory.yaml`.** Per-project profile (`personal`, `team`, `enterprise`), highest level allowed, models per tier, budget cap per run; `personal` keeps today's behavior. | E1 | M | proposed |
-| E1.3 | **Repository governance.** CODEOWNERS per area, rulesets protecting `main`, required reviews, release approval. | E1 | S | proposed |
+| E1.3 | **Repository governance.** CODEOWNERS per area, rulesets protecting `main`, required reviews, release approval. | E1 | S | proposed; the `main` ruleset part moved to I17 |
 | E1.4 | **Central distribution.** Plugin marketplace (I7) plus documented managed settings; organization owner in `new-project.sh`; Claude service credentials per project with `scripts/claude_federation.py` (I16). | E1 | M | proposed |
 | E1.5 | **Evidence records.** Every pipeline run writes a record (spec, approvals, findings, model, cost) next to the plan. | E1 | M | proposed |
 | E1.6 | **Hosting decision.** Public in `egov-sofa`, or GitHub Enterprise with internal repos; settles how claude-skills and teams reach the factory. | E1 | XS (decision) | proposed |
@@ -139,3 +189,7 @@ Phase 1 to 3 items above continue in parallel; I1 (evals) and I7 (plugin marketp
 - **2026-11-16:** this repository's review rule created with the Console wizard. The first exchanges were refused
   with `match_claim_value_mismatch` until the rule's claims matched a pull request run. The script now also requires `repository_owner_id` and `event_name`, and
   CLAUDE-SERVICES-AUTH.md gives the wizard's field values and both failures seen so far.
+- **2026-11-16:** the Claude review ran successfully for the first time (on #8, $0.51) with this repository's
+  federation rule. Second review of the whole repository and comparison with similar initiatives: I17 to I31 added,
+  and changes proposed to I1, E1.2, E1.3, E2.1 and E3 to E5. Found that `main` is unprotected, secret scanning is
+  off, and `v1` is three commits behind `main`.

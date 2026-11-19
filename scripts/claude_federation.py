@@ -12,7 +12,8 @@ and a rule that already exists with the same name on the issuer is reused, so it
 
 Usage:
   python3 scripts/claude_federation.py --repo OWNER/NAME --service-account svac_... --workspace wrkspc_... \\
-      [--mention] [--mention-workflow-ref REF] [--sub-prefix PREFIX] [--owner-id ID] [--rule-prefix NAME] \\
+      [--mention] [--mention-workflow-ref REF] [--review-workflow-ref REF] [--sub-prefix PREFIX] \\
+      [--owner-id ID] [--rule-prefix NAME] \\
       [--issuer-url URL] [--create-issuer] [--token-lifetime 600] [--apply]
 
   --sub-prefix   the repository's OIDC subject prefix; default: read with
@@ -23,6 +24,9 @@ Usage:
   --mention-workflow-ref
                  also require this job_workflow_ref claim on the mention rule (hardening; copy the exact value from a
                  refused exchange in the Console if unsure)
+  --review-workflow-ref
+                 the same for the review rule. Recommended for projects: without it, anyone with write access can
+                 open a pull request that edits the workflow and get tokens
   --apply        create the rules. Needs an org:admin OAuth token in ANTHROPIC_AUTH_TOKEN:
                    ant auth login --profile admin --scope "org:admin"
                    export ANTHROPIC_AUTH_TOKEN=$(ant auth print-credentials --profile admin --access-token)
@@ -55,6 +59,7 @@ def parse_args(argv):
     p.add_argument("--workspace", required=True, help="wrkspc_... the tokens act in (and are billed to)")
     p.add_argument("--mention", action="store_true", help="also create the @claude mention rule")
     p.add_argument("--mention-workflow-ref", default="", help="extra job_workflow_ref claim for the mention rule")
+    p.add_argument("--review-workflow-ref", default="", help="extra job_workflow_ref claim for the review rule")
     p.add_argument("--sub-prefix", default="", help="OIDC subject prefix; default: read it with gh")
     p.add_argument("--owner-id", default="", help="numeric ID of the owner; default: read it with gh")
     p.add_argument("--rule-prefix", default="", help="rule name prefix; default: the repository name")
@@ -121,6 +126,9 @@ def build_rules(args, sub_prefix, owner_id):
         "oauth_scope": "workspace:developer",
         "token_lifetime_seconds": args.token_lifetime,
     }
+    review_claims = {"repository_owner": owner, "repository_owner_id": owner_id, "event_name": "pull_request"}
+    if args.review_workflow_ref:
+        review_claims["job_workflow_ref"] = args.review_workflow_ref
     rules = [{
         "variable": "ANTHROPIC_FEDERATION_RULE_ID",
         "payload": {
@@ -128,8 +136,7 @@ def build_rules(args, sub_prefix, owner_id):
             "description": f"Claude review of pull requests in {args.repo} (software factory)",
             # no ref claim: pull request runs carry refs/pull/<n>/merge, not a branch
             "match": {"subject_prefix": f"{sub_prefix}:pull_request", "audience": AUDIENCE,
-                      "claims": {"repository_owner": owner, "repository_owner_id": owner_id,
-                                 "event_name": "pull_request"}},
+                      "claims": review_claims},
             **common,
         },
     }]
@@ -213,6 +220,12 @@ def main(argv):
             print(f"warning: {warning}", file=sys.stderr)
         owner_id = args.owner_id or read_owner_id(args.repo.split("/")[0])
         rules = build_rules(args, prefix, owner_id)
+        if not args.review_workflow_ref:
+            print("note: without --review-workflow-ref, any pull request from a branch of the repository can get "
+                  "tokens, including one that edits the workflow; anyone with write access can do that. For a "
+                  "project calling the factory at @v1, pass "
+                  "OWNER/software-factory/.github/workflows/reusable-claude-review.yml@refs/tags/v1 "
+                  "(docs/CLAUDE-SERVICES-AUTH.md).", file=sys.stderr)
         if not args.apply:
             print(f"Preview for {args.repo} (nothing is created; add --apply to create the rules)\n")
             for rule in rules:

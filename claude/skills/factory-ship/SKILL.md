@@ -1,7 +1,8 @@
 ---
 name: factory-ship
-description: Commit remaining work, push the current feature branch, and open a GitHub pull request with a generated description. Use when a feature is finished and ready for review/CI.
+description: Commit remaining work, push the current feature branch, and open a GitHub pull request with a generated description. Started by typing /factory-ship when a feature is finished.
 argument-hint: "[--draft]"
+disable-model-invocation: true
 ---
 
 # Factory Ship
@@ -35,11 +36,12 @@ Build the description from the plan in `docs/plans/` (if any) and `git log main.
 ## Testing
 - <tests added and run; result>
 ## Checklist
-- [x] Tests pass locally
-- [x] Reviewed by factory reviewer + security-auditor
+- [ ] Tests pass locally
+- [ ] Reviewed by factory reviewer + security-auditor
 - [ ] CI green
 Plan: docs/plans/<file>.md
 ```
+Tick a box only for something that actually happened: "Tests pass locally" when you ran the test suite in this session and it passed (run it now if needed), "Reviewed" only when `/factory-build` or `/factory-review` ran on this branch and its result is in the plan or in this conversation. Leave the others unticked; a ticked box that nobody checked misleads the reviewer.
 Then run `gh pr create --base main --title "<conventional title>" --body "<body>"`, adding `--draft` if `$ARGUMENTS` contains `--draft`.
 
 ## 6. Report
