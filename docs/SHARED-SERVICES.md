@@ -89,16 +89,20 @@ The Claude review costs API credit on every push, so it is **off until you turn 
 
 1. Install the Claude GitHub app on the repository: <https://github.com/apps/claude> (or `/install-github-app` in
    Claude Code).
-2. Give it access to the Claude API with **workload identity federation**, which stores no secret: a federation rule
-   for the repository, and its IDs as repository variables. Do it in the Claude Console, or run the factory's script:
+2. Give it access to the Claude API with **workload identity federation**, which stores no secret: federation rules
+   for the repository, and their IDs as repository variables. `/factory-new` and `/factory-onboard` prepare this and
+   hand an organization admin one command:
    ```bash
-   python3 scripts/claude_federation.py --repo OWNER/NAME --service-account svac_... --workspace wrkspc_... --mention
+   python3 scripts/claude_federation.py --repo OWNER/NAME --mention --review-workflow-ref ... --apply --set-variables
    ```
-   It previews by default; add `--apply` to create the rules through the Admin API. The steps, the objects involved
-   and a troubleshooting table are in [CLAUDE-SERVICES-AUTH.md](CLAUDE-SERVICES-AUTH.md).
-3. Set the repository variable `CLAUDE_REVIEW_ENABLED` to `true` (the script prints this command too).
-4. Optional, for `@claude` mentions: the mention rule (`--mention`), with its ID in
-   `ANTHROPIC_MENTION_FEDERATION_RULE_ID`. Until it is set, mentions are ignored.
+   It creates the review and mention rules through the Admin API and sets the variables, `CLAUDE_REVIEW_ENABLED`
+   last. The full command, the architecture and a troubleshooting table are in
+   [CLAUDE-SERVICES-AUTH.md](CLAUDE-SERVICES-AUTH.md#set-up-a-repository-from-claude-code-recommended); the Claude
+   Console is the way to do it by hand.
+3. Without `--set-variables`, set the variables yourself with the commands the script prints, and
+   `CLAUDE_REVIEW_ENABLED` to `true` last.
+4. `@claude` mentions use the mention rule (`--mention`), with its ID in `ANTHROPIC_MENTION_FEDERATION_RULE_ID`.
+   Until it is set, mentions are ignored.
 
 Turning on step 3 without step 2 makes every review fail with "Environment variable validation failed", as it did on
 egov-sofa/software-factory#6.

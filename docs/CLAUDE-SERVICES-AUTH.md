@@ -1,16 +1,56 @@
 # Claude services: authentication
 
 How the Claude review and `@claude` mentions ([SHARED-SERVICES.md](SHARED-SERVICES.md)) reach the Claude API, and how
-to set that up for a repository: in the Claude Console, or with the factory's script. Adapted from
-`egov-ai/claude-skills/docs/claude-code-review-auth.md`, where this setup has run since November 2026.
+to set that up for a repository: from Claude Code with one command (recommended), or by hand in the Claude Console.
+Adapted from `egov-ai/claude-skills/docs/claude-code-review-auth.md`, where this setup has run since November 2026.
 
 **In short:** no API key is stored anywhere. Each run proves who it is with a token GitHub signs, and a **federation
-rule** for that repository swaps it for a Claude token that lives ten minutes. You create the rules once per
-repository and give the repository their IDs as **variables** (identifiers, not secrets).
+rule** for that repository swaps it for a Claude token that lives ten minutes. Each repository needs its own rules
+and its own **variables** (identifiers, not secrets). `/factory-new` and `/factory-onboard` prepare both, and an
+organization admin finishes the job with one command: see
+[Set up a repository from Claude Code](#set-up-a-repository-from-claude-code-recommended).
+
+| You want to | Read |
+|---|---|
+| understand how a review run gets its access | [Architecture](#architecture) |
+| set up a new or existing repository | [Set up a repository from Claude Code](#set-up-a-repository-from-claude-code-recommended) |
+| fix a failing review | [Troubleshooting](#troubleshooting) |
+
+---
+
+## Architecture
+
+### A review run, step by step
 
 ![How a review run reaches the Claude API: claude-code-action gets a JWT from GitHub's OIDC issuer, exchanges it at the repository's federation rule for a 10-minute token acting as a service account in a workspace, and calls the Claude API](diagrams/claude-services-auth-1.png)
 
----
+1. A pull request starts the project's `claude-review.yml`. It reads the repository **variables** (rule, organization,
+   service account and workspace IDs) and passes them to the factory's reusable workflow at `@v1`.
+2. In that workflow, `claude-code-action` asks GitHub's **OIDC issuer** for an identity token (a JWT, about five
+   minutes). The job may do so because it has `permissions: id-token: write`. The token says which repository,
+   event and workflow the run is; nobody can forge it.
+3. The action sends the JWT to the Anthropic **federation rule** named in the variables. The rule checks the subject
+   and the claims (repository, owner ID, event, and optionally the exact workflow file). If they match, it mints a
+   Claude token for its **service account**, in its **workspace**, valid 600 seconds.
+4. The action calls the **Claude API** with that token. Usage is billed to the workspace and limited by its spend
+   limit.
+
+Nothing in the repository is secret, so there is nothing to leak or rotate: a stolen variable is useless without a
+run that GitHub signed for the repository the rule names.
+
+### What is shared and what is per repository
+
+![What is shared and what is per repository: each project repository has its own federation rules and five variables; the service account and workspace are shared by a team; the GitHub federation issuer is shared by the whole Anthropic organization](diagrams/claude-services-auth-2.png)
+
+| Object | How many | Created by |
+|---|---|---|
+| Federation issuer (GitHub) | one per Anthropic organization, already there | once, in the Console (or the script's `--create-issuer`) |
+| Workspace and service account | one per team or project group | once, in the Console |
+| Federation rules | one or two per repository (review, optional mention) | the script, for each repository |
+| Repository variables | five per repository (six with the mention rule) | the script with `--set-variables`, for each repository |
+
+The rules are per repository because the token always names the repository whose workflow started the run (the
+caller), never the factory. That is why every new repository needs a setup run, and why the factory automates it.
 
 ## The objects
 
@@ -78,6 +118,60 @@ Plus the shared variables `ANTHROPIC_ORGANIZATION_ID`, `ANTHROPIC_SERVICE_ACCOUN
   plan. Without credit every review fails with `Credit balance is too low`.
 
 ---
+
+## Set up a repository from Claude Code (recommended)
+
+One person with the Anthropic **`org:admin`** role and **admin access to the GitHub repository** runs one command.
+`/factory-new` (after creating the GitHub repository) and `/factory-onboard` (when you choose the Claude review) walk
+you to it: Claude prepares and previews, you run the command. Claude never runs it itself, because it uses your
+admin login.
+
+![Setting a repository up for the Claude review, as a process: Claude Code previews the rules and hands over one command; the organization admin logs in with org:admin and runs it; claude_federation.py creates or reuses the rules, sets the ID variables, turns the review on last and checks for an API key secret, which the admin deletes if there is one; the next pull request is reviewed](diagrams/claude-services-setup.png)
+
+![Setting a repository up, in one command: Claude Code previews and hands over the command; the organization admin runs claude_federation.py with --apply --set-variables, which creates the rules through the Admin API and sets the repository variables with gh, review switch last; the Claude Console remains the way to do it by hand](diagrams/claude-services-auth-3.png)
+
+### Once per machine
+
+1. Install the tools: `gh` (logged in with `gh auth login`), the `ant` CLI, and the Anthropic Python SDK
+   (`pip install anthropic`).
+2. Optional, so you never type the IDs: put your team's service account and workspace in your shell profile.
+   ```bash
+   export FACTORY_CLAUDE_SERVICE_ACCOUNT=svac_...
+   export FACTORY_CLAUDE_WORKSPACE=wrkspc_...
+   ```
+   Without them, pass `--service-account` and `--workspace` on the command line. The workspace and service account
+   must already exist (Console, Settings → Workspaces; one per team, see [Architecture](#architecture)).
+
+### For each repository
+
+1. **Claude previews.** The skill runs the script without `--apply`. Nothing is created and no Anthropic API is
+   called; it shows the rules it would create and the variables it would set. Check the repository name and the IDs.
+2. **You log in** with the `org:admin` scope (once per session; the login lasts until it expires):
+   ```bash
+   ant auth login --profile admin --scope "org:admin"
+   ```
+3. **You run the one command** the skill hands over, in Claude Code with `!` in front, or in a terminal:
+   ```bash
+   env -u ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN="$(ant auth print-credentials --profile admin --access-token)" \
+     python3 <factory>/scripts/claude_federation.py --repo OWNER/NAME --mention \
+     --review-workflow-ref egov-sofa/software-factory/.github/workflows/reusable-claude-review.yml@refs/tags/v1 \
+     --apply --set-variables
+   ```
+   The admin token exists only for this one process: it is not exported into your shell, and `env -u` makes sure an
+   API key in your environment cannot get in the way.
+4. **The script does the rest, in this order:**
+   1. reads the repository's OIDC subject prefix and the owner's numeric ID with `gh`;
+   2. creates the review rule and the mention rule on the existing GitHub issuer, or reuses rules that already
+      exist under the same names (it never deletes anything, so running it twice is safe);
+   3. sets the variables with `gh variable set`: the rule IDs, the organization, the service account, the workspace,
+      and **`CLAUDE_REVIEW_ENABLED` last**. If one fails, it stops there, so the review is never turned on without
+      the IDs it needs;
+   4. warns if the repository has an `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` secret, which would win over
+      federation. Delete it: `gh secret delete NAME --repo OWNER/NAME`.
+5. **Check it works:** the next pull request gets the Claude review. The rule's authentication history in the Console
+   shows each token exchange, and the reason for a refused one ([Troubleshooting](#troubleshooting)).
+
+Why a person and not a pipeline: see "Automating it further" under Option B.
 
 ## Option A: in the Claude Console
 
@@ -147,10 +241,12 @@ You need the admin, owner or primary owner role in the Anthropic organization.
 
 ## Option B: with the factory's script (Admin API)
 
-![Setting it up for a repository: the organization admin fills in the Console form, or logs in with ant at org:admin scope and runs claude_federation.py, which creates the rules through the Admin API and prints the gh variable set commands](diagrams/claude-services-auth-2.png)
+The script the recommended setup uses, run by hand. The diagram is in
+[Set up a repository from Claude Code](#set-up-a-repository-from-claude-code-recommended).
 
 [`scripts/claude_federation.py`](../scripts/claude_federation.py) creates the same rules through the Anthropic
-**Admin API** (beta), on the existing GitHub issuer, and prints the `gh variable set` commands with the real IDs.
+**Admin API** (beta), on the existing GitHub issuer, and prints the `gh variable set` commands with the real IDs, or
+with `--set-variables` sets them itself (`CLAUDE_REVIEW_ENABLED` last).
 It reads the subject prefix and the owner's numeric ID with `gh` itself (or takes `--sub-prefix` and `--owner-id`),
 reuses a rule that already exists under the same name, and never deletes anything, so it is safe to run again. A
 reused rule is not compared with what the script would create: if it was made in the Console, check its match there.
@@ -174,10 +270,11 @@ python3 scripts/claude_federation.py --repo egov-sofa/software-factory --service
 python3 scripts/claude_federation.py --repo egov-sofa/software-factory --service-account svac_... --workspace wrkspc_... --mention --apply
 ```
 
-Run the printed `gh variable set` commands, then switch back to your normal profile
-(`unset ANTHROPIC_AUTH_TOKEN && ant profile activate default`). Other options: `--sub-prefix` when `gh` cannot read
-it, `--rule-prefix` to choose the rule names, `--mention-workflow-ref` for the hardening claim above,
-`--create-issuer` in an organization that has no GitHub issuer yet. `--help` lists them all.
+Run the printed `gh variable set` commands (or add `--set-variables` to the `--apply` run), then switch back to your
+normal profile (`unset ANTHROPIC_AUTH_TOKEN && ant profile activate default`). Other options: `--sub-prefix` when
+`gh` cannot read it, `--rule-prefix` to choose the rule names, `--mention-workflow-ref` for the hardening claim above,
+`--create-issuer` in an organization that has no GitHub issuer yet. `--service-account` and `--workspace` default to
+`$FACTORY_CLAUDE_SERVICE_ACCOUNT` and `$FACTORY_CLAUDE_WORKSPACE`. `--help` lists them all.
 
 **Automating it further.** The script needs a person with an `org:admin` login. A pipeline could run it unattended
 with a federation rule whose scope is `org:admin`, targeting an admin service account; Anthropic requires a person to
@@ -216,5 +313,8 @@ To turn the Claude review off instead, set `CLAUDE_REVIEW_ENABLED` to anything b
 | `workspace_id_required` | The rule covers several workspaces | Set `ANTHROPIC_WORKSPACE_ID` |
 | `401 Invalid bearer token` while federation is set up | A secret `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` exists and wins | Delete the secret |
 | `Credit balance is too low` | No API credit in the organization | Console, Billing |
+| The script stops with `gh could not set ... needs admin access` | `--set-variables` runs `gh variable set`, which needs admin access to the repository | Run it as a repository admin; it reuses the rules it already created, and nothing after the failed variable was set, `CLAUDE_REVIEW_ENABLED` included |
+| The script warns that the repository has an `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` secret | An older setup with a stored key; the secret wins over federation | `gh secret delete NAME --repo OWNER/NAME` |
+| `--service-account must be a service account ID ... or set FACTORY_CLAUDE_SERVICE_ACCOUNT` | Neither the option nor the environment variable is set | Pass the option, or export the variable (see [Once per machine](#once-per-machine)) |
 | No review and no message | Claude's messages are hidden by default | Set `CLAUDE_REVIEW_DEBUG` to `true`, rerun, read the log, then delete the variable |
 | The mention job is skipped | `ANTHROPIC_MENTION_FEDERATION_RULE_ID` is not set | Create the mention rule and set the variable |
