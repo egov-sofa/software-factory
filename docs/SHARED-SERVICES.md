@@ -118,7 +118,13 @@ system names:
 1. Write them in `.content-denylist` at the project root, one per line (the file is git-ignored).
 2. Store the same list as a secret: `gh secret set CONTENT_DENYLIST < .content-denylist`.
 
-Findings never print a denylisted term, only its number.
+Findings never print a denylisted term, only its number. On a fork's pull request they don't show the number or the
+location either, only that denylisted terms were found: otherwise a fork could put one guessed name per line and learn
+from the failing lines which names are on the private list. A maintainer sees the details by running the guard
+locally.
+
+A line ending in `content-ok` skips the built-in rules. If it holds something that looks like a secret, the guard
+still passes it but prints a note naming the kind of secret, so the reviewer can check that it is a fake.
 
 ---
 

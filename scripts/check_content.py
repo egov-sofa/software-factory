@@ -24,7 +24,9 @@ variable CONTENT_DENYLIST (a CI secret). One term per line, case-insensitive, ma
 with # are comments. The words of a term match across any whitespace, also when a line wrap splits them.
 
 A line that holds an intended example can end with the marker  content-ok  to skip the built-in rules (never the
-denylist). A line with a denylisted term reports only that term's number: the other rules would print the value.
+denylist); a secret allowed that way is named in a note, so a reviewer sees it. A line with a denylisted term reports
+only that term's number: the other rules would print the value. With CONTENT_DENYLIST_QUIET set (CI sets it on a
+fork's pull request), denylist findings show neither the number nor the location, only that there are some.
 
 Exit code 0 if nothing is found, 1 if something is found, 2 on a usage error.
 """
@@ -115,16 +117,21 @@ def utf16_text(data):
     return None
 
 
+UTF16_RUN_RE = re.compile(r"(?:[\x20-\x7e]\x00){4,}")
+
+
 def without_nul(line):
     """An added diff line with its NUL bytes handled: a UTF-16 line (a NUL between every letter) gets them removed so
     its text can be read; any other NUL becomes a space, so it cannot hide the rest of the line. A line with fewer
-    NULs can still be UTF-16, mostly in a non-Latin script: both readings are kept, separated by a tab."""
+    NULs can still be UTF-16, mostly in a non-Latin script: its runs of UTF-16 Latin text (a character, a NUL, at
+    least four times) are added after a tab, read without the NULs. Only those runs: removing every NUL from binary
+    content would make up findings (1.1<NUL>.1.1 would become a public IP)."""
     nuls = line.count(chr(0))
     if nuls and nuls * 3 >= len(line):   # a third, not half: the byte-order mark and \r also take places
         return line.replace(chr(0), "")
-    if nuls:
-        return line.replace(chr(0), " ") + "\t" + line.replace(chr(0), "")
-    return line
+    spaced = line.replace(chr(0), " ")
+    runs = [run.replace(chr(0), "") for run in UTF16_RUN_RE.findall(line)] if nuls else []
+    return "\t".join([spaced, *runs])
 
 
 def denylist():
@@ -140,19 +147,31 @@ def denylist():
     return [re.compile(r"(?<!\w)" + r"\s+".join(map(re.escape, t.split())) + r"(?!\w)", re.I) for t in terms.values()]
 
 
+HIDDEN_TERM = "a denylist term"
+
+
+def quiet():
+    """CONTENT_DENYLIST_QUIET (set by CI on a fork's pull request): denylist findings are reported without a number or
+    a location. On a public repository a fork could otherwise put one guessed name per line and learn from the
+    numbers or the failing lines which ones are on the private list; now each run answers only yes or no."""
+    return bool(os.environ.get("CONTENT_DENYLIST_QUIET"))
+
+
 def term(n):
-    """How a denylist finding is named: by its number, so the maintainer knows which term. With
-    CONTENT_DENYLIST_HIDE_NUMBERS set (CI on a fork's pull request) the number is left out: on a public repository
-    a fork could otherwise test guessed names and learn from the numbers which ones are on the private list."""
-    return "a denylist term" if os.environ.get("CONTENT_DENYLIST_HIDE_NUMBERS") else f"denylist term {n}"
+    """How a denylist finding is named: by its number, so the maintainer knows which term (none when quiet)."""
+    return HIDDEN_TERM if quiet() else f"denylist term {n}"
+
+
+def secret_kinds(line):
+    """The kinds of secret in a line (the public Azurite emulator key is not one)."""
+    kinds = [kind for kind, pattern in SECRET_RULES
+             if pattern.search(line) and not (kind == "Azure storage key" and AZURITE_ACCOUNT in line)]
+    return kinds + (["password in a URL"] if url_password(line) else [])
 
 
 def marker_skipped(line):
     """The kinds of secret a line allows through the marker: still allowed, but named, so a reviewer sees them."""
-    if not line.rstrip().endswith(MARKER):
-        return []
-    return [kind for kind, pattern in SECRET_RULES if pattern.search(line)] + (
-        ["password in a URL"] if url_password(line) else [])
+    return secret_kinds(line) if line.rstrip().endswith(MARKER) else []
 
 
 def wrapped(prev, line, deny):
@@ -190,10 +209,7 @@ def findings(line, deny):
         return found   # an IP or host finding would print its value, which can contain the term
     if line.rstrip().endswith(MARKER):
         return found
-    found += [f"possible secret ({kind})" for kind, pattern in SECRET_RULES
-              if pattern.search(line) and not (kind == "Azure storage key" and AZURITE_ACCOUNT in line)]
-    if url_password(line):
-        found.append("possible secret (password in a URL)")
+    found += [f"possible secret ({kind})" for kind in secret_kinds(line)]
     for m in (*IPV4_RE.finditer(line), *(m for m in IPV6_RE.finditer(line) if ipv6_like(m.group(1)))):
         try:
             ip = ipaddress.ip_address(m.group(1))
@@ -346,23 +362,34 @@ def main(argv):
         print(__doc__, file=sys.stderr)
         return 2
 
-    problems = 0
+    problems, hidden = 0, False
+
+    def report(where, num, finding):
+        nonlocal problems, hidden
+        problems += 1
+        if finding.startswith(HIDDEN_TERM):   # quiet: no number, no location (see quiet())
+            hidden = True
+            return
+        print(f"{where}: file name: {finding}" if num == 0 else f"{where}:{num}: {finding}")
+
     for _label, lines in sources:
         prev = None   # (where, num, line) of the line before, to catch a term split by a line wrap
         for where, num, line in lines:
             if any(p.search(where) for p in deny):
-                where = "(a file whose path holds a denylist term)"   # never print the term as a location
+                # never print the term as a location; when quiet, not even that a path holds one
+                where = "(a file)" if quiet() else "(a file whose path holds a denylist term)"
             if prev and prev[0] == where and num == prev[1] + 1 and num > 1:
                 for f in wrapped(prev[2], line, deny):
-                    print(f"{where}:{prev[1]}: {f}")
-                    problems += 1
-            for f in findings(line, deny):
-                print(f"{where}: file name: {f}" if num == 0 else f"{where}:{num}: {f}")
-                problems += 1
+                    report(where, prev[1], f)
+            for f in dict.fromkeys(findings(line, deny)):   # once each, though a line can hold two readings
+                report(where, num, f)
             for kind in marker_skipped(line):
                 print(f"{where}:{num}: note: '{MARKER}' allows a possible secret ({kind}); make sure it is a fake")
             prev = (where, num, line)
     names = ", ".join(label for label, _ in sources)
+    if hidden:
+        print("Denylisted terms found. Their locations are not shown on a fork's pull request; a maintainer can run "
+              "the guard locally to see them.")
     if problems:
         print(f"\n{problems} problem(s) in {names}. Remove the content, or end an intended example line with "
               f"'{MARKER}' (built-in rules only).")

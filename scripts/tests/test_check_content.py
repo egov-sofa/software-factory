@@ -79,7 +79,7 @@ class Findings(unittest.TestCase):
     def test_denylist_numbers_can_be_hidden_for_forks(self):
         deny = [re.compile(r"(?<!\w)acme(?!\w)", re.I)]
         self.assertEqual(["denylist term 1"], self.check("Acme notes", deny))
-        with mock.patch.dict(os.environ, {"CONTENT_DENYLIST_HIDE_NUMBERS": "1"}):
+        with mock.patch.dict(os.environ, {"CONTENT_DENYLIST_QUIET": "1"}):
             self.assertEqual(["a denylist term"], self.check("Acme notes", deny))
             self.assertEqual(["a denylist term (split across this line and the next)"],
                              check_content.wrapped("Big", "Corp", [re.compile(r"(?<!\w)Big\s+Corp(?!\w)", re.I)]))
@@ -90,11 +90,19 @@ class Findings(unittest.TestCase):
         line = "�" * 80 + chr(0).join(secret) + chr(0)   # replacement characters: the non-Latin bytes
         self.assertIn("possible secret (AWS access key ID)", self.check(check_content.without_nul(line)))
 
+    def test_nul_bytes_in_binary_do_not_make_up_findings(self):
+        """Only runs of UTF-16 text are read without their NULs: stray NULs in binary content stay spaces."""
+        for line in ("1.1" + chr(0) + ".1.1", "\x7fELF" + chr(0) * 2 + "8.8" + chr(0) + ".8.8"):
+            with self.subTest(line=repr(line)):
+                self.assertEqual([], self.check(check_content.without_nul(line)))
+
     def test_marker_on_a_secret_is_named(self):
         line = joined("token = 'ghp", "_", "a" * 36, "'  content-ok")
         self.assertEqual([], self.check(line))
         self.assertEqual(["GitHub token"], check_content.marker_skipped(line))
         self.assertEqual([], check_content.marker_skipped("dns = 8.8.8.8  content-ok"))  # content-ok
+        azurite = joined("AccountName=devstoreaccount1;Account", "Key=", "Eby8" * 22, "==  content-ok")
+        self.assertEqual([], check_content.marker_skipped(azurite))   # public emulator key: no note
 
     def test_utf16_text_is_decoded(self):
         secret = joined("AKIA", "ABCDEFGHIJKLMNOP")
@@ -171,6 +179,16 @@ class CommandLine(unittest.TestCase):
         tracked = self.guard("--all")
         self.assertEqual(1, tracked.returncode, tracked.stdout)
         self.assertIn("possible secret (AWS access key ID)", tracked.stdout)
+
+    def test_quiet_denylist_findings_show_no_number_and_no_location(self):
+        """A fork's pull request: one guess per line must not tell which lines (so which guesses) matched."""
+        (self.repo / "guesses.md").write_text("Globex\nAcme\nInitech\n")
+        self.git("add", "guesses.md")
+        result = self.guard("--staged", env={"CONTENT_DENYLIST": "acme", "CONTENT_DENYLIST_QUIET": "1"})
+        self.assertEqual(1, result.returncode, result.stdout)
+        self.assertNotIn("guesses.md", result.stdout)
+        self.assertNotIn("term 1", result.stdout)
+        self.assertIn("Denylisted terms found", result.stdout)
 
     def test_marker_on_a_secret_passes_with_a_note(self):
         (self.repo / "docs.md").write_text(joined("example: ghp", "_", "q" * 36, "  content-ok\n"))
