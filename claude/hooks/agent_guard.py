@@ -17,6 +17,7 @@ Exit code 0 in both cases (the decision is in the JSON), 2 on a usage error.
 import fnmatch
 import json
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -42,12 +43,26 @@ WHAT = {
 # git subcommands that change history, the index or the branch. Read-only ones (status, diff, log, show, blame,
 # ls-files, rev-parse) are not listed and stay allowed.
 GIT_WRITES = {"push", "commit", "reset", "checkout", "switch", "rebase", "merge", "cherry-pick", "revert", "am",
-              "stash", "tag", "clean", "pull", "apply", "rm", "mv", "add", "update-ref", "filter-branch", "worktree"}
+              "stash", "tag", "clean", "pull", "apply", "rm", "mv", "add", "update-ref", "filter-branch", "worktree",
+              "update-index", "symbolic-ref", "replace", "read-tree"}
+# read-only forms of subcommands listed above: git tag -l, git stash list
+GIT_READ_FORMS = {"tag": {"-l", "--list"}, "stash": {"list", "show"}}
 GIT_BRANCH_WRITES = {"-d", "-D", "-m", "-M", "-c", "-C", "-f", "--delete", "--move", "--copy", "--force",
                      "--set-upstream-to", "-u", "--unset-upstream"}
 GIT_OPTIONS_WITH_VALUE = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--config-env"}
-WRAPPERS = {"env", "command", "exec", "time", "nohup", "sudo", "nice", "xargs"}
-SHELLS = {"bash", "sh", "zsh", "dash"}
+WRAPPERS = {"env", "command", "exec", "time", "nohup", "sudo", "nice", "xargs", "stdbuf", "timeout", "doas"}
+# options of those wrappers that take a value: env -u NAME, nice -n 5, sudo -u me, xargs -I {}, timeout -s KILL
+WRAPPER_OPTIONS_WITH_VALUE = {"-u", "-g", "-n", "-C", "-I", "-P", "-L", "-s", "-k", "-S",
+                              "--user", "--group", "--chdir", "--unset", "--adjustment", "--signal", "--split-string"}
+SHELLS = {"bash", "sh", "zsh", "dash", "ksh"}
+
+# Second layer, over the whole command text (inside quotes, backticks, $( ) and eval too): git, any options, then a
+# subcommand that writes. Stricter than the parser on purpose: an echo that quotes such a command is refused as well.
+GIT_WRITE_RE = re.compile(
+    r"(?<![\w.-])git(?:\.exe)?"
+    r"(?:\s+(?:-[Cc]\s+\S+|--(?:git-dir|work-tree|namespace|exec-path|config-env)(?:=\S+|\s+\S+)|-\S+))*"
+    r"\s+(" + "|".join(sorted(map(re.escape, GIT_WRITES), key=len, reverse=True)) + r"|branch|restore)(?![\w-])"
+    r"([^;&|\n`)]*)")
 
 
 def deny(reason):
@@ -117,14 +132,28 @@ def segments(command):
 def git_write(tokens):
     """The git subcommand in tokens if it changes history or the branch, else None."""
     i = 0
-    while i < len(tokens) and ("=" in tokens[i] and not tokens[i].startswith("-") or tokens[i] in WRAPPERS):
-        i += 1   # VAR=value, env, command, sudo, ...
+    while i < len(tokens):
+        if "=" in tokens[i] and not tokens[i].startswith("-"):
+            i += 1   # VAR=value
+        elif Path(tokens[i]).name in WRAPPERS:
+            i += 1   # env, sudo, nice, ... and their options: env -i, nice -n 5, sudo -u me
+            while i < len(tokens) and tokens[i].startswith("-"):
+                i += 2 if tokens[i] in WRAPPER_OPTIONS_WITH_VALUE else 1
+            if i < len(tokens) and tokens[i].isdigit():
+                i += 1   # timeout 10 git push
+        else:
+            break
     if i >= len(tokens):
         return None
     name = Path(tokens[i]).name.lower()
-    if name in SHELLS and "-c" in tokens[i + 1:]:
-        script = tokens[tokens.index("-c", i + 1) + 1:tokens.index("-c", i + 1) + 2]
-        return git_write_in(script[0]) if script else None
+    if name == "eval":
+        return git_write_in(" ".join(tokens[i + 1:]))
+    if name in SHELLS:
+        # bash -c "...", also with other flags in the same word: bash -lc "...", sh -ec "..."
+        for j in range(i + 1, len(tokens) - 1):
+            if tokens[j].startswith("-") and not tokens[j].startswith("--") and "c" in tokens[j]:
+                return git_write_in(tokens[j + 1])
+        return None
     if name not in ("git", "git.exe"):
         return None
     i += 1
@@ -139,7 +168,7 @@ def git_write(tokens):
     if i >= len(tokens):
         return None
     sub, args = tokens[i], tokens[i + 1:]
-    if sub in GIT_WRITES:
+    if sub in GIT_WRITES and not (args and args[0] in GIT_READ_FORMS.get(sub, ())):
         return sub
     if sub == "branch" and any(a in GIT_BRANCH_WRITES or a.split("=")[0] in GIT_BRANCH_WRITES for a in args):
         return "branch " + next(a for a in args if a in GIT_BRANCH_WRITES or a.split("=")[0] in GIT_BRANCH_WRITES)
@@ -156,10 +185,24 @@ def git_write_in(command):
     return None
 
 
+def git_write_text(command):
+    """The writing git subcommand that appears anywhere in the command text, else None (the second layer)."""
+    for m in GIT_WRITE_RE.finditer(command):
+        sub, rest = m.group(1), m.group(2).split()
+        if sub in GIT_READ_FORMS and rest and rest[0] in GIT_READ_FORMS[sub]:
+            continue
+        if sub == "branch" and not any(a.split("=")[0] in GIT_BRANCH_WRITES for a in rest):
+            continue
+        if sub == "restore" and not any(a in ("--staged", "-S") for a in rest):
+            continue
+        return sub
+    return None
+
+
 def check_bash(agent, command):
     """None if the command is allowed, else the reason it is not."""
     try:
-        found = git_write_in(command)
+        found = git_write_in(command) or git_write_text(command)
     except ValueError:   # unbalanced quotes: cannot tell what runs
         if "git" in command:
             return f"{agent} ran a command the guard could not parse, and it mentions git; split it into simple commands."
@@ -176,21 +219,26 @@ def main(argv):
         return 2
     agent = argv[0]
     try:
-        call = json.loads(sys.stdin.read() or "{}")
-    except json.JSONDecodeError:
-        deny(f"the factory's guard for {agent} could not read this tool call, so it is refused.")
-        return 0
-    tool, args = call.get("tool_name", ""), call.get("tool_input") or {}
-    cwd = call.get("cwd") or os.getcwd()
-    reason = None
-    if tool in ("Edit", "Write", "NotebookEdit"):
-        path = args.get("file_path") or args.get("notebook_path") or ""
-        reason = check_path(agent, path, cwd) if path else None
-    elif tool == "Bash":
-        reason = check_bash(agent, args.get("command", ""))
+        reason = decide(agent, json.loads(sys.stdin.read() or "{}"))
+    except Exception as ex:   # noqa: BLE001 - a crash would let the call through (Claude Code ignores exit 1)
+        reason = f"the factory's guard for {agent} could not check this tool call ({type(ex).__name__}), so it is refused."
     if reason:
         deny(reason)
     return 0
+
+
+def decide(agent, call):
+    """The reason the call is refused, or None."""
+    if not isinstance(call, dict) or not isinstance(call.get("tool_input") or {}, dict):
+        raise ValueError("the tool call is not a JSON object")
+    tool, args = call.get("tool_name", ""), call.get("tool_input") or {}
+    cwd = call.get("cwd") or os.getcwd()
+    if tool in ("Edit", "Write", "NotebookEdit"):
+        path = args.get("file_path") or args.get("notebook_path") or ""
+        return check_path(agent, path, cwd) if path else None
+    if tool == "Bash":
+        return check_bash(agent, args.get("command", ""))
+    return None
 
 
 if __name__ == "__main__":

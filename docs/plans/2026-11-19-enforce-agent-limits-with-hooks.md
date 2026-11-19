@@ -76,6 +76,12 @@ reviewers have no tool that writes, and a hook refuses the other agents' forbidd
 - Bash: split the command with `shlex` (POSIX mode) into subcommands on `&&`, `||`, `;`, `|` and newlines. For each,
   skip leading `VAR=value` and `env`, then find `git` and its subcommand after global options (`-C`, `-c`,
   `--git-dir`, `--work-tree`, `--no-pager`). An unsplittable command that mentions `git` is denied.
+- A second layer reads the whole command text, inside quotes, backticks, `$( )` and `eval` too: `git`, any options,
+  then a writing subcommand anywhere is refused. It is stricter than the parser on purpose, so `echo "git push"` is
+  refused as well (added after the review of #24, which got `env -i git push`, `bash -lc "git push"` and backticks
+  past the parser alone).
+- Any error inside the guard, including input that is not a JSON object, refuses the call: Claude Code treats a
+  crashing hook (exit 1) as non-blocking, so a crash must not become an allowed call.
 - One table of rules per agent at the top of the script, so a reviewer of the factory sees every limit in one place.
 
 **Agent frontmatter** (tester):

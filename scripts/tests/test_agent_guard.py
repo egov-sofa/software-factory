@@ -102,14 +102,26 @@ class Git(Base):
         for command in ("git -C . push origin HEAD", "git -c push.default=current push", "git --no-pager commit",
                         "npm test && git push", "true; git push", "make\ngit push", "GIT_DIR=.git git push",
                         "env FOO=1 git commit -m x", 'bash -c "git push --force"', "/usr/bin/git push",
-                        "echo ok | xargs git push"):
+                        "echo ok | xargs git push",
+                        # wrappers and shells with options, backticks, $( ) and eval (review of #24)
+                        "env -i git push", "nice -n 5 git push", "sudo -u me git push", "timeout 10 git push",
+                        'bash -lc "git push"', 'sh -ec "git commit -m x"', "echo `git push`", "x=$(git push)",
+                        'eval "git push"', "eval git push", "env -S 'git push'",
+                        "git update-index --assume-unchanged a.py", "git symbolic-ref HEAD refs/heads/x"):
             with self.subTest(command):
                 self.assertIsNotNone(self.bash("tester", command))
+
+    def test_quoting_a_writing_git_command_is_refused_too(self):
+        """The text layer is strict on purpose: it cannot tell an echo from an eval, so both are refused."""
+        self.assertIsNotNone(self.bash("tester", 'echo "next: git push"'))
 
     def test_read_only_git_and_project_commands_are_allowed(self):
         for command in ("git status", "git diff main...HEAD", "git log --oneline -5", "git show HEAD:a.py",
                         "git -c core.pager=cat log", "git branch --show-current", "git branch -a",
-                        "git restore src/a.py", "npm test", "pytest -q", "echo git push is refused"):
+                        "git restore src/a.py", "npm test", "pytest -q", "git tag -l", "git tag --list 'v*'",
+                        "git stash list", "git stash show -p", "echo \"pushing is the conductor's job\"",
+                        "nice -n 5 npm test", "env -i PATH=/usr/bin pytest", 'bash -lc "npm test"',
+                        "gitk --all", "mygit push"):
             with self.subTest(command):
                 self.assertIsNone(self.bash("tester", command))
 
@@ -127,8 +139,12 @@ class CommandLine(unittest.TestCase):
         self.assertEqual(2, self.run_guard().returncode)
 
     def test_unreadable_input_is_refused(self):
-        out = self.run_guard("tester", stdin="not json").stdout
-        self.assertEqual("deny", json.loads(out)["hookSpecificOutput"]["permissionDecision"])
+        """A crash would exit 1, which Claude Code treats as non-blocking: the guard must refuse instead."""
+        for stdin in ("not json", "[1, 2]", '"text"', '{"tool_name": "Bash", "tool_input": "git push"}'):
+            with self.subTest(stdin):
+                done = self.run_guard("tester", stdin=stdin)
+                self.assertEqual(0, done.returncode, done.stderr)
+                self.assertEqual("deny", json.loads(done.stdout)["hookSpecificOutput"]["permissionDecision"])
 
     def test_other_tools_are_allowed(self):
         call = json.dumps({"tool_name": "Read", "tool_input": {"file_path": "src/a.py"}, "cwd": "."})
