@@ -46,6 +46,34 @@ class ClaudeReview(unittest.TestCase):
         self.assertIn("persist-credentials: false", checkout)
 
 
+class ClaudeComments(unittest.TestCase):
+    """Text injected into a pull request must not make Claude comment on another one."""
+
+    def test_comment_tool_is_limited_to_the_current_pull_request(self):
+        for name, number in (("reusable-claude-review.yml", "github.event.pull_request.number"),
+                             ("reusable-claude-mention.yml", "github.event.issue.number")):
+            with self.subTest(name):
+                text = (GITHUB / "workflows" / name).read_text(encoding="utf-8")
+                self.assertNotIn("Bash(gh pr comment:*)", text)
+                # with --body-file after the number, the rule for #12 cannot match #123
+                self.assertIn(f"Bash(gh pr comment ${{{{ {number} }}}} --body-file:*)", text)
+                self.assertIn(f"gh pr comment ${{{{ {number} }}}} --body-file - <<'EOF'", text)
+
+
+class ClaudeCosts(unittest.TestCase):
+    """Every Claude run has a ceiling on time, turns and money, which a caller can change but not forget."""
+
+    def test_budget_turns_and_timeout_are_inputs_and_used(self):
+        for name in ("reusable-claude-review.yml", "reusable-claude-mention.yml"):
+            with self.subTest(name):
+                text = (GITHUB / "workflows" / name).read_text(encoding="utf-8")
+                for option in ("max-budget-usd", "max-turns", "timeout-minutes"):
+                    self.assertRegex(text, rf"\n      {option}:\n(?:        .*\n)*?        default: \d+\n")
+                self.assertIn("--max-budget-usd ${{ inputs.max-budget-usd }}", text)
+                self.assertIn("--max-turns ${{ inputs.max-turns }}", text)
+                self.assertIn("timeout-minutes: ${{ inputs.timeout-minutes }}", text)
+
+
 class PythonCI(unittest.TestCase):
     """Existing @v1 callers keep pip; uv is chosen by the caller, never switched on by a file in the repository."""
 

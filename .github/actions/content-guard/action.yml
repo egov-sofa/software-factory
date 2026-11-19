@@ -51,6 +51,8 @@ runs:
         PR_TITLE: ${{ github.event.pull_request.title }}
         PR_BODY: ${{ github.event.pull_request.body }}
         CONTENT_DENYLIST: ${{ inputs.denylist }}
+        # a fork's pull request learns nothing about the private list: no term numbers, no locations
+        CONTENT_DENYLIST_QUIET: ${{ github.event.pull_request.head.repo.full_name != github.repository && '1' || '' }}
       run: >-
         python3 -I "$GITHUB_ACTION_PATH/../../../scripts/check_content.py" --root "$GITHUB_WORKSPACE"
         --diff "origin/$BASE_REF" --text-env PR_TITLE --text-env PR_BODY

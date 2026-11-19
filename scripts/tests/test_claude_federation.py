@@ -88,6 +88,19 @@ class Rules(unittest.TestCase):
             fed.main(ARGS + ["--sub-prefix", PREFIX, "--owner-id", OWNER_ID, "--review-workflow-ref", "o/r/.github/workflows/w.yml@refs/tags/v1"])
         self.assertNotIn("--review-workflow-ref", err.getvalue())
 
+    def test_mention_rule_follows_the_default_branch(self):
+        args = fed.parse_args(ARGS + ["--mention", "--default-branch", "master"])
+        _, mention = fed.build_rules(args, PREFIX, OWNER_ID)
+        self.assertEqual(PREFIX + ":ref:refs/heads/master", mention["payload"]["match"]["subject_prefix"])
+
+    def test_default_branch_is_read_with_gh(self):
+        answered = lambda *a, **k: SimpleNamespace(returncode=0, stdout="develop\n", stderr="")  # noqa: E731
+        failed = lambda *a, **k: SimpleNamespace(returncode=1, stdout="", stderr="HTTP 404")  # noqa: E731
+        with mock.patch.object(fed.shutil, "which", return_value="gh"):
+            self.assertEqual("develop", fed.read_default_branch("o/r", run=answered))
+            with self.assertRaisesRegex(fed.SetupError, "--default-branch"):
+                fed.read_default_branch("o/r", run=failed)
+
     def test_rule_prefix_renames_the_rules(self):
         (rule,) = fed.build_rules(fed.parse_args(ARGS + ["--rule-prefix", "factory"]), PREFIX, OWNER_ID)
         self.assertEqual("factory-pr-review", rule["payload"]["name"])
@@ -243,7 +256,8 @@ class Variables(unittest.TestCase):
         with mock.patch.object(fed.shutil, "which", return_value="/usr/bin/gh"), \
                 self.assertRaises(RealCommandRefused):
             fed.set_variables("o/r", self.VALUES)   # no run=: would be the real gh without the guard
-        for read in (lambda: fed.read_sub_prefix("o/r"), lambda: fed.read_owner_id("o")):
+        for read in (lambda: fed.read_sub_prefix("o/r"), lambda: fed.read_owner_id("o"),
+                     lambda: fed.read_default_branch("o/r")):
             with self.subTest(read=read), mock.patch.object(fed.shutil, "which", return_value="/usr/bin/gh"), \
                     self.assertRaises(RealCommandRefused):
                 read()
@@ -396,7 +410,7 @@ class Apply(unittest.TestCase):
 class CommandLine(unittest.TestCase):
     def test_preview_creates_nothing_and_prints_the_variables(self):
         env = {k: v for k, v in os.environ.items() if not k.startswith("ANTHROPIC_")}
-        done = subprocess.run([sys.executable, "-I", str(SCRIPT), *ARGS, "--sub-prefix", PREFIX, "--owner-id", "42", "--mention"],
+        done = subprocess.run([sys.executable, "-I", str(SCRIPT), *ARGS, "--sub-prefix", PREFIX, "--owner-id", "42", "--mention", "--default-branch", "main"],
                               capture_output=True, text=True, env=env, check=False)
         self.assertEqual(0, done.returncode, done.stderr)
         self.assertIn("nothing is created", done.stdout)

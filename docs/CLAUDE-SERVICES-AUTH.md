@@ -82,7 +82,7 @@ ties the factory to objects that would leave with claude-skills' work skills if 
 | Rule (suggested name) | Matches | Repository variable |
 |---|---|---|
 | `<repo>-pr-review` | subject `<prefix>:pull_request`, audience `https://api.anthropic.com`, claims `repository_owner`, `repository_owner_id` and `event_name: pull_request` | `ANTHROPIC_FEDERATION_RULE_ID` |
-| `<repo>-pr-mention` (optional) | subject `<prefix>:ref:refs/heads/main`, claims `repository_owner`, `repository_owner_id` and `event_name: issue_comment` | `ANTHROPIC_MENTION_FEDERATION_RULE_ID` |
+| `<repo>-pr-mention` (optional) | subject `<prefix>:ref:refs/heads/<default branch>` (`main` here), claims `repository_owner`, `repository_owner_id` and `event_name: issue_comment` | `ANTHROPIC_MENTION_FEDERATION_RULE_ID` |
 
 Plus the shared variables `ANTHROPIC_ORGANIZATION_ID`, `ANTHROPIC_SERVICE_ACCOUNT_ID`, `ANTHROPIC_WORKSPACE_ID`, and
 `CLAUDE_REVIEW_ENABLED` set to `true`. Every rule uses scope `workspace:developer` and a token lifetime of 600 seconds.

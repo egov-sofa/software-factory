@@ -86,6 +86,19 @@ YEAR="$(date +%Y)"
 
 # ---- Copy layers: shared files first, then the template on top ----------
 echo "🏭 Creating $NAME from '$TEMPLATE' in $TARGET"
+# From here on a failure removes the half-built project, so running the script again does not stop at
+# "already exists". TARGET did not exist before (checked above), so only what this run created is removed.
+tmp=""
+cleanup() {
+  local status=$?
+  [[ -n "$tmp" ]] && rm -f "$tmp"
+  if [[ $status -ne 0 && -d "$TARGET" ]]; then
+    rm -rf "$TARGET"
+    printf '❌ Project creation failed; removed the partial %s
+' "$TARGET" >&2
+  fi
+}
+trap cleanup EXIT
 mkdir -p "$TARGET"
 cp -R "$TEMPLATES/_shared/." "$TARGET/"
 cp -R "$TEMPLATES/$TEMPLATE/." "$TARGET/"
@@ -103,7 +116,6 @@ done
 # BSD sed of macOS. The temporary file lives outside the project, so grep never lists it; copying back with cat
 # keeps the file's mode.
 tmp="$(mktemp)"
-trap 'rm -f "$tmp"' EXIT
 grep -rl '{{' "$TARGET" 2>/dev/null | while read -r file; do
   sed \
     -e "s|{{PROJECT_NAME}}|$NAME|g" \
@@ -153,6 +165,9 @@ if $INIT_GIT; then
   git -C "$TARGET" config core.hooksPath scripts/hooks
   echo "✅ Git repository initialized with first commit on 'main' (content guard hooks on)"
 fi
+
+# The local project is complete: a failure creating the GitHub repository below must not remove it
+trap - EXIT
 
 if [[ -n "$GITHUB" ]]; then
   echo "🌐 Creating $GITHUB GitHub repository $OWNER/$NAME"
