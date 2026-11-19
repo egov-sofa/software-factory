@@ -33,7 +33,22 @@ class Findings(unittest.TestCase):
             "Slack token": joined("xox", "b-1234567890-abcdef"),
             "Google API key": joined("AIza", "B" * 35),
             "Stripe live key": joined("sk", "_live_", "c" * 24),
+            "OpenAI API key": joined("sk-", "proj-", "d" * 40),
+            "GitLab token": joined("gl", "pat-", "e" * 20),
+            "npm token": joined("np", "m_", "f1" * 18),
+            "PyPI token": joined("pypi-", "AgEIcHlwaS5vcmc", "g" * 60),
+            "Google OAuth client secret": joined("GOC", "SPX-", "h" * 28),
+            "Slack webhook": joined("https://hooks.slack", ".com/services/", "T0123ABCD/B0123ABCD/", "i" * 24),
+            "Discord webhook": joined("https://discord", ".com/api/webhooks/", "123456/", "j" * 60),
+            "Azure storage key": joined("DefaultEndpointsProtocol=https;Account", "Key=", "k" * 86, "=="),
+            "JSON Web Token": joined("Authorization: Bearer ey", "JhbGciOiJIUzI1NiJ9", ".eyJ", "zdWIiOiIxMjM0In0",
+                                     ".", "l" * 20),
+            "AWS secret access key": joined("aws_secret_", "access_key = ", "Ab1/" * 10),
+            "password in a URL": joined("DATABASE_URL=postgres://app:", "S3cr3t-Pw", "@db.example.org/app"),
         }
+        # a password with no user name (Redis) is a password in a URL too
+        self.assertEqual(["possible secret (password in a URL)"],
+                         self.check(joined("REDIS_URL=redis://:", "S3cr3t-Pw", "@cache.example.org:6379")))
         for kind, line in cases.items():
             with self.subTest(kind=kind):
                 found = self.check(line)
@@ -45,6 +60,29 @@ class Findings(unittest.TestCase):
                      "AKIA is the AWS key prefix", "the -----BEGIN PUBLIC KEY----- block"):
             with self.subTest(line=line):
                 self.assertEqual([], self.check(line))
+
+    def test_url_placeholders_are_not_a_password(self):
+        for line in ("git clone https://x-access-token:${GITHUB_TOKEN}@github.com/o/r",
+                     "postgres://user:$DB_PASSWORD@db.example.org/app", "https://user:<password>@host.example.org",
+                     "amqp://guest:password@rabbit.example.org", "https://u:***@example.org",
+                     "https://example.org/path?a=b:c@d",
+                     # defaults of local and CI services: in nearly every compose file and CI service container
+                     "DATABASE_URL: postgres://postgres:postgres@localhost:5432/test",
+                     "amqp://guest:guest@rabbit:5672", "mysql://root:root@db/app",
+                     "postgres://app:S3cr3t-Pw@127.0.0.1:5432/app", "redis://:S3cr3t-Pw@localhost:6379",
+                     # the Azurite emulator's account and key are public
+                     joined("AccountName=devstoreaccount1;Account", "Key=", "Eby8" * 22, "==")):
+            with self.subTest(line=line):
+                self.assertEqual([], self.check(line))
+
+    def test_utf16_text_is_decoded(self):
+        secret = joined("AKIA", "ABCDEFGHIJKLMNOP")
+        for data in (("﻿" + secret).encode("utf-16-le"), secret.encode("utf-16-le"),
+                     secret.encode("utf-16"), secret.encode("utf-16-be")):
+            with self.subTest(data=data[:4]):
+                self.assertEqual(secret, check_content.utf16_text(data).lstrip("﻿"))
+        self.assertIsNone(check_content.utf16_text(b"plain ascii text"))
+        self.assertIsNone(check_content.utf16_text(bytes(range(256))))
 
     def test_public_ip_and_internal_host(self):
         self.assertEqual(["public IP address 8.8.8.8"], self.check("dns = 8.8.8.8"))  # content-ok
@@ -99,6 +137,19 @@ class CommandLine(unittest.TestCase):
         self.assertIn("notes.md:1: public IP address 8.8.4.4", result.stdout)  # content-ok
         self.assertIn("denylist term 1", result.stdout)
         self.assertNotIn("Acme", result.stdout)
+
+    def test_utf16_file_cannot_hide_a_secret(self):
+        """Windows tools (PowerShell, regedit) write UTF-16, which puts a NUL between every letter."""
+        text = joined("$key = 'AKIA", "ABCDEFGHIJKLMNOP'\r\n")
+        (self.repo / "setup.ps1").write_bytes(b"\xff\xfe" + ("# setup\r\n" + text).encode("utf-16-le"))
+        self.git("add", "setup.ps1")
+        staged = self.guard("--staged")
+        self.assertEqual(1, staged.returncode, staged.stdout)
+        self.assertIn("setup.ps1:2: possible secret (AWS access key ID)", staged.stdout)
+        self.git("commit", "-q", "-m", "chore: setup")
+        tracked = self.guard("--all")
+        self.assertEqual(1, tracked.returncode, tracked.stdout)
+        self.assertIn("possible secret (AWS access key ID)", tracked.stdout)
 
     def test_clean_change_passes(self):
         (self.repo / "app.py").write_text("print('hi')\n")

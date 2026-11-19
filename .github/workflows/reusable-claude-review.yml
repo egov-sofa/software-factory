@@ -62,6 +62,8 @@ permissions:
 
 jobs:
   review:
+    # A fork's pull request gets no secrets and no OIDC token, so it would only fail: skip it instead
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
@@ -69,15 +71,18 @@ jobs:
       pull-requests: write
       id-token: write   # for workload identity federation
     steps:
-      - name: Only for pull requests
-        if: ${{ !github.event.pull_request }}
+      # pull_request only: pull_request_target also carries a pull request, but runs with the base repository's
+      # secrets and OIDC token while Claude reads the fork's content
+      - name: Only for pull_request events
+        if: github.event_name != 'pull_request'
         run: |
-          echo "::error::the Claude review runs on pull_request events"
+          echo "::error::the Claude review runs on pull_request events only, not ${{ github.event_name }}"
           exit 1
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
+          persist-credentials: false   # Claude can read files; keep the token out of .git/config
 
       - uses: anthropics/claude-code-action@61a9c274fa7110a66dfafc1bbbced03833eb25fe # v1.0.269
         with:
