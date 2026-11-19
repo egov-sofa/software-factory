@@ -1,0 +1,54 @@
+# Source of terraform-platform.drawio and .png (docs/plans/2026-11-19-terraform-platform.md).
+# Regenerate: bash docs/diagrams/build.sh terraform-platform
+diagram:
+  title: Terraform platform, target
+  statement: One platform repository holds the configuration of every organization; a merge, approved once, applies it with short-lived tokens.
+  notation: c4
+  viewpoint: solution
+  status: draft
+  version: "1"
+  author: software-factory
+  date: 2026-11-19
+pages:
+  - name: Platform
+    title: How an approved change reaches GitHub and Anthropic
+    statement: GitHub signs who the apply job is and Anthropic gives it a 10-minute org:admin token, keyless; the GitHub App's private key is the one stored secret.
+    flow: left-to-right
+    items:
+      - container: people
+        kind: group
+        layout: column
+        items:
+          - {node: you, kind: person, name: You}
+      - container: platform
+        kind: zone
+        name: Platform repo (protected main)
+        layout: column
+        items:
+          - {node: plan, kind: component, name: Pull request job, qualifier: "terraform plan, read-only"}
+          - {node: apply, kind: component, name: Apply job on main, qualifier: "environment with a reviewer"}
+          - {node: state, kind: data-store, name: State, qualifier: "remote backend, no secrets"}
+      - container: gh
+        kind: external
+        name: GitHub
+        layout: column
+        items:
+          - {node: oidc, kind: external-system, name: OIDC issuer, qualifier: "signs the job's token"}
+          - {node: app, kind: external-system, name: GitHub App, qualifier: "key in an environment secret"}
+          - {node: orgs, kind: system, name: Organizations and repos, qualifier: "settings, variables, rulesets"}
+      - container: anth
+        kind: system-boundary
+        name: Anthropic organization
+        layout: column
+        items:
+          - {node: adminrule, kind: component, name: org:admin rule, qualifier: "made once in the Console"}
+          - {node: adminapi, kind: component, name: Admin API, qualifier: "rules, workspaces, accounts"}
+    edges:
+      - {from: you, to: apply, kind: sync, label: approves the run, primary: true}
+      - {from: you, to: plan, kind: sync, label: reads the plan}
+      - {from: apply, to: oidc, kind: identity, label: "id-token: write"}
+      - {from: apply, to: app, kind: identity, label: installation token}
+      - {from: app, to: orgs, kind: sync, label: changes}
+      - {from: apply, to: adminrule, kind: identity, label: exchanges the JWT, primary: true}
+      - {from: adminrule, to: adminapi, kind: sync, label: "10-minute token"}
+      - {from: apply, to: state, kind: file, label: reads and writes}

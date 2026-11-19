@@ -295,10 +295,11 @@ not set one up.
 
 ## Option C: Terraform
 
-No Terraform provider for Anthropic organization resources (workspaces, service accounts, federation issuers and
-rules) appears in Anthropic's documentation or tooling we checked in November 2026. To keep the rules as code today,
-keep them in this script (reviewed in pull requests) or in JSON payloads for the Admin API. Revisit when a provider
-exists (roadmap I16).
+Anthropic publishes no Terraform provider, but two community providers in the Terraform Registry manage these objects
+(`ippontech/anthropic` and `mozilla/anthropic`, checked 2026-11-19), and both can authenticate keyless in CI. The plan
+[2026-11-19-terraform-platform](plans/2026-11-19-terraform-platform.md) proposes managing the rules, workspaces and
+repository variables of every organization with them, and records a spike. Until it is adopted, this script remains the
+way to set a repository up.
 
 ---
 

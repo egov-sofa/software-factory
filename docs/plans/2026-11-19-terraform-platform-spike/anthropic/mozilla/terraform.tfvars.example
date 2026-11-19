@@ -1,0 +1,9 @@
+# Copy to terraform.tfvars (git-ignored) and fill in; the values are in each repository's variables:
+#   gh variable list -R egov-sofa/software-factory ; gh variable list -R egov-ai/claude-skills
+service_account_id = "svac_..."
+factory_review_rule_id = "fdrl_..."
+skills_review_rule_id = "fdrl_..."
+skills_mention_rule_id = "fdrl_..."
+skills_evals_rule_id = "fdrl_..."
+factory_workspace_id = "wrkspc_..."
+skills_workspace_id = "wrkspc_..."

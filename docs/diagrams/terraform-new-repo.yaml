@@ -1,0 +1,59 @@
+# Source of terraform-new-repo.drawio and .png (docs/plans/2026-11-19-terraform-platform.md).
+# Regenerate: bash docs/diagrams/build.sh terraform-new-repo
+diagram:
+  title: A new repository, with the Terraform platform
+  statement: No command and no login per repository; you review a plan and approve one run.
+  notation: bpmn
+  viewpoint: process
+  status: draft
+  version: "1"
+  author: software-factory
+  date: 2026-11-19
+pages:
+  - name: New repo
+    flow: left-to-right
+    items:
+      - container: flow
+        kind: pool
+        name: New repository
+        items:
+          - container: claude
+            kind: lane
+            name: Claude Code
+            layout: row
+            align: middle
+            items:
+              - {node: start, kind: start-event, name: /factory-new, step: 1}
+              - {node: pr, kind: task, name: Open a platform PR, step: 2}
+          - container: ci
+            kind: lane
+            name: Platform CI
+            layout: row
+            align: middle
+            items:
+              - {node: plan, kind: task, name: terraform plan, step: 3}
+              - {node: apply, kind: task, name: terraform apply, step: 6}
+          - container: you
+            kind: lane
+            name: You
+            layout: row
+            align: middle
+            items:
+              - {node: review, kind: task, name: Review and merge, step: 4}
+              - {node: approve, kind: task, name: Approve the run, step: 5}
+          - container: result
+            kind: lane
+            name: GitHub and Anthropic
+            layout: row
+            align: middle
+            items:
+              - {node: made, kind: task, name: "Repo, rules, variables", step: 7}
+              - {node: done, kind: end-event, name: Review running, step: 8}
+    edges:
+      - {from: start, to: pr, kind: sequence}
+      - {from: pr, to: plan, kind: sequence}
+      - {from: plan, to: review, kind: sequence}
+      - {from: review, to: approve, kind: sequence}
+      - {from: approve, to: apply, kind: sequence}
+      - {from: apply, to: made, kind: sequence}
+      - {from: made, to: done, kind: sequence}

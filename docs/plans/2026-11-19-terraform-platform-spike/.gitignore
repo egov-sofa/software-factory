@@ -1,0 +1,9 @@
+# Spike output stays local: state and generated config hold the real IDs, and this repository is public.
+.terraform/
+*.tfstate
+*.tfstate.*
+generated*.tf
+*.tfvars
+!*.tfvars.example
+*.tfplan
+crash.log

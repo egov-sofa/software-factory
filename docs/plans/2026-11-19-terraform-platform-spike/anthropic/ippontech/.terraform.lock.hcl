@@ -1,0 +1,24 @@
+# This file is maintained automatically by "terraform init".
+# Manual edits may be lost in future updates.
+
+provider "registry.terraform.io/ippontech/anthropic" {
+  version     = "1.91.2"
+  constraints = "1.91.2"
+  hashes = [
+    "h1:0zcyuSnoV+bKLLqSib+w1xA6PzCkiR91em5eytJgzIA=",
+    "zh:1c815675c606ac198519e9418e6095545b1e42cd2adb24f6bc4bbc759c26f136",
+    "zh:23634195c64a5ad92237e53efdb06212ec5572058a7610154a73e0727c27b969",
+    "zh:253df314943ab1ce1194441df49053692c428e99a1bdfcc21aed70926e090d5f",
+    "zh:59f77fae0eb3500d048fb5a8060877e69e38bb9121f3064f474ac202e83a975b",
+    "zh:6c8951c9c9de0d041d6aafe1c6eefab90d69d020881b71054baf541637da2407",
+    "zh:767b1040704ee49e63d03625c2045c84d664e7ac3c0ac799101e8623d84c1253",
+    "zh:890df766e9b839623b1f0437355032a3c006226a6c200cd911e15ee1a9014e9f",
+    "zh:8e6718eec6bb06917ca593cbf40bb3968752c884b0f33bcdbf641a79611abe40",
+    "zh:a05a1edd317f33f4ed4e496b42283f76906487303899bcc7b9a68664e173d769",
+    "zh:b880cf761733684df5f4c55ba32c100da85efa4258a3f4381df48b6a04aec420",
+    "zh:d56c8e535702dc095297c32898606b07c7202c8563b48ba8b369353cbd84d5fa",
+    "zh:e114e0986ccd40ac6faaa91dd0eef3f7b11d9550d7ec8fd948f6987b7589b6e4",
+    "zh:ef749299a06bb61706e3869bc36654f373beb59cc7c6821ce467c2bef76c98c0",
+    "zh:faffbc5e17c3dadc0ebd7ef261b932d6a08dee045439df022713ef9122672a88",
+  ]
+}
