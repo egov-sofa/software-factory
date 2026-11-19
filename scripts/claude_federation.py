@@ -13,11 +13,14 @@ and a rule that already exists with the same name on the issuer is reused, so it
 Usage:
   python3 scripts/claude_federation.py --repo OWNER/NAME --service-account svac_... --workspace wrkspc_... \\
       [--mention] [--mention-workflow-ref REF] [--review-workflow-ref REF] [--sub-prefix PREFIX] \\
-      [--rule-prefix NAME] \\
+      [--owner-id ID] [--rule-prefix NAME] \\
       [--issuer-url URL] [--create-issuer] [--token-lifetime 600] [--apply]
 
   --sub-prefix   the repository's OIDC subject prefix; default: read with
                  `gh api repos/OWNER/NAME/actions/oidc/customization/sub` (sub_claim_prefix)
+  --owner-id     the numeric ID of the repository's owner (organization or user), required as the
+                 repository_owner_id claim so the rule keeps trusting the owner, not just its name, if the name is
+                 ever released and taken; default: read with `gh api users/OWNER --jq .id`
   --mention-workflow-ref
                  also require this job_workflow_ref claim on the mention rule (hardening; copy the exact value from a
                  refused exchange in the Console if unsure)
@@ -58,6 +61,7 @@ def parse_args(argv):
     p.add_argument("--mention-workflow-ref", default="", help="extra job_workflow_ref claim for the mention rule")
     p.add_argument("--review-workflow-ref", default="", help="extra job_workflow_ref claim for the review rule")
     p.add_argument("--sub-prefix", default="", help="OIDC subject prefix; default: read it with gh")
+    p.add_argument("--owner-id", default="", help="numeric ID of the owner; default: read it with gh")
     p.add_argument("--rule-prefix", default="", help="rule name prefix; default: the repository name")
     p.add_argument("--issuer-url", default=GITHUB_ISSUER)
     p.add_argument("--create-issuer", action="store_true", help="create the issuer if the organization has none")
@@ -70,6 +74,8 @@ def parse_args(argv):
         p.error("--service-account must be a service account ID (svac_...)")
     if not args.workspace.startswith("wrkspc_"):
         p.error("--workspace must be a workspace ID (wrkspc_...)")
+    if args.owner_id and not args.owner_id.isdigit():
+        p.error("--owner-id must be the numeric ID of the owner (gh api users/OWNER --jq .id)")
     if not 60 <= args.token_lifetime <= 3600:
         p.error("--token-lifetime must be between 60 and 3600 seconds")
     return args
@@ -98,7 +104,19 @@ def read_sub_prefix(repo, run=subprocess.run):
     return sub_prefix_from_api(repo, json.loads(done.stdout or "{}"))
 
 
-def build_rules(args, sub_prefix):
+def read_owner_id(owner, run=subprocess.run):
+    """The owner's numeric ID; users/OWNER answers for organizations too."""
+    if not shutil.which("gh"):
+        raise SetupError(f"gh is not installed; pass --owner-id (the numeric ID of {owner}: gh api users/{owner} --jq .id)")
+    done = run(["gh", "api", f"users/{owner}", "--jq", ".id"], capture_output=True, text=True, check=False)
+    value = (done.stdout or "").strip()
+    if done.returncode != 0 or not value.isdigit():
+        raise SetupError(f"gh could not read the numeric ID of {owner} ({done.stderr.strip() or value or 'no output'}); "
+                         "pass --owner-id")
+    return value
+
+
+def build_rules(args, sub_prefix, owner_id):
     """The rules to create, as Admin API payloads without issuer_id (filled in once the issuer is known)."""
     owner, name = args.repo.split("/")
     base = args.rule_prefix or name
@@ -108,7 +126,7 @@ def build_rules(args, sub_prefix):
         "oauth_scope": "workspace:developer",
         "token_lifetime_seconds": args.token_lifetime,
     }
-    review_claims = {"repository_owner": owner}
+    review_claims = {"repository_owner": owner, "repository_owner_id": owner_id, "event_name": "pull_request"}
     if args.review_workflow_ref:
         review_claims["job_workflow_ref"] = args.review_workflow_ref
     rules = [{
@@ -123,7 +141,7 @@ def build_rules(args, sub_prefix):
         },
     }]
     if args.mention:
-        claims = {"repository_owner": owner, "event_name": "issue_comment"}
+        claims = {"repository_owner": owner, "repository_owner_id": owner_id, "event_name": "issue_comment"}
         if args.mention_workflow_ref:
             claims["job_workflow_ref"] = args.mention_workflow_ref
         rules.append({
@@ -200,7 +218,8 @@ def main(argv):
         prefix, warning = (args.sub_prefix.rstrip(":"), None) if args.sub_prefix else read_sub_prefix(args.repo)
         if warning:
             print(f"warning: {warning}", file=sys.stderr)
-        rules = build_rules(args, prefix)
+        owner_id = args.owner_id or read_owner_id(args.repo.split("/")[0])
+        rules = build_rules(args, prefix, owner_id)
         if not args.review_workflow_ref:
             print("note: without --review-workflow-ref, any pull request from a branch of the repository can get "
                   "tokens, including one that edits the workflow; anyone with write access can do that. For a "
