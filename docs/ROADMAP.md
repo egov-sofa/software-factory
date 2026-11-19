@@ -91,7 +91,8 @@ public-sector programmes). Nothing below repeats I1 to I16 or the enterprise tra
 - **E1.2:** an autonomy ceiling per profile, separate from the level of rigour (as Factory.ai caps autonomy per
   organization).
 - **E2.1:** OpenSpec-style delta specs, merged into the living spec when a change is archived.
-- **E1.3:** brought forward as I17.
+- **E1.3:** its ruleset part is brought forward as I17 (protect `main`, secret scanning); CODEOWNERS per area,
+  required reviews and release approval stay in E1.3.
 
 ---
 
@@ -101,7 +102,7 @@ public-sector programmes). Nothing below repeats I1 to I16 or the enterprise tra
 
 I17 to I25, then I26, I27, I28 and I1; then I29, I30 and I31; then the enterprise track.
 
-### Phase 1: shared services foundation (now)
+### Phase 1: shared services foundation
 
 | Step | Items | Status |
 |---|---|---|
@@ -121,7 +122,7 @@ I17 to I25, then I26, I27, I28 and I1; then I29, I30 and I31; then the enterpris
 
 ### Phase 2: confidence in the factory
 
-I6 (validation and script tests, done in #5), I1 (evals), I10 (generated catalog), I13 (I6 follow-ups), I14 (diagrams
+I6 (validation and script tests, done in #5), I1 (evals, moved to Phase 0), I10 (generated catalog), I13 (I6 follow-ups), I14 (diagrams
 from sketches, done), I15 (diagram follow-ups).
 
 ### Phase 3: distribution
@@ -141,7 +142,7 @@ Phase 1 to 3 items above continue in parallel; I1 (evals) and I7 (plugin marketp
 |---|---|---|---|---|
 | E1.1 | **Separate organization and personal setup.** Split `claude/CLAUDE.md` into organization standards and an optional personal layer; remove "About me" from the shared rules; rewrite README and docs for roles (platform team, project teams, architects). | E1 Foundations | S | proposed |
 | E1.2 | **Profiles and `factory.yaml`.** Per-project profile (`personal`, `team`, `enterprise`), highest level allowed, models per tier, budget cap per run; `personal` keeps today's behavior. | E1 | M | proposed |
-| E1.3 | **Repository governance.** CODEOWNERS per area, rulesets protecting `main`, required reviews, release approval. | E1 | S | proposed |
+| E1.3 | **Repository governance.** CODEOWNERS per area, rulesets protecting `main`, required reviews, release approval. | E1 | S | proposed; the `main` ruleset part moved to I17 |
 | E1.4 | **Central distribution.** Plugin marketplace (I7) plus documented managed settings; organization owner in `new-project.sh`; Claude service credentials per project with `scripts/claude_federation.py` (I16). | E1 | M | proposed |
 | E1.5 | **Evidence records.** Every pipeline run writes a record (spec, approvals, findings, model, cost) next to the plan. | E1 | M | proposed |
 | E1.6 | **Hosting decision.** Public in `egov-sofa`, or GitHub Enterprise with internal repos; settles how claude-skills and teams reach the factory. | E1 | XS (decision) | proposed |
