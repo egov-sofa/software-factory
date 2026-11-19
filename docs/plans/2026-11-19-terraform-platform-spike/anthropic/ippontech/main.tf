@@ -1,6 +1,6 @@
 # Spike, Anthropic side, provider ippontech/anthropic 1.91.2: can Terraform take over the federation objects made
 # by hand or by claude_federation.py, with no change? Read-only: `terraform plan` only, never `apply`.
-# Token: an org:admin OAuth token in ANTHROPIC_AUTH_TOKEN (run.sh reads it from `ant`); IDs in terraform.tfvars (git-ignored).
+# Token: an org:admin OAuth token in ANTHROPIC_AUTH_TOKEN (run-anthropic.sh reads it from `ant`); IDs in terraform.tfvars (git-ignored).
 # Workspaces are not imported: this provider sends the org:admin token only to the service account and federation
 # endpoints, and needs a long-lived Admin API key (admin_api_key) for workspaces (its issue #524). See the plan.
 

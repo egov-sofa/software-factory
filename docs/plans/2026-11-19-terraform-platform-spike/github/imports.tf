@@ -85,7 +85,7 @@ import {
   id       = "claude-skills:CLAUDE_REVIEW_DEBUG"
 }
 
-# egov-legacy/struts-modernization
+# egov-legacy/struts-modernization: no variables yet (its Claude review is not set up), so nothing to import
 # egov-ai: the Actions workflow permissions, incl. "allow GitHub Actions to create pull requests"
 import {
   provider = github.egov_ai
