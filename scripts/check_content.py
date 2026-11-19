@@ -117,11 +117,14 @@ def utf16_text(data):
 
 def without_nul(line):
     """An added diff line with its NUL bytes handled: a UTF-16 line (a NUL between every letter) gets them removed so
-    its text can be read; any other NUL becomes a space, so it cannot hide the rest of the line."""
+    its text can be read; any other NUL becomes a space, so it cannot hide the rest of the line. A line with fewer
+    NULs can still be UTF-16, mostly in a non-Latin script: both readings are kept, separated by a tab."""
     nuls = line.count(chr(0))
     if nuls and nuls * 3 >= len(line):   # a third, not half: the byte-order mark and \r also take places
         return line.replace(chr(0), "")
-    return line.replace(chr(0), " ")
+    if nuls:
+        return line.replace(chr(0), " ") + "\t" + line.replace(chr(0), "")
+    return line
 
 
 def denylist():
@@ -137,10 +140,25 @@ def denylist():
     return [re.compile(r"(?<!\w)" + r"\s+".join(map(re.escape, t.split())) + r"(?!\w)", re.I) for t in terms.values()]
 
 
+def term(n):
+    """How a denylist finding is named: by its number, so the maintainer knows which term. With
+    CONTENT_DENYLIST_HIDE_NUMBERS set (CI on a fork's pull request) the number is left out: on a public repository
+    a fork could otherwise test guessed names and learn from the numbers which ones are on the private list."""
+    return "a denylist term" if os.environ.get("CONTENT_DENYLIST_HIDE_NUMBERS") else f"denylist term {n}"
+
+
+def marker_skipped(line):
+    """The kinds of secret a line allows through the marker: still allowed, but named, so a reviewer sees them."""
+    if not line.rstrip().endswith(MARKER):
+        return []
+    return [kind for kind, pattern in SECRET_RULES if pattern.search(line)] + (
+        ["password in a URL"] if url_password(line) else [])
+
+
 def wrapped(prev, line, deny):
     """Denylist terms that only appear when two consecutive lines are joined: a line wrap split the term."""
     joined = f"{prev} {line}"
-    return [f"denylist term {n} (split across this line and the next)" for n, p in enumerate(deny, 1)
+    return [f"{term(n)} (split across this line and the next)" for n, p in enumerate(deny, 1)
             if p.search(joined) and not p.search(prev) and not p.search(line)]
 
 
@@ -167,7 +185,7 @@ def ipv6_like(text):
 
 def findings(line, deny):
     """The problems in one line of text, as short descriptions; denylist terms are never quoted back."""
-    found = [f"denylist term {n}" for n, p in enumerate(deny, 1) if p.search(line)]
+    found = [term(n) for n, p in enumerate(deny, 1) if p.search(line)]
     if found:
         return found   # an IP or host finding would print its value, which can contain the term
     if line.rstrip().endswith(MARKER):
@@ -341,6 +359,8 @@ def main(argv):
             for f in findings(line, deny):
                 print(f"{where}: file name: {f}" if num == 0 else f"{where}:{num}: {f}")
                 problems += 1
+            for kind in marker_skipped(line):
+                print(f"{where}:{num}: note: '{MARKER}' allows a possible secret ({kind}); make sure it is a fake")
             prev = (where, num, line)
     names = ", ".join(label for label, _ in sources)
     if problems:
