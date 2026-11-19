@@ -42,7 +42,18 @@ Launch the `tester` agent with the plan path. If it added tests, commit them (`t
 If the result is FAIL, treat the failures as BLOCKER findings and go to Stage 6.
 
 ## Stage 5: Review 🔍🛡️
-Launch the `reviewer` and `security-auditor` agents **in parallel, in one message**, both with the plan path.
+Prepare the reviewers' input first: they have no shell, so they read it from files. With `<base>` the base branch
+(Stage 0) and `R="$(git rev-parse --absolute-git-dir)/factory-review"` (a folder git never commits, also in a worktree):
+```bash
+mkdir -p "$R"
+{ git diff <base>...HEAD; git diff HEAD; } > "$R/changes.diff"     # committed since <base>, then uncommitted
+{ git diff --name-only <base>...HEAD; git diff --name-only HEAD; git ls-files --others --exclude-standard; } | sort -u > "$R/files.txt"
+```
+Write `$R/checks.txt` with the latest test and lint results (the tester's report, or run the commands from
+`AGENTS.md`), followed by the dependency audit when the project has one (`npm audit --omit=dev`, or `pip-audit` /
+`uvx pip-audit`). Then pass the folder's full path to both reviewers.
+Launch the `reviewer` and `security-auditor` agents **in parallel, in one message**, both with the plan path and
+the review folder.
 Combine their findings into one list. Blocking = reviewer BLOCKER/MAJOR + security CRITICAL/HIGH + any test failures.
 
 ## Stage 6: Fix loop 🔁 (max 2 rounds)
@@ -52,7 +63,7 @@ If there are blocking findings:
    command under **Commands run** still fails: the tester and reviewers see that failure in step 3 as a blocker, and
    it counts toward the 2 rounds. Stop and ask the user only if the implementer reports that it stopped or cannot
    fix a finding.
-3. Re-run the `tester` agent, then the reviewers in parallel again.
+3. Re-run the `tester` agent, prepare the review folder again (Stage 5), then run the reviewers in parallel again.
 After 2 rounds, if blockers remain, **stop** and present them to the user with your recommendation. Never loop forever.
 List MINOR/LOW findings in the summary without fixing them automatically.
 

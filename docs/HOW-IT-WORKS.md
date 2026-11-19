@@ -19,7 +19,7 @@ skill of claude-skills; see [diagrams/README.md](diagrams/README.md) to change o
 An **agent** (also called a *subagent*) is Claude running with a focused job, its own instructions, and a limited set of tools. Splitting the work across specialists works better than one giant prompt because:
 
 - each agent starts with a **fresh, focused context** and isn't distracted by earlier work
-- read-only agents (reviewer, security) **can't accidentally change code**
+- read-only agents (reviewer, security) **can't change code**: they have no tool that writes or runs commands
 - reviewers **didn't write the code**, so they look at it with fresh eyes
 
 ![/factory-build as a process: the planner writes a plan, you approve it, the implementer and tester build, the reviewer and security auditor check, at most two fix rounds, then the docs writer](diagrams/factory-build-pipeline.png)
@@ -29,12 +29,23 @@ a checkpoint to return to. The reviewer and the security auditor run **in parall
 
 | Agent | Can edit code? | Model | Job |
 |---|---|---|---|
-| `planner` | Writes the plan file only | opus | Turns a vague request into a concrete plan with acceptance criteria |
+| `planner` | Writes in `docs/plans/` only (enforced) | opus | Turns a vague request into a concrete plan with acceptance criteria |
 | `implementer` | ✅ | inherits | Writes code that follows the plan and project conventions |
-| `tester` | ✅ (tests only) | inherits | Runs the suite, adds missing tests, reports results |
+| `tester` | ✅ (test files only, enforced) | inherits | Runs the suite, adds missing tests, reports results |
 | `reviewer` | ❌ read-only | opus | Finds bugs, checks the plan was followed |
 | `security-auditor` | ❌ read-only | opus | Finds vulnerabilities and leaked secrets |
-| `docs-writer` | ✅ (docs only) | sonnet | Updates README and CHANGELOG |
+| `docs-writer` | ✅ (docs only, enforced) | sonnet | Updates README and CHANGELOG |
+
+**What is enforced, and what is only asked.** A rule in a prompt depends on the model following it; the ones that
+matter most are also enforced:
+
+- The reviewer and security auditor have only Read, Grep and Glob. The conductor writes what they need (the diff,
+  the changed files, test and audit results) to `.git/factory-review/` before calling them.
+- The planner, tester, docs-writer and implementer carry a hook ([agent_guard.py](../claude/hooks/agent_guard.py))
+  that refuses an edit outside their paths (none for the implementer) and any git command that changes history or
+  the branch: the conductor does all git work. The refusal tells the agent why, so it can report instead.
+- Still only asked: what an agent does with Bash beyond git (a script could write a file), and everything in the
+  main conversation. The `protect-main` ruleset on GitHub remains the boundary for `main`.
 
 The **skills** (`/factory-build`, etc.) are the *conductors*: instructions that tell the main Claude session which agents to call, in what order, and what to do with their results.
 

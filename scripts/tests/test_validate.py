@@ -115,6 +115,23 @@ class Frontmatter(unittest.TestCase):
         found = self.agent(reviewer.replace("tools: Read, Grep", "tools:"), name="reviewer")
         self.assertTrue(any("read-only agent" in text for _, text in found), found)
 
+    def test_read_only_agent_with_a_shell(self):
+        """A shell can write files, so the reviewers have none (they read what the conductor prepared)."""
+        reviewer = AGENT.replace("name: helper", "name: reviewer").replace("tools: Read, Grep", "tools: Read, Grep, Bash")
+        self.assertIn((4, "read-only agent has the shell 'Bash', which can write files"),
+                      self.agent(reviewer, name="reviewer"))
+
+    def test_guarded_agent_declares_the_guard(self):
+        hooks = ("hooks:\n  PreToolUse:\n    - matcher: \"Edit|Write|NotebookEdit|Bash\"\n      hooks:\n"
+                 "        - type: command\n          command: 'python \"{{FACTORY_HOME}}/claude/hooks/agent_guard.py\" tester'\n")
+        tester = AGENT.replace("name: helper", "name: tester")
+        with_guard = tester.replace("model: sonnet\n", "model: sonnet\n" + hooks)
+        self.assertEqual([], self.agent(with_guard, name="tester"))   # the indented block parses
+        missing = self.agent(tester, name="tester")
+        self.assertTrue(any("must declare the factory guard" in text for _, text in missing), missing)
+        wrong_agent = self.agent(with_guard.replace('agent_guard.py" tester', 'agent_guard.py" planner'), name="tester")
+        self.assertTrue(any("must declare the factory guard" in text for _, text in wrong_agent), wrong_agent)
+
     def test_stdlib_only(self):
         """The validator runs on a bare Python in CI and on any machine: it may import the standard library only."""
         import ast

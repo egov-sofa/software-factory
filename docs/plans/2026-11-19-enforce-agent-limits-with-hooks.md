@@ -1,6 +1,6 @@
 # Plan: Enforce the agents' limits with Claude Code hooks (roadmap I26)
 
-**Status:** Approved (2026-11-19, with the decisions below)
+**Status:** Implemented (2026-11-19, with the decisions below)
 **Request:** "draft the I26 plan" — roadmap I26: "Enforce with Claude Code hooks, not prompts. Ship a `settings.json`
 with a PreToolUse path check per agent (tester edits tests, docs-writer edits docs, planner edits `docs/plans/`), a
 block on pushing to `main` and on `--force`, and an explicit `tools` list for the implementer."
