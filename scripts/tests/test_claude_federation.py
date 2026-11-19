@@ -77,6 +77,101 @@ class Rules(unittest.TestCase):
             self.assertEqual(2, ex.exception.code)
 
 
+class Defaults(unittest.TestCase):
+    def test_service_account_and_workspace_come_from_the_environment(self):
+        env = {"FACTORY_CLAUDE_SERVICE_ACCOUNT": "svac_env", "FACTORY_CLAUDE_WORKSPACE": "wrkspc_env"}
+        with mock.patch.dict(os.environ, env):
+            args = fed.parse_args(["--repo", "o/r"])
+        self.assertEqual(("svac_env", "wrkspc_env"), (args.service_account, args.workspace))
+
+    def test_an_argument_wins_over_the_environment(self):
+        with mock.patch.dict(os.environ, {"FACTORY_CLAUDE_SERVICE_ACCOUNT": "svac_env"}):
+            self.assertEqual("svac_123", fed.parse_args(ARGS).service_account)
+
+    def test_missing_service_account_names_the_variable(self):
+        env = {k: v for k, v in os.environ.items() if not k.startswith("FACTORY_CLAUDE_")}
+        err = io.StringIO()
+        with mock.patch.dict(os.environ, env, clear=True), contextlib.redirect_stderr(err), \
+                self.assertRaises(SystemExit):
+            fed.parse_args(["--repo", "o/r", "--workspace", "wrkspc_1"])
+        self.assertIn("FACTORY_CLAUDE_SERVICE_ACCOUNT", err.getvalue())
+
+
+class Variables(unittest.TestCase):
+    VALUES = [("ANTHROPIC_FEDERATION_RULE_ID", "fdrl_1"), ("ANTHROPIC_ORGANIZATION_ID", "org-uuid"),
+              ("CLAUDE_REVIEW_ENABLED", "true")]
+
+    @staticmethod
+    def gh(fail_on=None, secrets="", secret_list_fails=False):
+        """A fake subprocess.run for gh: records the calls, fails `variable set` for one name if asked."""
+        calls = []
+
+        def run(cmd, **kw):
+            calls.append(cmd)
+            if cmd[1:3] == ["variable", "set"] and cmd[3] == fail_on:
+                return SimpleNamespace(returncode=1, stdout="", stderr="HTTP 403")
+            if cmd[1:3] == ["secret", "list"]:
+                return SimpleNamespace(returncode=1 if secret_list_fails else 0, stdout=secrets, stderr="")
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        return run, calls
+
+    def test_review_is_turned_on_last(self):
+        names = [n for n, _ in fed.variable_values({"ANTHROPIC_FEDERATION_RULE_ID": "fdrl_1"}, "org-uuid",
+                                                    fed.parse_args(ARGS))]
+        self.assertEqual("CLAUDE_REVIEW_ENABLED", names[-1])
+        self.assertEqual(5, len(names))
+
+    def test_variables_are_set_in_order_without_a_shell(self):
+        run, calls = self.gh()
+        with mock.patch.object(fed.shutil, "which", return_value="/usr/bin/gh"), \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual([], fed.set_variables("o/r", self.VALUES, run=run))
+        sets = [c for c in calls if c[1:3] == ["variable", "set"]]
+        self.assertEqual([n for n, _ in self.VALUES], [c[3] for c in sets])
+        self.assertEqual(["gh", "variable", "set", "ANTHROPIC_FEDERATION_RULE_ID", "--repo", "o/r", "--body", "fdrl_1"],
+                         sets[0])
+
+    def test_a_failure_stops_before_the_review_is_turned_on(self):
+        run, calls = self.gh(fail_on="ANTHROPIC_ORGANIZATION_ID")
+        with mock.patch.object(fed.shutil, "which", return_value="/usr/bin/gh"), \
+                contextlib.redirect_stdout(io.StringIO()), self.assertRaisesRegex(fed.SetupError, "admin access"):
+            fed.set_variables("o/r", self.VALUES, run=run)
+        self.assertNotIn("CLAUDE_REVIEW_ENABLED", [c[3] for c in calls if c[1:3] == ["variable", "set"]])
+
+    def test_secrets_that_override_federation_are_reported(self):
+        run, _ = self.gh(secrets="CONTENT_DENYLIST\nANTHROPIC_API_KEY\n")
+        with mock.patch.object(fed.shutil, "which", return_value="/usr/bin/gh"), \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(["ANTHROPIC_API_KEY"], fed.set_variables("o/r", self.VALUES, run=run))
+
+    def test_unreadable_secrets_are_a_note_not_an_error(self):
+        run, _ = self.gh(secret_list_fails=True)
+        err = io.StringIO()
+        with mock.patch.object(fed.shutil, "which", return_value="/usr/bin/gh"), \
+                contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+            self.assertEqual([], fed.set_variables("o/r", self.VALUES, run=run))
+        self.assertIn("check by hand", err.getvalue())
+
+    def test_apply_with_set_variables_sets_them_instead_of_printing(self):
+        out = io.StringIO()
+        with mock.patch.object(fed, "make_client", return_value=FakeAdmin(issuers=[GH_ISSUER])), \
+                mock.patch.object(fed, "set_variables", return_value=[]) as setter, \
+                contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(0, fed.main(ARGS + ["--sub-prefix", PREFIX, "--owner-id", OWNER_ID, "--apply",
+                                                 "--set-variables"]))
+        repo, values = setter.call_args.args
+        self.assertEqual("egov-sofa/software-factory", repo)
+        self.assertEqual(("CLAUDE_REVIEW_ENABLED", "true"), values[-1])
+        self.assertNotIn("gh variable set", out.getvalue())
+        self.assertIn("is set up", out.getvalue())
+
+    def test_preview_with_set_variables_says_what_would_be_set(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+            fed.main(ARGS + ["--sub-prefix", PREFIX, "--owner-id", OWNER_ID, "--set-variables"])
+        self.assertIn("--set-variables then sets these repository variables", out.getvalue())
+
+
 class Subject(unittest.TestCase):
     def test_immutable_prefix_is_used_as_is(self):
         self.assertEqual((PREFIX, None), fed.sub_prefix_from_api("o/r", {"sub_claim_prefix": PREFIX + ":"}))
