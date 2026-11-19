@@ -37,11 +37,18 @@ KNOWN_TOOLS = {
 }
 # Known keys only, so `tool:` instead of `tools:` is caught. Extend these when Claude Code adds a field.
 AGENT_KEYS = {"name", "description", "tools", "disallowedTools", "model", "color", "permissionMode", "skills",
-              "mcpServers"}
+              "mcpServers", "hooks"}
+# Keys whose value is an indented YAML block (hooks); it is kept as text and checked as text.
+BLOCK_KEYS = {"hooks"}
 SKILL_KEYS = {"name", "description", "allowed-tools", "argument-hint", "model", "disable-model-invocation",
               "user-invocable", "license", "context", "agent"}
 READ_ONLY_AGENTS = {"reviewer", "security-auditor"}
 WRITE_TOOLS = {"Edit", "MultiEdit", "Write", "NotebookEdit"}
+SHELL_TOOLS = {"Bash", "PowerShell"}   # a shell can write files too, so the read-only agents have none
+# Agents that may edit or run commands, held to their limits by claude/hooks/agent_guard.py (a PreToolUse hook in their
+# frontmatter): docs/plans/2026-11-19-enforce-agent-limits-with-hooks.md
+GUARDED_AGENTS = {"planner", "tester", "docs-writer", "implementer"}
+GUARD_MATCHER = 'matcher: "Edit|Write|NotebookEdit|Bash"'
 
 KEY_RE = re.compile(r"([A-Za-z][\w-]*):(?:\s+(.*))?$")
 ITEM_RE = re.compile(r"\s*-\s+(.*)$")
@@ -65,9 +72,13 @@ def frontmatter(text):
     end = next((i for i in range(1, len(lines)) if lines[i].strip() == "---"), None)
     if end is None:
         return None, [(1, "no frontmatter (no closing '---' line)")]
-    fields, problems, current = {}, [], None
+    fields, problems, current, block = {}, [], None, None
     for num in range(2, end + 1):   # 1-based numbers of the lines between the markers
         line = lines[num - 1]
+        if block and line[:1] in (" ", "\t"):
+            fields[block] = (fields[block][0] + line.strip() + "\n", fields[block][1])
+            continue
+        block = None
         if not line.strip() or line.lstrip().startswith("#"):
             continue
         item = ITEM_RE.match(line)
@@ -82,6 +93,10 @@ def frontmatter(text):
         key, raw = m.group(1), (m.group(2) or "").strip()
         if key in fields:
             problems.append((num, f"duplicate key '{key}'"))
+        if key in BLOCK_KEYS and raw == "":
+            fields[key] = ("", num)
+            block, current = key, None
+            continue
         if raw[:1] in (">", "|"):
             problems.append((num, f"unsupported frontmatter syntax for '{key}' (write the value on one line)"))
             value = ""
@@ -172,6 +187,14 @@ def check(text, kind, expected_name):
             for tool in tools:
                 if tool_name(tool) in WRITE_TOOLS:
                     problems.append((fields[tools_key][1], f"read-only agent has the write tool '{tool}'"))
+                elif tool_name(tool) in SHELL_TOOLS:
+                    problems.append((fields[tools_key][1], f"read-only agent has the shell '{tool}', which can write files"))
+    if kind == "agent" and expected_name in GUARDED_AGENTS:
+        hooks, num = fields.get("hooks", ("", 1))
+        guard = f'agent_guard.py" {expected_name}'
+        if not isinstance(hooks, str) or "PreToolUse:" not in hooks or GUARD_MATCHER not in hooks or guard not in hooks:
+            problems.append((num, f"agent '{expected_name}' must declare the factory guard: a PreToolUse hook with "
+                                  f"{GUARD_MATCHER} running agent_guard.py with '{expected_name}'"))
     return sorted(problems)
 
 

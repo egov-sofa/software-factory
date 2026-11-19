@@ -14,7 +14,7 @@ Open `claude/agents/<name>.md`. The top section (between `---` lines) is **front
 ---
 name: reviewer
 description: When Claude should use this agent (Claude reads this to decide)
-tools: Read, Grep, Glob, Bash   # what it's allowed to do; leave out Edit/Write = read-only
+tools: Read, Grep, Glob         # what it's allowed to do; no Edit, Write or Bash = read-only
 model: opus                     # opus | sonnet | haiku | inherit
 ---
 ```
@@ -22,8 +22,10 @@ model: opus                     # opus | sonnet | haiku | inherit
 Everything below is the agent's instructions, written in plain English. Edit them like a job description.
 
 After changing the frontmatter of an agent or skill, run `python scripts/validate.py`. It catches a misspelled key,
-a `name` that does not match the file, an unknown model or tool, and a write tool given to a read-only agent; the
-self-test runs it on every pull request too.
+a `name` that does not match the file, an unknown model or tool, a write tool or a shell given to a read-only agent,
+and a planner, tester, docs-writer or implementer without its guard hook; the self-test runs it on every pull
+request too. The paths each agent may edit are the tables at the top of `claude/hooks/agent_guard.py`: change them
+there (with a test in `scripts/tests/test_agent_guard.py`) when a stack keeps its tests or docs somewhere else.
 
 ## Add a new agent
 

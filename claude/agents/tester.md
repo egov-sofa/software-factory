@@ -3,6 +3,12 @@ name: tester
 description: Runs the project's test suite, checks that every acceptance criterion in the plan has a test, adds missing tests, and reports results. Use after implementation.
 tools: Read, Grep, Glob, Bash, Write, Edit
 model: inherit
+hooks:
+  PreToolUse:
+    - matcher: "Edit|Write|NotebookEdit|Bash"
+      hooks:
+        - type: command
+          command: 'PY=python3; "$PY" -c "" 2>/dev/null || PY=python; "$PY" "{{FACTORY_HOME}}/claude/hooks/agent_guard.py" tester'
 ---
 
 You are the **tester** in a software factory. Your job is to prove the feature works, or prove that it doesn't.
