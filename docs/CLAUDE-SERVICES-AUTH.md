@@ -170,6 +170,8 @@ admin login.
    3. checks that the repository's workflows cannot see an `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` secret,
       its own or its organization's. Such a secret wins over federation, and with both set every review fails with
       `401`. If it finds one, it **sets nothing** and stops: a review that works with that key today keeps working.
+      It also sets nothing when it cannot read one of the two lists (not enough access, or an organization answering
+      404, which GitHub also does for missing permissions): check them by hand, then add `--secrets-checked`.
       Delete the secret (`gh secret delete NAME --repo OWNER/NAME`, or `--org OWNER`) and run the same command again;
    4. sets the variables with `gh variable set`: the rule IDs, the organization, the service account, the workspace,
       and **`CLAUDE_REVIEW_ENABLED` last**. If one fails, it stops there, so the review is never turned on without
@@ -321,6 +323,7 @@ To turn the Claude review off instead, set `CLAUDE_REVIEW_ENABLED` to anything b
 | `Credit balance is too low` | No API credit in the organization | Console, Billing |
 | The script stops with `gh could not set ... needs admin access` | `--set-variables` runs `gh variable set`, which needs admin access to the repository | Run it as a repository admin; it reuses the rules it already created, and nothing after the failed variable was set, `CLAUDE_REVIEW_ENABLED` included |
 | The script stops with `can use the secret(s) ... Nothing was set` | An older setup with a stored key, in the repository or its organization; with the federation variables also set every review would fail with 401, so the script changed nothing | `gh secret delete NAME --repo OWNER/NAME` (or `--org OWNER` for an organization secret), then run the same command again (it reuses the rules) |
+| The script stops with `could not read the ... secrets ... Nothing was set` | gh could not read the repository or organization secret list (your access, or an organization answering 404), so a key that would win over federation cannot be ruled out | In GitHub, Settings, Secrets and variables, Actions, check the repository and the organization for `ANTHROPIC_API_KEY` and `CLAUDE_CODE_OAUTH_TOKEN`; if there is none, run the same command again with `--secrets-checked` |
 | `--service-account must be a service account ID ... or set FACTORY_CLAUDE_SERVICE_ACCOUNT` | Neither the option nor the environment variable is set | Pass the option, or export the variable (see [Once per machine](#once-per-machine)) |
 | No review and no message | Claude's messages are hidden by default | Set `CLAUDE_REVIEW_DEBUG` to `true`, rerun, read the log, then delete the variable |
 | The mention job is skipped | `ANTHROPIC_MENTION_FEDERATION_RULE_ID` is not set | Create the mention rule and set the variable |

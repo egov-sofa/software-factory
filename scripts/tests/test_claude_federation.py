@@ -125,9 +125,10 @@ class Variables(unittest.TestCase):
               ("CLAUDE_REVIEW_ENABLED", "true")]
 
     @staticmethod
-    def gh(fail_on=None, secrets="", secret_list_fails=False, org_secrets="", org_status=0, org_stderr=""):
-        """A fake subprocess.run for gh: records the calls, answers the repository and organization secret lists,
-        fails `variable set` for one name if asked."""
+    def gh(fail_on=None, secrets="", secret_list_fails=False, org_secrets="", org_status=0, org_stderr="",
+           owner_type="Organization"):
+        """A fake subprocess.run for gh: records the calls, answers the owner's type and the repository and
+        organization secret lists, fails `variable set` for one name if asked."""
         calls = []
 
         def run(cmd, **kw):
@@ -136,10 +137,16 @@ class Variables(unittest.TestCase):
                 return SimpleNamespace(returncode=1, stdout="", stderr="HTTP 403")
             if cmd[1:3] == ["secret", "list"]:
                 return SimpleNamespace(returncode=1 if secret_list_fails else 0, stdout=secrets, stderr="")
+            if cmd[1] == "api" and cmd[2].startswith("users/"):
+                return SimpleNamespace(returncode=0, stdout=owner_type + "\n", stderr="")
             if cmd[1] == "api" and any(a.endswith("/actions/organization-secrets") for a in cmd):
                 return SimpleNamespace(returncode=org_status, stdout=org_secrets, stderr=org_stderr)
             return SimpleNamespace(returncode=0, stdout="", stderr="")
         return run, calls
+
+    @staticmethod
+    def sets(calls):
+        return [c[3] for c in calls if c[1:3] == ["variable", "set"]]
 
     def test_review_is_turned_on_last(self):
         names = [n for n, _ in fed.variable_values({"ANTHROPIC_FEDERATION_RULE_ID": "fdrl_1"}, "org-uuid",
@@ -152,7 +159,10 @@ class Variables(unittest.TestCase):
         with mock.patch.object(fed.shutil, "which", return_value="/usr/bin/gh"), \
                 contextlib.redirect_stdout(io.StringIO()):
             fed.set_variables("o/r", self.VALUES, run=run)
-        self.assertEqual(["secret", "list"], calls[0][1:3])   # checked before anything is set
+        first_set = next(i for i, c in enumerate(calls) if c[1:3] == ["variable", "set"])
+        checks = [i for i, c in enumerate(calls) if c[1:3] == ["secret", "list"] or "--paginate" in c]
+        self.assertEqual(2, len(checks))
+        self.assertTrue(all(i < first_set for i in checks))   # both secret lists read before anything is set
         sets = [c for c in calls if c[1:3] == ["variable", "set"]]
         self.assertEqual([n for n, _ in self.VALUES], [c[3] for c in sets])
         self.assertEqual(["gh", "variable", "set", "ANTHROPIC_FEDERATION_RULE_ID", "--repo", "o/r", "--body", "fdrl_1"],
@@ -176,17 +186,25 @@ class Variables(unittest.TestCase):
                         self.assertRaisesRegex(fed.SetupError, "ANTHROPIC_API_KEY.*Nothing was set"):
                     fed.set_variables("o/r", self.VALUES, run=run)
                 self.assertEqual([], [c for c in calls if c[1:3] == ["variable", "set"]])
-                org_list = next(c for c in calls if c[1] == "api")
+                org_list = next(c for c in calls if c[1] == "api" and not c[2].startswith("users/"))
                 self.assertIn("--paginate", org_list)   # more than 30 organization secrets need several pages
 
     def test_a_user_account_has_no_organization_secrets(self):
-        run, calls = self.gh(org_status=1, org_stderr="gh: Not Found (HTTP 404)")
-        err = io.StringIO()
+        run, calls = self.gh(owner_type="User")
         with mock.patch.object(fed.shutil, "which", return_value="/usr/bin/gh"), \
-                contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+                contextlib.redirect_stdout(io.StringIO()):
             fed.set_variables("someone/r", self.VALUES, run=run)
-        self.assertEqual("", err.getvalue())
-        self.assertIn("CLAUDE_REVIEW_ENABLED", [c[3] for c in calls if c[1:3] == ["variable", "set"]])
+        self.assertFalse([c for c in calls if "--paginate" in c])   # the organization list is not asked for
+        self.assertIn("CLAUDE_REVIEW_ENABLED", self.sets(calls))
+
+    def test_an_organization_404_is_not_taken_for_a_user_account(self):
+        # GitHub answers 404 for missing permissions too: for an organization it means "unknown", so nothing is set
+        run, calls = self.gh(org_status=1, org_stderr="gh: Not Found (HTTP 404)")
+        with mock.patch.object(fed.shutil, "which", return_value="/usr/bin/gh"), \
+                contextlib.redirect_stdout(io.StringIO()), \
+                self.assertRaisesRegex(fed.SetupError, "organization secrets.*Nothing was set.*--secrets-checked"):
+            fed.set_variables("o/r", self.VALUES, run=run)
+        self.assertEqual([], self.sets(calls))
 
     def test_the_main_command_fails_when_a_secret_keeps_the_review_off(self):
         run, _ = self.gh(secrets="CLAUDE_CODE_OAUTH_TOKEN\n")
@@ -208,14 +226,36 @@ class Variables(unittest.TestCase):
                     self.assertRaises(RealCommandRefused):
                 read()
 
-    def test_unreadable_secrets_are_a_note_not_an_error(self):
+    def test_unreadable_secrets_set_nothing(self):
+        # fail closed: an unread list might hide a key that a working review uses today
         run, calls = self.gh(secret_list_fails=True)
-        err = io.StringIO()
         with mock.patch.object(fed.shutil, "which", return_value="/usr/bin/gh"), \
-                contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+                contextlib.redirect_stdout(io.StringIO()), \
+                self.assertRaisesRegex(fed.SetupError, "repository secrets.*Nothing was set.*--secrets-checked"):
             fed.set_variables("o/r", self.VALUES, run=run)
-        self.assertIn("check by hand", err.getvalue())
-        self.assertIn("CLAUDE_REVIEW_ENABLED", [c[3] for c in calls if c[1:3] == ["variable", "set"]])
+        self.assertEqual([], self.sets(calls))
+
+    def test_secrets_checked_by_hand_lets_an_unreadable_list_through(self):
+        run, calls = self.gh(secret_list_fails=True)
+        with mock.patch.object(fed.shutil, "which", return_value="/usr/bin/gh"), \
+                contextlib.redirect_stdout(io.StringIO()):
+            fed.set_variables("o/r", self.VALUES, run=run, secrets_checked=True)
+        self.assertIn("CLAUDE_REVIEW_ENABLED", self.sets(calls))
+
+    def test_secrets_checked_never_overrides_a_secret_that_was_found(self):
+        run, calls = self.gh(secrets="ANTHROPIC_API_KEY\n")
+        with mock.patch.object(fed.shutil, "which", return_value="/usr/bin/gh"), \
+                contextlib.redirect_stdout(io.StringIO()), self.assertRaisesRegex(fed.SetupError, "Nothing was set"):
+            fed.set_variables("o/r", self.VALUES, run=run, secrets_checked=True)
+        self.assertEqual([], self.sets(calls))
+
+    def test_main_passes_secrets_checked_through(self):
+        with mock.patch.object(fed, "make_client", return_value=FakeAdmin(issuers=[GH_ISSUER])), \
+                mock.patch.object(fed, "set_variables", return_value=None) as setter, \
+                contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            fed.main(ARGS + ["--sub-prefix", PREFIX, "--owner-id", OWNER_ID, "--apply", "--set-variables",
+                             "--secrets-checked"])
+        self.assertTrue(setter.call_args.kwargs["secrets_checked"])
 
     def test_apply_with_set_variables_sets_them_instead_of_printing(self):
         out = io.StringIO()

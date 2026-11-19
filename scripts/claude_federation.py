@@ -40,7 +40,8 @@ Usage:
                  with --apply, also set the repository variables with gh (needs admin access to the repository),
                  CLAUDE_REVIEW_ENABLED last; while the repository can use an ANTHROPIC_API_KEY or
                  CLAUDE_CODE_OAUTH_TOKEN secret (its own or its organization's, which would win over federation),
-                 it sets nothing and stops with an error: delete the secret and run it again
+                 it sets nothing and stops with an error: delete the secret and run it again. It also sets nothing
+                 when it cannot read one of the secret lists, unless you add --secrets-checked after checking by hand
 
 Exit code 0 on success, 1 on an error, 2 on a usage error.
 """
@@ -80,6 +81,9 @@ def parse_args(argv):
     p.add_argument("--apply", action="store_true", help="create the rules (default: preview only)")
     p.add_argument("--set-variables", action="store_true",
                    help="with --apply, also set the repository variables with gh (CLAUDE_REVIEW_ENABLED last)")
+    p.add_argument("--secrets-checked", action="store_true",
+                   help="with --set-variables: you checked by hand that no ANTHROPIC_API_KEY or "
+                        "CLAUDE_CODE_OAUTH_TOKEN secret exists, because gh could not read a secret list")
     args = p.parse_args(argv)
     if not REPO_RE.match(args.repo):
         p.error(f"--repo must be OWNER/NAME, got {args.repo!r}")
@@ -195,35 +199,41 @@ OVERRIDING_SECRETS = ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN")
 
 
 def overriding_secrets(repo, run=None):
-    """The secrets visible to the repository's workflows that would win over federation: its own, and the
-    organization's that it may use. An unreadable list is a note, not an error: reading secrets can need more access
-    than setting variables."""
+    """(found, unread): the secrets visible to the repository's workflows that would win over federation (its own, and
+    its organization's), and the lists that could not be read. A user account has no organization secrets; that is
+    read from the owner's type, never guessed from a 404, which GitHub also answers for missing permissions."""
     run = run or subprocess.run   # looked up at call time, so a test that replaces subprocess reaches it
-    sources = [("repository", ["gh", "secret", "list", "--repo", repo, "--json", "name", "--jq", ".[].name"]),
-               # --paginate: the API returns 30 secrets per page, and a key on a later page must not slip through
-               ("organization", ["gh", "api", "--paginate", f"repos/{repo}/actions/organization-secrets",
-                                 "--jq", ".secrets[].name"])]
-    present = set()
+    sources = [("repository", ["gh", "secret", "list", "--repo", repo, "--json", "name", "--jq", ".[].name"])]
+    owner = repo.split("/")[0]
+    kind = run(["gh", "api", f"users/{owner}", "--jq", ".type"], capture_output=True, text=True, check=False)
+    if not (kind.returncode == 0 and (kind.stdout or "").strip() == "User"):
+        # --paginate: the API returns 30 secrets per page, and a key on a later page must not slip through
+        sources.append(("organization", ["gh", "api", "--paginate", f"repos/{repo}/actions/organization-secrets",
+                                         "--jq", ".secrets[].name"]))
+    present, unread = set(), []
     for where, cmd in sources:
         done = run(cmd, capture_output=True, text=True, check=False)
-        if done.returncode != 0 and where == "organization" and "404" in (done.stderr or ""):
-            continue   # a repository of a user account: there are no organization secrets
         if done.returncode != 0:
-            print(f"note: could not list the {where} secrets {repo} can use; check by hand that there is no "
-                  f"{' or '.join(OVERRIDING_SECRETS)} secret", file=sys.stderr)
+            unread.append(where)
             continue
         present |= set((done.stdout or "").split())
-    return [s for s in OVERRIDING_SECRETS if s in present]
+    return [s for s in OVERRIDING_SECRETS if s in present], unread
 
 
-def set_variables(repo, values, run=None):
+def set_variables(repo, values, run=None, secrets_checked=False):
     """Set the repository variables with gh, in order. The review is never turned on half-configured: it stops at the
-    first failure, before CLAUDE_REVIEW_ENABLED. While a secret that wins over federation exists, it sets nothing at
-    all: with both, every review fails with 401, so even the IDs would break a review that works with that key today."""
+    first failure, before CLAUDE_REVIEW_ENABLED. While a secret that wins over federation exists, or might exist
+    because a secret list could not be read, it sets nothing at all: with both, every review fails with 401, so even
+    the IDs would break a review that works with that key today. secrets_checked: the user checked the lists by hand."""
     run = run or subprocess.run   # looked up at call time, so a test that replaces subprocess reaches it
     if not shutil.which("gh"):
         raise SetupError("gh is not installed; set the variables with the commands printed without --set-variables")
-    blocking = overriding_secrets(repo, run=run)
+    blocking, unread = overriding_secrets(repo, run=run)
+    if unread and not secrets_checked:
+        raise SetupError(f"could not read the {' and '.join(unread)} secrets {repo} can use, so the script cannot "
+                         f"tell whether an {' or '.join(OVERRIDING_SECRETS)} secret would win over federation. "
+                         "Nothing was set. Check by hand (repository and organization settings, Secrets and variables, "
+                         "Actions), then run the same command again with --secrets-checked")
     if blocking:
         raise SetupError(f"{repo} can use the secret(s) {', '.join(blocking)} (its own or its organization's), which "
                          "win over federation; with the federation variables also set, every review would fail with "
@@ -317,7 +327,7 @@ def main(argv):
             print("\nMake sure the repository has no ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN secret: either would "
                   "win over federation.")
             return 0
-        set_variables(args.repo, variable_values(ids, org_id, args))
+        set_variables(args.repo, variable_values(ids, org_id, args), secrets_checked=args.secrets_checked)
         print(f"\n{args.repo} can now reach the Claude API: its next pull request is reviewed if it has the "
               "claude-review workflow and the Claude GitHub app is installed on it (https://github.com/apps/claude; "
               "this script cannot check that). Each token exchange shows in the rule's authentication history in the "
