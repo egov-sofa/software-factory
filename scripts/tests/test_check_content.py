@@ -46,6 +46,9 @@ class Findings(unittest.TestCase):
             "AWS secret access key": joined("aws_secret_", "access_key = ", "Ab1/" * 10),
             "password in a URL": joined("DATABASE_URL=postgres://app:", "S3cr3t-Pw", "@db.example.org/app"),
         }
+        # a password with no user name (Redis) is a password in a URL too
+        self.assertEqual(["possible secret (password in a URL)"],
+                         self.check(joined("REDIS_URL=redis://:", "S3cr3t-Pw", "@cache.example.org:6379")))
         for kind, line in cases.items():
             with self.subTest(kind=kind):
                 found = self.check(line)
@@ -62,14 +65,18 @@ class Findings(unittest.TestCase):
         for line in ("git clone https://x-access-token:${GITHUB_TOKEN}@github.com/o/r",
                      "postgres://user:$DB_PASSWORD@db.example.org/app", "https://user:<password>@host.example.org",
                      "amqp://guest:password@rabbit.example.org", "https://u:***@example.org",
-                     "https://example.org/path?a=b:c@d"):
+                     "https://example.org/path?a=b:c@d",
+                     # defaults of local and CI services: in nearly every compose file and CI service container
+                     "DATABASE_URL: postgres://postgres:postgres@localhost:5432/test",
+                     "amqp://guest:guest@rabbit:5672", "mysql://root:root@db/app",
+                     "postgres://app:S3cr3t-Pw@127.0.0.1:5432/app", "redis://:S3cr3t-Pw@localhost:6379"):
             with self.subTest(line=line):
                 self.assertEqual([], self.check(line))
 
     def test_utf16_text_is_decoded(self):
         secret = joined("AKIA", "ABCDEFGHIJKLMNOP")
         for data in (("﻿" + secret).encode("utf-16-le"), secret.encode("utf-16-le"),
-                     secret.encode("utf-16")):
+                     secret.encode("utf-16"), secret.encode("utf-16-be")):
             with self.subTest(data=data[:4]):
                 self.assertEqual(secret, check_content.utf16_text(data).lstrip("﻿"))
         self.assertIsNone(check_content.utf16_text(b"plain ascii text"))

@@ -56,7 +56,8 @@ PASCAL_SUFFIX_RE = re.compile(r"[A-Z][a-z]+")
 PASCAL_ID_RE = re.compile(r"[A-Z][A-Za-z]*[a-z][A-Za-z]*")
 
 
-# High-confidence formats only: each one has a fixed prefix, so ordinary code and prose do not match.
+# High-confidence formats only: a fixed prefix, or (AWS secret key, password in a URL) a fixed context next to the
+# value, so ordinary code and prose do not match.
 SECRET_RULES = [
     ("private key", re.compile(r"-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----")),
     ("AWS access key ID", re.compile(r"(?<![A-Z0-9])(?:AKIA|ASIA)[0-9A-Z]{16}(?![A-Z0-9])")),
@@ -79,17 +80,21 @@ SECRET_RULES = [
     ("AWS secret access key", re.compile(r"(?i)aws_?secret_?access_?key\W{0,3}[:=]\W{0,3}[A-Za-z0-9/+]{40}(?![A-Za-z0-9/+])")),
 ]
 
-# A password written into a URL (https://user:pass@host). Values that are clearly placeholders or variables are
-# fine: ${TOKEN}, $PASSWORD, <password>, {{secret}}, %s, ***, xxx, password.
-URL_CREDENTIALS_RE = re.compile(r"\b[a-z][a-z0-9+.-]*://[^\s/:@]+:([^\s/@]+)@[^\s/@]+", re.I)
-PLACEHOLDER_PASSWORDS = {"password", "passwd", "pass", "pwd", "pw", "secret", "token", "changeme", "example"}
+# A password written into a URL (https://user:pass@host, or redis://:pass@host with no user). Not a secret:
+# placeholders and variables (${TOKEN}, $PASSWORD, <password>, {{secret}}, %s, ***, xxx), the well-known defaults of
+# local and CI services (postgres:postgres, guest:guest, a password equal to the user name), and local hosts.
+URL_CREDENTIALS_RE = re.compile(r"\b[a-z][a-z0-9+.-]*://([^\s/:@]*):([^\s/@]+)@([^\s/@:?#]+)", re.I)
+PLACEHOLDER_PASSWORDS = {"password", "passwd", "pass", "pwd", "pw", "secret", "token", "changeme", "example",
+                         "postgres", "guest", "root", "admin", "test", "dev", "user", "mysql"}
+LOCAL_HOSTS = {"localhost", "127.0.0.1", "0.0.0.0", "[::1]", "host.docker.internal"}  # content-ok
 
 
 def url_password(line):
     """True when a URL in the line carries a password that looks real."""
     for m in URL_CREDENTIALS_RE.finditer(line):
-        value = m.group(1)
-        if value[0] in "$<{%*[(" or set(value) <= set("x*.") or value.lower() in PLACEHOLDER_PASSWORDS:
+        user, value, host = m.group(1), m.group(2), m.group(3).lower()
+        if (value[0] in "$<{%*[(" or set(value) <= set("x*.") or value.lower() in PLACEHOLDER_PASSWORDS
+                or value == user or host in LOCAL_HOSTS):
             continue
         return True
     return False
@@ -100,8 +105,11 @@ def utf16_text(data):
     write without one), else None. Read as UTF-8, a UTF-16 file has a NUL between every letter and no rule matches."""
     if data[:2] in (b"\xff\xfe", b"\xfe\xff"):
         return data.decode("utf-16", "replace")
-    if len(data) >= 4 and data[1::2].count(0) >= len(data) // 2 * 0.9 and data[0::2].count(0) < len(data) // 4:
-        return data.decode("utf-16-le", "replace")
+    if len(data) >= 4:
+        half = len(data) // 2
+        for nuls, letters, encoding in ((data[1::2], data[0::2], "utf-16-le"), (data[0::2], data[1::2], "utf-16-be")):
+            if nuls.count(0) >= half * 0.9 and letters.count(0) < half // 2:
+                return data.decode(encoding, "replace")
     return None
 
 
