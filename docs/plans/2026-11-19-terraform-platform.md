@@ -101,7 +101,7 @@ That evidence settles D2.
 
 ## Target architecture
 
-![How an approved change reaches GitHub and Anthropic: you review the pull request, whose job plans GitHub and validates the Anthropic code; after the merge the jobs on main plan both, wait for your approval and apply the saved plan; they get a GitHub App installation token to change the organizations and repositories, and exchanges its GitHub OIDC token at a Console-made org:admin federation rule for a 10-minute token to the Anthropic Admin API; state lives in a remote backend without secrets](../diagrams/terraform-platform.png)
+![How an approved change reaches GitHub and Anthropic: you review the pull request, whose job plans GitHub and validates the Anthropic code; after the merge the jobs on main plan both, wait for your approval and apply the saved plan; they get GitHub App installation tokens (read-only for pull requests, write only for the approved apply) and exchange their GitHub OIDC token at a Console-made org:admin federation rule for a 10-minute token to the Anthropic Admin API; state lives in a remote backend without secrets](../diagrams/terraform-platform.png)
 
 - **One platform repository** (D1), one Terraform root per concern: `github/` (one provider alias per organization)
   and `anthropic/`. A module `factory-repo` holds everything one repository needs: the repository settings, its
@@ -114,12 +114,18 @@ That evidence settles D2.
   two jobs on `main`: the platform workflow's `job_workflow_ref` on `refs/heads/main`, and a CEL condition that the
   job's `environment` claim is `production-plan` or `production` (both environments limited to the `main` branch;
   the exact claim values to be confirmed against a real token in phase 4);
-  GitHub through a GitHub App installed on each organization, whose private key is an environment secret: the one
-  stored secret of the platform.
+  GitHub through **two GitHub Apps** installed on each organization, because a pull request's Terraform code can run
+  commands (`data "external"`) and so can reach any secret its job can:
+  - `platform-read`: read permissions only (administration, variables, Actions: read; no contents). Its key is a
+    repository secret, used by the pull request job and the plan job. Exposed to a pull request, it lets someone read
+    the organizations' settings, nothing more.
+  - `platform-write`: the write permissions the apply needs. Its key is a secret of the `production` environment
+    only, so only the approved apply job can read it.
+  The two App keys are the platform's only stored secrets.
 - **Where each plan runs.** Reading federation rules needs the `org:admin` token too (there is no read-only scope),
   and that token must never be reachable from code a pull request controls. So:
-  - **pull requests** run `terraform plan` for `github/` only (a GitHub App token with read permissions) and
-    `terraform validate` for `anthropic/`, which needs no credential;
+  - **pull requests** run `terraform plan` for `github/` only (with `platform-read`) and `terraform validate` for
+    `anthropic/`, which needs no credential;
   - **after a merge, on `main`,** a plan job in the environment `production-plan` (no reviewer) runs
     `terraform plan -out` for both roots and shows the plan in the job summary; nothing is changed;
   - an **apply job** in the environment `production` waits for **your approval** (its required reviewer: the one
@@ -143,8 +149,8 @@ Each phase is useful on its own and can stop there.
 |---|---|---|---|
 | 1. Spike | this document's spike | GitHub: done. Anthropic: both providers import with `0 to change`; D2 decided | S, half done |
 | 2. Anthropic in code | the chosen provider manages the rules, service account (and workspaces, if the provider allows it keyless) of the three repositories, applied locally with your `ant` login | `plan` clean after import; one new rule created by Terraform works on a real pull request; `claude_federation.py` documented as the fallback | S |
-| 3. GitHub in code | org workflow permissions and variables of all six organizations, repository settings and variables of the factory repositories; the GitHub App | `plan` clean after import; the egov-sofa default token permission set to `read` through a reviewed change | M |
-| 4. CI apply | platform repository (D1), state backend (D3), the Console `org:admin` rule, the environments `production-plan` and `production` | a pull request shows the GitHub plan and validates the Anthropic code; after a merge the plan on `main` shows both, and the saved plan is applied only after your approval, with no local login; a test pull request that edits the workflow cannot get an `org:admin` token | M |
+| 3. GitHub in code | org workflow permissions and variables of all six organizations, repository settings and variables of the factory repositories; the GitHub Apps `platform-read` and `platform-write` | `plan` clean after import; the egov-sofa default token permission set to `read` through a reviewed change | M |
+| 4. CI apply | platform repository (D1), state backend (D3), the Console `org:admin` rule, the environments `production-plan` and `production` | a pull request shows the GitHub plan and validates the Anthropic code; after a merge the plan on `main` shows both, and the saved plan is applied only after your approval, with no local login; a test pull request that edits the workflow gets neither an `org:admin` token nor the `platform-write` key (only `platform-read`, whose token cannot change anything) | M |
 | 5. `/factory-new` through the platform | the skill opens the platform pull request instead of running commands | a new repository from `/factory-new` gets its review working with no command and no login | S |
 
 ## Risks / out of scope
@@ -158,7 +164,8 @@ Each phase is useful on its own and can stop there.
   approval, but it only runs code already merged to the protected `main`) and the apply job (after your approval).
   Mitigations: the rule matches only those two jobs of one protected repository (workflow on `main`, two named
   environments limited to `main`); no pull request run matches it; the token lives ten minutes; the platform
-  repository's `main` is protected and needs a review (D1).
+  repository's `main` is protected and needs a review (D1). The `platform-write` App key is likewise readable only in
+  the `production` environment; pull request jobs get `platform-read` only.
 - **R4 drift is reverted.** A setting changed in the GitHub UI or the Console is undone at the next apply. The team
   changes settings through pull requests from phase 3 on; a scheduled `plan` reports drift without applying.
 - **R5 ippontech duplicates on retried creates** (#378): applies stay supervised; check the Console after a failed

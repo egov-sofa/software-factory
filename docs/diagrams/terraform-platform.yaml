@@ -12,7 +12,7 @@ diagram:
 pages:
   - name: Platform
     title: How an approved change reaches GitHub and Anthropic
-    statement: GitHub signs who the apply job is and Anthropic gives it a 10-minute org:admin token, keyless; the GitHub App's private key is the one stored secret.
+    statement: GitHub signs who the job is and Anthropic gives it a 10-minute org:admin token, keyless; two GitHub App keys, read and write, are the only stored secrets.
     flow: left-to-right
     items:
       - container: people
@@ -34,7 +34,7 @@ pages:
         layout: column
         items:
           - {node: oidc, kind: external-system, name: OIDC issuer, qualifier: "signs the job's token"}
-          - {node: app, kind: external-system, name: GitHub App, qualifier: "key in an environment secret"}
+          - {node: app, kind: external-system, name: GitHub Apps, qualifier: "read for PRs, write for apply"}
           - {node: orgs, kind: system, name: Organizations and repos, qualifier: "settings, variables, rulesets"}
       - container: anth
         kind: system-boundary
