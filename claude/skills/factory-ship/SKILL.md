@@ -1,6 +1,6 @@
 ---
 name: factory-ship
-description: Commit remaining work, push the current feature branch, and open a GitHub pull request with a generated description. Use when a feature is finished and ready for review/CI.
+description: Commit remaining work, push the current feature branch, and open a GitHub pull request with a generated description. Started by typing /factory-ship when a feature is finished.
 argument-hint: "[--draft]"
 disable-model-invocation: true
 ---
