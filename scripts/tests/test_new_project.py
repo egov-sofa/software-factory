@@ -50,6 +50,20 @@ class Base(unittest.TestCase):
         cls.tmp = tempfile.TemporaryDirectory()
         cls.home = fake_factory(cls.tmp.name, cls.remote)
         cls.ws = cls.home.parent.parent
+        cls.tools_log = Path(cls.tmp.name) / "tools.log"
+        cls.tools = cls.fake_tools(Path(cls.tmp.name) / "bin", ok=True)
+
+    @classmethod
+    def fake_tools(cls, bin_dir, ok):
+        """npm and uv first on PATH: they log how they were called and write the lockfile (or fail), so no test
+        reaches the network or depends on the tools installed on the machine."""
+        bin_dir.mkdir()
+        for tool, lockfile in (("npm", "package-lock.json"), ("uv", "uv.lock")):
+            body = f'echo "{tool} $*" >> "{posix(cls.tools_log)}"\n' + ("echo '{}' > " + lockfile if ok else "exit 1")
+            script = bin_dir / tool
+            script.write_bytes(f"#!/bin/sh\n{body}\n".encode("utf-8"))
+            script.chmod(0o755)
+        return {"PATH": f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}"}
 
     @classmethod
     def tearDownClass(cls):
@@ -59,8 +73,8 @@ class Base(unittest.TestCase):
         self.out = Path(tempfile.mkdtemp(dir=self.tmp.name)) / "out"
         self.addCleanup(shutil.rmtree, self.ws / "acme", True)
 
-    def new_project(self, *args):
-        return run(self.home / "scripts" / "new-project.sh", *args)
+    def new_project(self, *args, env=None):
+        return run(self.home / "scripts" / "new-project.sh", *args, env={**self.tools, **(env or {})})
 
     def created(self, *args):
         result = self.new_project(*args)
@@ -156,6 +170,39 @@ class Options(Base):
         self.assertIn("already exists", result.stderr)
         self.assertEqual(["keep.txt"], [p.name for p in target.iterdir()])
         self.assertEqual("mine\n", (target / "keep.txt").read_text(encoding="utf-8"))
+
+
+class Lockfiles(Base):
+    """Versions are pinned by a lockfile in the first commit (standards/CODING-STANDARDS.md)."""
+
+    def setUp(self):
+        super().setUp()
+        self.tools_log.unlink(missing_ok=True)
+
+    def test_lockfile_is_in_the_first_commit(self):
+        for template, lockfile, command in (("typescript", "package-lock.json", "npm install --package-lock-only"),
+                                            ("python", "uv.lock", "uv lock")):
+            with self.subTest(template):
+                result = self.created(NAME, template, "--dir", posix(self.out / template))
+                project = self.out / template / NAME
+                self.assertIn(f"{lockfile} created", result.stdout)
+                self.assertEqual(lockfile, support.git(project, "ls-files", lockfile).strip())
+                self.assertEqual("", support.git(project, "status", "--porcelain"))
+                self.assertIn(command, self.tools_log.read_text(encoding="utf-8"))
+
+    def test_generic_template_has_no_lockfile(self):
+        self.created(NAME, "generic", "--dir", posix(self.out), "--no-git")
+        self.assertFalse(self.tools_log.exists())
+
+    def test_failing_tool_warns_and_the_project_is_still_created(self):
+        failing = self.fake_tools(Path(tempfile.mkdtemp(dir=self.tmp.name)) / "bin", ok=False)
+        for template, lockfile in (("typescript", "package-lock.json"), ("python", "uv.lock")):
+            with self.subTest(template):
+                result = self.new_project(NAME, template, "--dir", posix(self.out / template), env=failing)
+                self.assertEqual(0, result.returncode, result.stderr + result.stdout)
+                self.assertIn(f"failed (offline?): no {lockfile} yet", result.stdout)
+                self.assertFalse((self.out / template / NAME / lockfile).exists())
+                self.assertTrue((self.out / template / NAME / "CLAUDE.md").is_file())
 
 
 class FactoryRepo(Base):

@@ -1,15 +1,17 @@
 # {{PROJECT_NAME}}
 
-> Python project. Includes pytest for tests, Ruff for linting and formatting, and GitHub Actions CI.
+> Python project. Includes uv for dependencies (with a lockfile), pytest for tests, Ruff for linting and
+> formatting, mypy for type checks, and GitHub Actions CI.
 
 ## Getting started
 
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/) once, then:
+
 ```bash
-python -m venv .venv                 # create an isolated environment
-source .venv/Scripts/activate        # Windows Git Bash  (macOS/Linux: source .venv/bin/activate)
-pip install -e ".[dev]"              # install the project + dev tools
-pytest                               # run tests
-ruff check .                         # lint
+uv sync                  # create .venv and install exactly what uv.lock pins
+uv run pytest            # run tests
+uv run ruff check .      # lint
+uv run mypy              # type check
 ```
 
 ## Project layout
