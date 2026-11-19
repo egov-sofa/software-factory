@@ -293,7 +293,11 @@ def scan(docs, *, local=None, github=None, repo=None, ref=None, now=None):
         for src in doc.get("sources", []):
             label = f"{src['repo']}:{src['path']}" if src.get("repo") else src["path"]
             if src.get("repo") or not local:
-                change = github.last_change(src.get("repo", repo), api_path(src["path"]), src.get("ref", ref)) \
+                # --ref is the project's branch: it applies to the project's own repository only. A source in
+                # another repository is read at its own ref, else at that repository's default branch.
+                src_repo = src.get("repo", repo)
+                src_ref = src.get("ref") or (ref if src_repo == repo else None)
+                change = github.last_change(src_repo, api_path(src["path"]), src_ref) \
                     if github else "no GitHub token"
             else:
                 change = local.last_change(src["path"])

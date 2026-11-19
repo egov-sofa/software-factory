@@ -46,6 +46,20 @@ class ClaudeReview(unittest.TestCase):
         self.assertIn("persist-credentials: false", checkout)
 
 
+class ClaudeComments(unittest.TestCase):
+    """Text injected into a pull request must not make Claude comment on another one."""
+
+    def test_comment_tool_is_limited_to_the_current_pull_request(self):
+        for name, number in (("reusable-claude-review.yml", "github.event.pull_request.number"),
+                             ("reusable-claude-mention.yml", "github.event.issue.number")):
+            with self.subTest(name):
+                text = (GITHUB / "workflows" / name).read_text(encoding="utf-8")
+                self.assertNotIn("Bash(gh pr comment:*)", text)
+                # with --body-file after the number, the rule for #12 cannot match #123
+                self.assertIn(f"Bash(gh pr comment ${{{{ {number} }}}} --body-file:*)", text)
+                self.assertIn(f"gh pr comment ${{{{ {number} }}}} --body-file - <<'EOF'", text)
+
+
 class PythonCI(unittest.TestCase):
     """Existing @v1 callers keep pip; uv is chosen by the caller, never switched on by a file in the repository."""
 
