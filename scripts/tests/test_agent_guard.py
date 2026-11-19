@@ -129,7 +129,7 @@ class Git(Base):
                         # xargs gives git its subcommand at run time; a read form must not hide a write after it
                         "echo push | xargs git", "printf 'push' | xargs -n1 git", "git remote -v add up https://x",
                         "git remote -v set-url origin https://x", "git remote add up https://x",
-                        "git tag -l -d v1", "git tag -a v2 -m x"):
+                        "git tag -l -d v1", "git tag -a v2 -m x", "git restore -SW a.py", "git restore -WS a.py"):
             with self.subTest(command):
                 self.assertIsNotNone(self.bash("tester", command))
 

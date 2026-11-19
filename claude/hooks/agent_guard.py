@@ -245,7 +245,9 @@ def git_refusal(sub, args, options):
         listing = not names or any(a in ("-l", "--list", "-a", "--all", "-r", "--remotes") for a in args)
         return None if listing else "branch " + names[0]   # git branch <name> creates a branch
     if sub == "restore":
-        return "restore --staged" if any(a in ("--staged", "-S") for a in args) else None
+        # --staged, or S in a bundle of short flags (-S, -SW, -WS)
+        staged = any(a == "--staged" or (a.startswith("-") and not a.startswith("--") and "S" in a) for a in args)
+        return "restore --staged" if staged else None
     if sub == "config":
         return None if any(a in GIT_CONFIG_READS for a in args) else "config " + " ".join(args[:2])
     return sub
