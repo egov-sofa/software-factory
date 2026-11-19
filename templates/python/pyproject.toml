@@ -27,7 +27,7 @@ testpaths = ["tests"]
 addopts = "-ra"
 
 [tool.mypy]
-# Type hints on every public function (CLAUDE.md): strict for the application code, run in CI
+# Type hints on every public function (AGENTS.md): strict for the application code, run in CI
 files = ["src"]
 strict = true
 

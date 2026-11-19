@@ -108,7 +108,10 @@ The files in [`standards/`](../standards/) are written for **both humans and AI*
 - Each project's `AGENTS.md` adds project-specific details (commands, folder layout). Claude Code reads it through
   the project's `CLAUDE.md` (`@AGENTS.md`); GitHub Copilot, Codex and Cursor read it directly
 
-![Where Claude's rules come from: standards, the global CLAUDE.md block, the project's CLAUDE.md which wins, and the agents that check against the standards](diagrams/rules-and-standards.png)
+![Where Claude's rules come from: standards, the global CLAUDE.md block, the project's instructions which win, and the agents that check against the standards](diagrams/rules-and-standards.png)
+
+The diagram still names the project's file `CLAUDE.md`; since I28 the instructions are in `AGENTS.md`, which `CLAUDE.md`
+imports. It is redrawn with the next diagram update (roadmap I15).
 
 The global block says how to work everywhere; a project's `AGENTS.md` says how this project works, and wins where the
 two conflict.
