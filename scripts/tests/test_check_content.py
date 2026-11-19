@@ -69,7 +69,9 @@ class Findings(unittest.TestCase):
                      # defaults of local and CI services: in nearly every compose file and CI service container
                      "DATABASE_URL: postgres://postgres:postgres@localhost:5432/test",
                      "amqp://guest:guest@rabbit:5672", "mysql://root:root@db/app",
-                     "postgres://app:S3cr3t-Pw@127.0.0.1:5432/app", "redis://:S3cr3t-Pw@localhost:6379"):
+                     "postgres://app:S3cr3t-Pw@127.0.0.1:5432/app", "redis://:S3cr3t-Pw@localhost:6379",
+                     # the Azurite emulator's account and key are public
+                     joined("AccountName=devstoreaccount1;Account", "Key=", "Eby8" * 22, "==")):
             with self.subTest(line=line):
                 self.assertEqual([], self.check(line))
 

@@ -86,6 +86,8 @@ SECRET_RULES = [
 URL_CREDENTIALS_RE = re.compile(r"\b[a-z][a-z0-9+.-]*://([^\s/:@]*):([^\s/@]+)@([^\s/@:?#]+)", re.I)
 PLACEHOLDER_PASSWORDS = {"password", "passwd", "pass", "pwd", "pw", "secret", "token", "changeme", "example",
                          "postgres", "guest", "root", "admin", "test", "dev", "user", "mysql"}
+# The Azurite storage emulator's account and key are public (Microsoft's documentation), found in dev configs
+AZURITE_ACCOUNT = "devstoreaccount1"
 LOCAL_HOSTS = {"localhost", "127.0.0.1", "0.0.0.0", "[::1]", "host.docker.internal"}  # content-ok
 
 
@@ -170,7 +172,8 @@ def findings(line, deny):
         return found   # an IP or host finding would print its value, which can contain the term
     if line.rstrip().endswith(MARKER):
         return found
-    found += [f"possible secret ({kind})" for kind, pattern in SECRET_RULES if pattern.search(line)]
+    found += [f"possible secret ({kind})" for kind, pattern in SECRET_RULES
+              if pattern.search(line) and not (kind == "Azure storage key" and AZURITE_ACCOUNT in line)]
     if url_password(line):
         found.append("possible secret (password in a URL)")
     for m in (*IPV4_RE.finditer(line), *(m for m in IPV6_RE.finditer(line) if ipv6_like(m.group(1)))):
