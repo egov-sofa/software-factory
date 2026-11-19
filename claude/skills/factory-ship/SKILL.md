@@ -16,7 +16,7 @@ Get the current branch onto GitHub as a pull request. Explain each step in one p
 - Scan the changes for secrets: `git diff origin/main...HEAD 2>/dev/null || git diff main...HEAD`, grepping for keys, tokens and passwords, and check that no `.env` file is staged. If you find anything, **stop** and warn the user.
 
 ## 2. Final checks
-Run the project's lint and test commands from `CLAUDE.md`. If they fail, stop, show the failures, and suggest fixing first. Don't open a PR with known-failing tests.
+Run the project's lint and test commands from `AGENTS.md` (`CLAUDE.md` in projects from before AGENTS.md). If they fail, stop, show the failures, and suggest fixing first. Don't open a PR with known-failing tests.
 
 ## 3. Commit leftovers
 If `git status` shows changes, show them to the user and commit with a Conventional Commit message.

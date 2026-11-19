@@ -1,5 +1,8 @@
 # {{PROJECT_NAME}}
 
+Instructions for anyone changing this project: people and AI coding agents alike (Claude Code reads them through
+`CLAUDE.md`; GitHub Copilot, Codex and Cursor read this file directly). Keep them current when commands change.
+
 TypeScript / Node.js project scaffolded by software-factory.
 
 ## Commands

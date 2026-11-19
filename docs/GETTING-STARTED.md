@@ -52,7 +52,7 @@ bash /c/DEV/PROJECTS/gitHub/egov-rdc/egov-sofa/software-factory/scripts/new-proj
 
 **What this does:**
 1. Creates `/c/DEV/PROJECTS/gitHub/egov-rdc/egov-sofa/hello-factory/` (folders mirror GitHub: `egov-rdc/<org>/<project>`; `--owner` picks the org, and the script always asks for it)
-2. Copies in the shared files (editor settings, PR template, Dependabot config, CLAUDE.md)
+2. Copies in the shared files (editor settings, PR template, Dependabot config, CLAUDE.md, which imports the project's AGENTS.md)
 3. Adds the TypeScript-specific files on top (package.json, tsconfig, a sample function and test)
 4. Fills in placeholders such as the project name and your GitHub username
 5. Runs `git init` and makes the first commit
@@ -120,7 +120,7 @@ Go into any existing project folder, start `claude`, and run:
 /factory-onboard
 ```
 
-Claude detects the language and adds a `CLAUDE.md`, a CI workflow and a PR template, then shows you what changed before committing anything.
+Claude detects the language and adds an `AGENTS.md` (the project's instructions) with a `CLAUDE.md` that imports it, a CI workflow and a PR template, then shows you what changed before committing anything.
 
 ---
 

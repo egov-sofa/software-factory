@@ -37,7 +37,7 @@ cd /c/DEV/PROJECTS/gitHub/egov-rdc/egov-sofa/my-app && claude
 | `/factory-build <feature>` | Full pipeline: plan → **you approve** → build → test → review + security → fix → docs |
 | `/factory-review` | Runs only the reviewer and security auditor on your current changes |
 | `/factory-ship` | Commits, pushes, and opens a pull request with a good description |
-| `/factory-onboard` | Adds factory standards (CLAUDE.md, CI, PR template) to an **existing** project |
+| `/factory-onboard` | Adds factory standards (AGENTS.md and CLAUDE.md, CI, PR template) to an **existing** project |
 
 ## Templates
 

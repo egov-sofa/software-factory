@@ -1,6 +1,6 @@
 # Global Working Rules (installed by software-factory)
 
-These rules apply to every project. A project's own `CLAUDE.md` overrides them where they conflict.
+These rules apply to every project. A project's own `AGENTS.md` or `CLAUDE.md` overrides them where they conflict.
 Full standards: `{{FACTORY_HOME}}/standards/`
 
 ## About me
@@ -8,7 +8,7 @@ Full standards: `{{FACTORY_HOME}}/standards/`
 - My projects use mixed stacks (TypeScript, Python, others). Detect the stack from the project files; don't assume.
 
 ## How to work
-- Read the project's `CLAUDE.md` and existing code before changing anything. Match existing style.
+- Read the project's `AGENTS.md` (or `CLAUDE.md`) and existing code before changing anything. Match existing style.
 - Work on a branch, never directly on `main`. Branch names: `feat/…`, `fix/…`, `chore/…`, `docs/…`.
 - Commits follow Conventional Commits: `feat: …`, `fix: …`, `docs: …`, `test: …`, `refactor: …`, `chore: …`.
 - Every behavior change comes with tests. Run the test suite before saying something works.

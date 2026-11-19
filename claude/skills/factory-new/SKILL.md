@@ -1,6 +1,6 @@
 ---
 name: factory-new
-description: Scaffold a new project from a software-factory template (typescript, python, generic), with tests, lint, CI and CLAUDE.md preconfigured. Asks which GitHub org owns it; optionally creates the GitHub repo.
+description: Scaffold a new project from a software-factory template (typescript, python, generic), with tests, lint, CI and AGENTS.md (the project instructions, imported by CLAUDE.md) preconfigured. Asks which GitHub org owns it; optionally creates the GitHub repo.
 argument-hint: "<project-name> [typescript|python|generic] [owner]"
 disable-model-invocation: true
 ---
@@ -20,6 +20,6 @@ Factory location: `{{FACTORY_HOME}}`
    bash "{{FACTORY_HOME}}/scripts/new-project.sh" <name> <template> --owner <owner> [--github private|public]
    ```
    The project is created at `<workspace>/<owner>/<name>`. The workspace is the folder that holds the org folders (for example `egov-rdc/egov-ai/<name>`). Add `--dir <path>` only if the user wants somewhere else.
-3. **Install and verify.** `cd` into the project and run its install and test commands (they're listed in the new project's `CLAUDE.md`). Report the results honestly.
+3. **Install and verify.** `cd` into the project and run its install and test commands (they're listed in the new project's `AGENTS.md`). Report the results honestly.
 4. **Explain what was created**, as a short annotated tree of the key files and what each one is for.
 5. **Next steps:** `cd <path> && claude`, then `/factory-build <first feature>`.
