@@ -1,0 +1,7 @@
+# The repositories whose documentation the dashboard follows. Each one lists its documents in .factory/docs.yml.
+# Keep this repository private: the list names your private repositories.
+version: 1
+repos:
+  - example-org/payments
+  - example-org/platform-gitops
+  - other-org/website

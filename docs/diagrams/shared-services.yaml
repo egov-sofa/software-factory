@@ -8,7 +8,7 @@ diagram:
   status: approved
   version: "1"
   author: software-factory
-  date: 2026-11-11
+  date: 2026-11-16
 pages:
   - name: Services
     flow: left-to-right
@@ -38,6 +38,7 @@ pages:
               - {node: ci, kind: component, name: ci.yml, qualifier: on push and PR}
               - {node: review, kind: component, name: claude-review.yml, qualifier: once turned on}
               - {node: mention, kind: component, name: claude-mention.yml, qualifier: "@claude comments"}
+              - {node: drift, kind: component, name: docs-drift.yml, qualifier: "PR and weekly"}
       - container: factory
         kind: system-boundary
         name: Factory at v1, egov-sofa/software-factory
@@ -48,6 +49,7 @@ pages:
           - {node: rci, kind: component, name: reusable-<language>.yml, qualifier: "deps, lint, build, test"}
           - {node: rreview, kind: component, name: reusable-claude-review.yml, qualifier: project checklist}
           - {node: rmention, kind: component, name: reusable-claude-mention.yml, qualifier: write access only}
+          - {node: adrift, kind: component, name: docs-drift action, qualifier: "factory copy, python -I"}
       - container: anthropic
         kind: external
         name: Anthropic
@@ -60,6 +62,7 @@ pages:
       - {from: ci, to: rci, kind: sync, label: "uses @v1"}
       - {from: review, to: rreview, kind: sync, label: "uses @v1"}
       - {from: mention, to: rmention, kind: sync, label: "uses @v1"}
+      - {from: drift, to: adrift, kind: sync, label: "uses @v1"}
       - {from: rreview, to: api, kind: identity, label: short-lived token}
       - {from: rmention, to: api, kind: identity, label: short-lived token}
       - {from: aguard, to: pr, kind: sync, label: reads as data, ports: {exit: [0.5, 0], entry: [1, 0.5]}}

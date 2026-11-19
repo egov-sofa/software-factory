@@ -29,6 +29,8 @@ jobs:
       - name: Agent and skill frontmatter
         run: python scripts/validate.py
       # check_content.py, validate.py, and install.sh, uninstall.sh and new-project.sh run with bash
+      - name: PyYAML for the docs drift tests (same pin as the docs-drift action)
+        run: python -I -m pip install --quiet --disable-pip-version-check "pyyaml==6.0.3"
       - name: Unit tests of the factory scripts
         run: python -m unittest discover -s scripts/tests -v
       - name: The factory itself is clean
