@@ -182,13 +182,18 @@ class CommandLine(unittest.TestCase):
 
     def test_quiet_denylist_findings_show_no_number_and_no_location(self):
         """A fork's pull request: one guess per line must not tell which lines (so which guesses) matched."""
-        (self.repo / "guesses.md").write_text("Globex\nAcme\nInitech\n")
+        # each guess next to a public IP: a matching line would drop its IP finding, so that must not show either
+        (self.repo / "guesses.md").write_text("Globex 8.8.8.8\nAcme 8.8.8.8\nInitech 8.8.8.8\n")  # content-ok
         self.git("add", "guesses.md")
         result = self.guard("--staged", env={"CONTENT_DENYLIST": "acme", "CONTENT_DENYLIST_QUIET": "1"})
         self.assertEqual(1, result.returncode, result.stdout)
         self.assertNotIn("guesses.md", result.stdout)
         self.assertNotIn("term 1", result.stdout)
+        self.assertNotIn("problem(s)", result.stdout)
         self.assertIn("Denylisted terms found", result.stdout)
+        # without a match, a fork still gets the normal findings
+        clean = self.guard("--staged", env={"CONTENT_DENYLIST": "umbrella", "CONTENT_DENYLIST_QUIET": "1"})
+        self.assertIn("guesses.md:1: public IP address 8.8.8.8", clean.stdout)  # content-ok
 
     def test_marker_on_a_secret_passes_with_a_note(self):
         (self.repo / "docs.md").write_text(joined("example: ghp", "_", "q" * 36, "  content-ok\n"))

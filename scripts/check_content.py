@@ -362,7 +362,7 @@ def main(argv):
         print(__doc__, file=sys.stderr)
         return 2
 
-    problems, hidden = 0, False
+    problems, hidden, out = 0, False, []   # output is held until the end: quiet mode may have to drop all of it
 
     def report(where, num, finding):
         nonlocal problems, hidden
@@ -370,7 +370,7 @@ def main(argv):
         if finding.startswith(HIDDEN_TERM):   # quiet: no number, no location (see quiet())
             hidden = True
             return
-        print(f"{where}: file name: {finding}" if num == 0 else f"{where}:{num}: {finding}")
+        out.append(f"{where}: file name: {finding}" if num == 0 else f"{where}:{num}: {finding}")
 
     for _label, lines in sources:
         prev = None   # (where, num, line) of the line before, to catch a term split by a line wrap
@@ -384,12 +384,17 @@ def main(argv):
             for f in dict.fromkeys(findings(line, deny)):   # once each, though a line can hold two readings
                 report(where, num, f)
             for kind in marker_skipped(line):
-                print(f"{where}:{num}: note: '{MARKER}' allows a possible secret ({kind}); make sure it is a fake")
+                out.append(f"{where}:{num}: note: '{MARKER}' allows a possible secret ({kind}); make sure it is a fake")
             prev = (where, num, line)
     names = ", ".join(label for label, _ in sources)
     if hidden:
-        print("Denylisted terms found. Their locations are not shown on a fork's pull request; a maintainer can run "
-              "the guard locally to see them.")
+        # Nothing else either: a line with a term drops its other findings, and the count includes the hidden ones,
+        # so any per-line output or count would still tell a fork which of its guesses matched.
+        print("Denylisted terms found. On a fork's pull request nothing more is shown (no locations, no other "
+              "findings); a maintainer can run the guard locally to see them.")
+        return 1
+    if out:
+        print("\n".join(out))
     if problems:
         print(f"\n{problems} problem(s) in {names}. Remove the content, or end an intended example line with "
               f"'{MARKER}' (built-in rules only).")
