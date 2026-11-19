@@ -24,6 +24,28 @@ PREFIX = "repo:egov-sofa@1/software-factory@2"
 OWNER_ID = "1"
 
 
+class RealCommandRefused(AssertionError):
+    pass
+
+
+def refuse_real_command(cmd, *args, **kwargs):
+    raise RealCommandRefused(f"a test tried to run a real command: {cmd}; pass a fake run= instead")
+
+
+# Every test runs with the script's subprocess replaced, so a mistake in a test fails it instead of running the real
+# gh against the real repository in ARGS (which once overwrote that repository's variables). The CommandLine tests
+# start the script as its own process and give it everything it would otherwise read with gh.
+_guard = mock.patch.object(fed, "subprocess", SimpleNamespace(run=refuse_real_command))
+
+
+def setUpModule():
+    _guard.start()
+
+
+def tearDownModule():
+    _guard.stop()
+
+
 class Rules(unittest.TestCase):
     def test_review_rule_matches_pull_requests_of_the_repository_only(self):
         (rule,) = fed.build_rules(fed.parse_args(ARGS), PREFIX, OWNER_ID)
@@ -159,6 +181,11 @@ class Variables(unittest.TestCase):
             self.assertEqual(1, fed.main(ARGS + ["--sub-prefix", PREFIX, "--owner-id", OWNER_ID, "--apply",
                                                  "--set-variables"]))
         self.assertIn("gh secret delete", err.getvalue())
+
+    def test_no_test_can_reach_the_real_gh(self):
+        with mock.patch.object(fed.shutil, "which", return_value="/usr/bin/gh"), \
+                self.assertRaises(RealCommandRefused):
+            fed.set_variables("o/r", self.VALUES)   # no run=: would be the real gh without the guard
 
     def test_unreadable_secrets_are_a_note_not_an_error(self):
         run, calls = self.gh(secret_list_fails=True)

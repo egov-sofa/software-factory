@@ -191,9 +191,10 @@ def variable_commands(repo, rule_ids, org_id, args):
 OVERRIDING_SECRETS = ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN")
 
 
-def overriding_secrets(repo, run=subprocess.run):
+def overriding_secrets(repo, run=None):
     """The secrets of the repository that would win over federation. An unreadable list is a note, not an error:
     reading secrets can need more access than setting variables."""
+    run = run or subprocess.run   # looked up at call time, so a test that replaces subprocess reaches it
     done = run(["gh", "secret", "list", "--repo", repo, "--json", "name", "--jq", ".[].name"],
                capture_output=True, text=True, check=False)
     if done.returncode != 0:
@@ -204,10 +205,11 @@ def overriding_secrets(repo, run=subprocess.run):
     return [s for s in OVERRIDING_SECRETS if s in present]
 
 
-def set_variables(repo, values, run=subprocess.run):
+def set_variables(repo, values, run=None):
     """Set the repository variables with gh, in order. The review is never turned on half-configured: it stops at the
     first failure, before CLAUDE_REVIEW_ENABLED, and it does not set CLAUDE_REVIEW_ENABLED while a secret that wins
     over federation exists (every review would fail with 401 until it is deleted)."""
+    run = run or subprocess.run   # looked up at call time, so a test that replaces subprocess reaches it
     if not shutil.which("gh"):
         raise SetupError("gh is not installed; set the variables with the commands printed without --set-variables")
     blocking = overriding_secrets(repo, run=run)
