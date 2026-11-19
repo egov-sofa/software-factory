@@ -200,6 +200,22 @@ class ScanRegistry(unittest.TestCase):
         result = docs_drift.scan(docs, github=github, repo="org/app", now=T0 + 3 * DAY)[0]
         self.assertEqual(result["state"], "drift")
 
+    def test_ref_applies_to_the_project_only_not_to_other_repositories(self):
+        """With --ref feature, a source in another repository is read at its default branch (or its own ref)."""
+        github = FakeGitHub({("org/app", "docs/sad.md"): (T0 + DAY, "d0c"), ("org/app", "src"): (T0, "a1"),
+                             ("org/gitops", "apps"): (T0, "b2"), ("org/infra", "tf"): (T0, "c3")},
+                            readable=["org/app", "org/gitops", "org/infra"])
+        asked = []
+        real = github.last_change
+        github.last_change = lambda repo, path, ref=None: asked.append((repo, ref)) or real(repo, path, ref)
+        docs = [{"id": "sad", "path": "docs/sad.md", "sources": [
+            {"path": "src/"}, {"repo": "org/gitops", "path": "apps/"},
+            {"repo": "org/infra", "path": "tf/", "ref": "prod"}]}]
+        docs_drift.scan(docs, github=github, repo="org/app", ref="feature", now=T0 + 2 * DAY)
+        self.assertIn(("org/app", "feature"), asked)
+        self.assertIn(("org/gitops", None), asked)
+        self.assertIn(("org/infra", "prod"), asked)
+
 
 class ScanRegistryEdges(unittest.TestCase):
     DOCS = [{"id": "sad", "path": "docs/sad.md", "sources": []}]

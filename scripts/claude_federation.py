@@ -13,7 +13,7 @@ and a rule that already exists with the same name on the issuer is reused, so it
 Usage:
   python3 scripts/claude_federation.py --repo OWNER/NAME --service-account svac_... --workspace wrkspc_... \\
       [--mention] [--mention-workflow-ref REF] [--review-workflow-ref REF] [--sub-prefix PREFIX] \\
-      [--owner-id ID] [--rule-prefix NAME] \\
+      [--owner-id ID] [--default-branch BRANCH] [--rule-prefix NAME] \\
       [--issuer-url URL] [--create-issuer] [--token-lifetime 600] [--apply]
 
   --sub-prefix   the repository's OIDC subject prefix; default: read with
@@ -21,6 +21,9 @@ Usage:
   --owner-id     the numeric ID of the repository's owner (organization or user), required as the
                  repository_owner_id claim so the rule keeps trusting the owner, not just its name, if the name is
                  ever released and taken; default: read with `gh api users/OWNER --jq .id`
+  --default-branch
+                 with --mention: the repository's default branch, which issue_comment runs take their workflow
+                 from; default: read with `gh api repos/OWNER/NAME --jq .default_branch`
   --mention-workflow-ref
                  also require this job_workflow_ref claim on the mention rule (hardening; copy the exact value from a
                  refused exchange in the Console if unsure)
@@ -62,6 +65,7 @@ def parse_args(argv):
     p.add_argument("--review-workflow-ref", default="", help="extra job_workflow_ref claim for the review rule")
     p.add_argument("--sub-prefix", default="", help="OIDC subject prefix; default: read it with gh")
     p.add_argument("--owner-id", default="", help="numeric ID of the owner; default: read it with gh")
+    p.add_argument("--default-branch", default="", help="with --mention: the default branch; default: read it with gh")
     p.add_argument("--rule-prefix", default="", help="rule name prefix; default: the repository name")
     p.add_argument("--issuer-url", default=GITHUB_ISSUER)
     p.add_argument("--create-issuer", action="store_true", help="create the issuer if the organization has none")
@@ -116,6 +120,18 @@ def read_owner_id(owner, run=subprocess.run):
     return value
 
 
+def read_default_branch(repo, run=subprocess.run):
+    """The repository's default branch: issue_comment runs take their workflow from it."""
+    if not shutil.which("gh"):
+        raise SetupError(f"gh is not installed; pass --default-branch (gh api repos/{repo} --jq .default_branch)")
+    done = run(["gh", "api", f"repos/{repo}", "--jq", ".default_branch"], capture_output=True, text=True, check=False)
+    value = (done.stdout or "").strip()
+    if done.returncode != 0 or not value:
+        raise SetupError(f"gh could not read the default branch of {repo} ({done.stderr.strip() or 'no output'}); "
+                         "pass --default-branch")
+    return value
+
+
 def build_rules(args, sub_prefix, owner_id):
     """The rules to create, as Admin API payloads without issuer_id (filled in once the issuer is known)."""
     owner, name = args.repo.split("/")
@@ -150,7 +166,8 @@ def build_rules(args, sub_prefix, owner_id):
                 "name": f"{base}-pr-mention",
                 "description": f"Claude answers @claude comments on pull requests in {args.repo} (software factory)",
                 # issue_comment runs take the workflow from the default branch
-                "match": {"subject_prefix": f"{sub_prefix}:ref:refs/heads/main", "audience": AUDIENCE,
+                "match": {"subject_prefix": f"{sub_prefix}:ref:refs/heads/{args.default_branch or 'main'}",
+                          "audience": AUDIENCE,
                           "claims": claims},
                 **common,
             },
@@ -219,6 +236,8 @@ def main(argv):
         if warning:
             print(f"warning: {warning}", file=sys.stderr)
         owner_id = args.owner_id or read_owner_id(args.repo.split("/")[0])
+        if args.mention and not args.default_branch:
+            args.default_branch = read_default_branch(args.repo)
         rules = build_rules(args, prefix, owner_id)
         if not args.review_workflow_ref:
             print("note: without --review-workflow-ref, any pull request from a branch of the repository can get "
