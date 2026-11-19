@@ -125,14 +125,15 @@ def without_nul(line):
     """An added diff line with its NUL bytes handled: a UTF-16 line (a NUL between every letter) gets them removed so
     its text can be read; any other NUL becomes a space, so it cannot hide the rest of the line. A line with fewer
     NULs can still be UTF-16, mostly in a non-Latin script: its runs of UTF-16 Latin text (a character, a NUL, at
-    least four times) are added after a tab, read without the NULs. Only those runs: removing every NUL from binary
-    content would make up findings (1.1<NUL>.1.1 would become a public IP)."""
+    least four times) are put before it, read without the NULs and followed by a tab, so the line still ends as it
+    did (a content-ok marker stays last). Only those runs: removing every NUL from binary content would make up
+    findings (1.1<NUL>.1.1 would become a public IP)."""
     nuls = line.count(chr(0))
     if nuls and nuls * 3 >= len(line):   # a third, not half: the byte-order mark and \r also take places
         return line.replace(chr(0), "")
     spaced = line.replace(chr(0), " ")
     runs = [run.replace(chr(0), "") for run in UTF16_RUN_RE.findall(line)] if nuls else []
-    return "\t".join([spaced, *runs])
+    return "\t".join([*runs, spaced])
 
 
 def denylist():

@@ -91,6 +91,10 @@ class Findings(unittest.TestCase):
         self.assertIn("possible secret (AWS access key ID)", self.check(check_content.without_nul(line)))
         big_endian = "�" * 80 + "".join(chr(0) + c for c in secret)
         self.assertIn("possible secret (AWS access key ID)", self.check(check_content.without_nul(big_endian)))
+        # the line still ends with its marker, so an intended example keeps passing
+        marked = check_content.without_nul("x" + chr(0) + "y" + chr(0) * 2 + "text dns 8.8.8.8  content-ok")  # content-ok
+        self.assertTrue(marked.endswith("content-ok"))
+        self.assertEqual([], self.check(marked))
 
     def test_nul_bytes_in_binary_do_not_make_up_findings(self):
         """Only runs of UTF-16 text are read without their NULs: stray NULs in binary content stay spaces."""
