@@ -216,6 +216,15 @@ class ScanRegistryEdges(unittest.TestCase):
         self.assertIn("403", result["unknown"][0]["reason"])
 
 
+    def test_api_mode_uses_each_commits_own_date_a_known_limit(self):
+        # pins the limit in DOCS-DRIFT.md: the commits API has no --first-parent, so a pull request merged with a
+        # merge commit that updated the document (day 1) before its source (day 2) shows as drift in the dashboard
+        github = FakeGitHub({("org/app", "docs/sad.md"): (T0 + DAY, "d0c"), ("org/app", "src"): (T0 + 2 * DAY, "5ce")},
+                            readable=["org/app"])
+        docs = [{"id": "sad", "path": "docs/sad.md", "sources": [{"path": "src/"}]}]
+        self.assertEqual(docs_drift.scan(docs, github=github, repo="org/app", now=T0 + 3 * DAY)[0]["state"], "drift")
+
+
 class Escaping(unittest.TestCase):
     def test_pipes_and_mentions_from_a_manifest_cannot_break_or_ping(self):
         rows = [{"id": "x", "title": "A | B @team", "path": "a.md", "state": "missing", "newer": [], "unknown": []}]

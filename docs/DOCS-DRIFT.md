@@ -107,6 +107,11 @@ or the App is not installed on it.
 ## Limits
 
 - Dates are commit dates. A commit that only reformats a source still counts as a change.
+- The weekly check in a project dates each change by when it reached the branch (`git log --first-parent`). The
+  dashboard reads dates through GitHub's commits API, which has no such option, so it uses each commit's own date.
+  The two can disagree for a pull request that is merged with a merge commit and updates the document in an earlier
+  commit than its source: the project shows ok, the dashboard shows drift. With squash merges (the factory's
+  recommended way, standards/GIT-WORKFLOW.md) both show the same, because the pull request becomes one commit.
 - A source given as a glob is followed through the folder before its first wildcard (`src/**/*.py` follows `src/`),
   so a change to another file in that folder counts as well. Name narrower folders to avoid noise.
 - The check says *that* a document may be out of date, not *what* to change. A later version can ask Claude to propose
