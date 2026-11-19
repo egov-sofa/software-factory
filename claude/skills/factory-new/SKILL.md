@@ -21,5 +21,6 @@ Factory location: `{{FACTORY_HOME}}`
    ```
    The project is created at `<workspace>/<owner>/<name>`. The workspace is the folder that holds the org folders (for example `egov-rdc/egov-ai/<name>`). Add `--dir <path>` only if the user wants somewhere else.
 3. **Install and verify.** `cd` into the project and run its install and test commands (they're listed in the new project's `AGENTS.md`). Report the results honestly.
-4. **Explain what was created**, as a short annotated tree of the key files and what each one is for.
-5. **Next steps:** `cd <path> && claude`, then `/factory-build <first feature>`.
+4. **Claude review access** (only when a GitHub repository was created). The project has the Claude review workflow, off until the repository can reach the Claude API. Ask with AskUserQuestion whether to set that up now; each review costs API credit. If yes, follow "Set up a repository from Claude Code" in `{{FACTORY_HOME}}/docs/CLAUDE-SERVICES-AUTH.md`: first make sure the Claude GitHub app is installed on the repository (ask; nothing can check it for you), then run the preview yourself and show it, then give the user the one `--apply --set-variables` command to run with `!`; it needs their `org:admin` login, so never run it yourself. If no, say it can be done later the same way.
+5. **Explain what was created**, as a short annotated tree of the key files and what each one is for.
+6. **Next steps:** `cd <path> && claude`, then `/factory-build <first feature>`.
