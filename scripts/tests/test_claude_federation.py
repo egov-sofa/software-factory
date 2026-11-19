@@ -186,6 +186,10 @@ class Variables(unittest.TestCase):
         with mock.patch.object(fed.shutil, "which", return_value="/usr/bin/gh"), \
                 self.assertRaises(RealCommandRefused):
             fed.set_variables("o/r", self.VALUES)   # no run=: would be the real gh without the guard
+        for read in (lambda: fed.read_sub_prefix("o/r"), lambda: fed.read_owner_id("o")):
+            with self.subTest(read=read), mock.patch.object(fed.shutil, "which", return_value="/usr/bin/gh"), \
+                    self.assertRaises(RealCommandRefused):
+                read()
 
     def test_unreadable_secrets_are_a_note_not_an_error(self):
         run, calls = self.gh(secret_list_fails=True)

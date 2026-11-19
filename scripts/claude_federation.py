@@ -106,7 +106,8 @@ def sub_prefix_from_api(repo, data):
     raise SetupError(f"unexpected answer from GitHub for {repo}'s OIDC subject: {json.dumps(data)}")
 
 
-def read_sub_prefix(repo, run=subprocess.run):
+def read_sub_prefix(repo, run=None):
+    run = run or subprocess.run   # looked up at call time, so a test that replaces subprocess reaches it
     if not shutil.which("gh"):
         raise SetupError("gh is not installed; pass --sub-prefix (see `gh api repos/OWNER/NAME/actions/oidc/customization/sub`)")
     done = run(["gh", "api", f"repos/{repo}/actions/oidc/customization/sub"],
@@ -117,8 +118,9 @@ def read_sub_prefix(repo, run=subprocess.run):
     return sub_prefix_from_api(repo, json.loads(done.stdout or "{}"))
 
 
-def read_owner_id(owner, run=subprocess.run):
+def read_owner_id(owner, run=None):
     """The owner's numeric ID; users/OWNER answers for organizations too."""
+    run = run or subprocess.run   # looked up at call time, so a test that replaces subprocess reaches it
     if not shutil.which("gh"):
         raise SetupError(f"gh is not installed; pass --owner-id (the numeric ID of {owner}: gh api users/{owner} --jq .id)")
     done = run(["gh", "api", f"users/{owner}", "--jq", ".id"], capture_output=True, text=True, check=False)
