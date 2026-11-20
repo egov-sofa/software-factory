@@ -132,9 +132,12 @@ the round number `<n>` and the commit the folder was built from:
 Result: reviewer CHANGES_REQUESTED, security PASS, tests PASS; blocking 1
 Not blocking: REV-<n>.2 (MINOR) naming in src/page.ts
 ```
-IDs are `REV-<round>.<number of the finding in the report>`, `SEC-…` and `TEST-…`. From round 2, also write each
-earlier finding's outcome from the reviewers' `## Earlier findings` into its Answer cell (`resolved in round <n>`,
-`kept`). Blocking = the reviewer's and the security auditor's parsed `blocking` values (their new blocking findings
+IDs are `REV-<round>.<number of the finding in the report>`, `SEC-…` and `TEST-…`. From round 2, **append** each
+earlier finding's outcome from the reviewers' `## Earlier findings` to its Answer cell, after what is there, never
+replacing it: `disagree: <why> → still open (round <n>)`, `fixed: <how> → resolved (round <n>)`,
+`disagree: <why> → disagreement accepted (round <n>)`. The implementer's answer must stay readable, so a resumed
+run can still see a dispute. **Settled** = the last outcome is `resolved` or `disagreement accepted`, or the cell
+ends with `user: drop`. Blocking = the reviewer's and the security auditor's parsed `blocking` values (their new blocking findings
 plus earlier ones they report still open; write still-open ones in the round's table too) + test failures. Set
 `Stage: fix` (blocking > 0) or `Stage: docs`, and commit only the plan, even if other changes are staged:
 `git commit -m "docs: review round <n>" -- <plan>`.
@@ -143,13 +146,16 @@ plus earlier ones they report still open; write still-open ones in the round's t
 If there are blocking findings:
 1. **Disputed findings first.** A finding the implementer answered `disagree` and the reviewer reports `still open`
    is disputed: do not send it to the implementer again. Show the user the finding, the answer and the reviewer's
-   reply, ask **fix** or **drop**, and write `user: fix` or `user: drop` in its Answer cell. `user: fix` goes to the
-   implementer with the others; `user: drop` no longer blocks.
+   reply, ask **fix** or **drop**, and append `→ user: fix` or `→ user: drop` to its Answer cell. `user: fix` goes
+   to the implementer with the others; `user: drop` no longer blocks.
+   **Nothing left to fix** (every remaining blocker dropped): set `Stage: docs`, commit only the plan
+   (`git commit -m "docs: review round <n> settled by the user" -- <plan>`) and continue at Stage 7. No fix round
+   is used.
 2. **Cap:** if `Round` is already 2 and blockers remain, **stop** and present them to the user with your
    recommendation. Never loop forever.
 3. Send the remaining blocking findings, with their IDs, to the `implementer` agent. Check its report with
    `--ids <those IDs>`: every ID needs `fixed:` or `disagree:` under `## Answers`.
-4. Write each answer into its Answer cell, add 1 to `Round`, set `Stage: test`, stage the files under **Files
+4. Append each answer to its Answer cell (`fixed: <how>` or `disagree: <why>`), add 1 to `Round`, set `Stage: test`, stage the files under **Files
    changed** (as in Stage 3) and the plan, and commit (`fix: address review findings`), even when `Commands: FAIL`:
    the tester and reviewers see that failure as a blocker, and it counts toward the 2 rounds. Stop and ask the user
    only if the implementer reports `Result: STOPPED`.
