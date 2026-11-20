@@ -1,6 +1,6 @@
 # Plan: Pipeline state and typed handoffs (roadmap I29)
 
-**Status:** Proposed
+**Status:** Approved (2026-11-20: every recommended answer in "Open questions" accepted)
 **Request:** "Write an implementation plan for roadmap item I29" — roadmap I29: "Pipeline state and typed handoffs.
 `Stage:` and `Round:` in the plan, a 'Review rounds' log, `/factory-build --resume`, re-reviews that receive earlier
 findings, strict `Verdict:` and `Blocking:` headers, the base branch passed to every agent. Why: state lives only in
@@ -259,6 +259,9 @@ Needs the I1 evals (prompt behaviour; by hand until then, on a scratch project):
   records with model and cost (E1.5); a state writer in the script; changing the guard; the evals themselves (I1).
 
 ## Open questions for the user
+
+**Answered 2026-11-20:** the maintainer accepted the recommended option for every question below;
+build to those.
 
 1. **Where the state lives.** Recommended: in the plan (four header lines and `## Review rounds`). Alternative: a
    sibling `docs/plans/<plan>.state.md` written by the conductor, which keeps the approved plan's text untouched after

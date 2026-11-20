@@ -1,6 +1,6 @@
 # Plan: Stack manifest and a real self-test (roadmap I31)
 
-**Status:** Proposed
+**Status:** Approved (2026-11-20: every recommended answer in "Open questions" accepted)
 **Request:** "draft the I31 plan": roadmap I31: "Stack manifest and a real self-test. One `stacks.yaml` drives
 templates, CI, the self-test matrix, `new-project.sh` and the catalog (I10). The self-test calls the real
 `reusable-*.yml` and the content-guard action, on Linux, macOS and Windows. Why: adding a stack means five edits; a
@@ -208,6 +208,9 @@ them as they are. If a check fails, the manifest text is aligned to them, not th
   README (I10), and the update path for existing projects (I30).
 
 ## Open questions for the user
+
+**Answered 2026-11-20:** the maintainer accepted the recommended option for every question below;
+build to those.
 
 1. **Format and name:** `templates/stacks.toml` with stdlib `tomllib` (proposed), or keep the roadmap's
    `stacks.yaml`? YAML would mean making PyYAML a requirement for the factory's scripts, or a hand-written subset

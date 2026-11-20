@@ -1,6 +1,6 @@
 # Plan: Evals for the agents and skills (roadmap I1, first step of E6.1)
 
-**Status:** Proposed
+**Status:** Approved (2026-11-20: every recommended answer in "Open questions" accepted)
 **Request:** roadmap I1: "Evals for agents and skills. `claude plugin eval` cases per agent: reviewer finds a planted
 off-by-one, security auditor finds a planted key and SQL injection, planner writes testable acceptance criteria,
 `/factory-build` does not start by itself from a natural request (it runs only when typed, I23). Each case runs with
@@ -336,6 +336,9 @@ All free, run by the self-test:
   stacks, publishing the report to claude.ai, the main conversation's push guard (I7).
 
 ## Open questions for the user
+
+**Answered 2026-11-20:** the maintainer accepted the recommended option for every question below;
+build to those.
 
 1. **Budget per run.** Default ceilings of $20 (full) and $6 (smoke), and three runs per case: right, or lower (for
    example two runs per case, ≈ $8–12)? Should the evals also get their own Anthropic workspace with a monthly spend

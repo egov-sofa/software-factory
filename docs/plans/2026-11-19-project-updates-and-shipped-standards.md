@@ -1,6 +1,6 @@
 # Plan: An update path for projects, with the standards shipped into them (roadmap I30 and the rest of I28)
 
-**Status:** Proposed
+**Status:** Approved (2026-11-20: every recommended answer in "Open questions" accepted)
 **Request:** "Write an implementation plan for roadmap items I30 and the remaining part of I28." Roadmap I30: "Update
 path for existing projects. `.factory-answers.yml` at scaffold, files marked managed or seeded, `/factory-update` with
 a 3-way merge, and a weekly drift workflow that opens a pull request (the Copier and cruft pattern); or adopt Copier.
@@ -301,6 +301,9 @@ Shell calls go through `support.py` (isolated git config), so it runs in Git Bas
   (I31, which will change `file-kinds.txt` and the renderer's layer list); the docs registry template.
 
 ## Open questions for the user
+
+**Answered 2026-11-20:** the maintainer accepted the recommended option for every question below;
+build to those.
 
 1. **Copier or home-made?** The plan recommends home-made (no new dependency, templates unchanged, managed files and
    marker blocks possible). Choose Copier if you would rather depend on a maintained tool and accept rewriting every
