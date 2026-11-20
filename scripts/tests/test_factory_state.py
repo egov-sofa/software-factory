@@ -107,6 +107,19 @@ class Headers(unittest.TestCase):
         sec = "Verdict: ISSUES_FOUND\nBlocking: 1\n\n## Earlier findings\n- SEC-1.1: still open: the query is built from input\n"
         self.check("security-auditor", sec, ids=["SEC-1.1"], round_=2)
 
+    def test_section_headings_as_the_templates_print_them(self):
+        """The agents' report templates add words after the section name; a copied template must pass (review of #28)."""
+        earlier = "\n## Earlier findings (round 2 and later)\n- REV-1.1: still open: not fixed\n"
+        self.check("reviewer", "Verdict: CHANGES_REQUESTED\nBlocking: 1\n" + earlier, ids=["REV-1.1"], round_=2)
+        answers = "Result: DONE\nCommands: PASS\n\n## Answers (when fixing findings)\n- REV-1.1: fixed: guarded\n"
+        self.check("implementer", answers, ids=["REV-1.1"])
+        # the real templates, as written in the agent files
+        for agent, title in (("reviewer", "Earlier findings"), ("security-auditor", "Earlier findings"),
+                             ("implementer", "Answers")):
+            text = (SCRIPT.parents[1] / "claude" / "agents" / f"{agent}.md").read_text(encoding="utf-8")
+            with self.subTest(agent):
+                self.assertIsNotNone(fs.section(text, title), f"{agent}.md: no `## {title}` heading the parser finds")
+
     def test_planner_names_a_plan_that_exists(self):
         with tempfile.TemporaryDirectory() as root:
             (Path(root) / "docs" / "plans").mkdir(parents=True)

@@ -67,8 +67,9 @@ def header(agent, text):
 
 
 def section(text, title):
-    """The text of a `## <title>` section, up to the next `## ` heading; None without one."""
-    m = re.search(rf"^##\s+{re.escape(title)}\s*$(.*?)(?=^##\s|\Z)", text, re.M | re.S)
+    """The text of a `## <title>` section, up to the next `## ` heading; None without one. Words after the title are
+    allowed: the report templates print `## Earlier findings (round 2 and later)` and `## Answers (when fixing ...)`."""
+    m = re.search(rf"^##\s+{re.escape(title)}\b[^\n]*$(.*?)(?=^##\s|\Z)", text, re.M | re.S)
     return m.group(1) if m else None
 
 
