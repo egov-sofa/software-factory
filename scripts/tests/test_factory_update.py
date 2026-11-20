@@ -6,10 +6,12 @@ project from v1.0.0, change it, and update it. The script runs as a subprocess w
 support.py, so the developer's own git settings (autocrlf, hooks) cannot change the results.
 Run: python3 -m unittest discover -s scripts/tests
 """
+import io
 import os
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
 import time
 import unittest
@@ -477,6 +479,159 @@ class Adopt(Base):
         self.assertEqual("their own\n", self.text("CLAUDE.md"))
         self.assertEqual("theirs\n", self.text("README.md"))
         self.assertIn("compare them by hand): CLAUDE.md", done.stdout)
+
+
+class NoDowngrade(Base):
+    """A project made from an untagged factory commit after the newest release is past that release: an update must
+    not render the release and move the project back (review finding of #30)."""
+
+    def setUp(self):
+        super().setUp()
+        write(self.factory, {"scripts/check_content.py": "#!/usr/bin/env python3\nprint('guard main')\n"})
+        commit(self.factory, "work after v1.1.0")
+        self.scaffold(ref="HEAD")
+
+    def test_default_update_does_nothing(self):
+        self.assertEqual("v1.1.0", self.answers()["version"])   # git describe: the release before the commit
+        before = self.answers()
+        done = self.update()
+        self.assertIn("Already at or past v1.1.0", done.stdout)
+        self.assertEqual("", git(self.project, "status", "--porcelain"))
+        self.assertIn("print('guard main')", self.text("scripts/check_content.py"))
+        self.assertEqual(before, self.answers())
+
+    def test_explicit_older_target_is_refused(self):
+        done = self.update("--to", "v1.0.0", code=2)
+        self.assertIn("would move the project back", done.stderr)
+        self.assertEqual("", git(self.project, "status", "--porcelain"))
+
+    def test_check_does_not_call_it_behind_or_the_release(self):
+        done = self.run_script("check")
+        self.assertEqual(0, done.returncode, done.stdout + done.stderr)
+        self.assertIn("which is past v1.1.0", done.stdout)
+
+
+def can_symlink():
+    with tempfile.TemporaryDirectory() as tmp:
+        try:
+            os.symlink("missing", Path(tmp) / "link")
+            return True
+        except (OSError, NotImplementedError):
+            return False
+
+
+SYMLINKS = can_symlink()
+
+
+class Paths(unittest.TestCase):
+    """Nothing is written outside the project, into its .git folder, or through a link (review finding of #30)."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name) / "project"
+        (self.root / ".git").mkdir(parents=True)
+
+    def test_git_folder_in_any_case(self):
+        for rel in (".git/config", ".GIT/config", ".Git/hooks/pre-commit", "../escape.txt", "/etc/x", "a/../../b"):
+            with self.subTest(rel):
+                with self.assertRaises(fu.Usage):
+                    fu.inside(self.root, rel)
+        self.assertEqual(self.root / "scripts/x.py", fu.inside(self.root, "scripts/x.py"))
+
+    @unittest.skipUnless(SYMLINKS, "symlinks need extra rights on Windows")
+    def test_links_are_refused(self):
+        (self.root / "real").mkdir()
+        os.symlink(self.root / "real", self.root / "scripts", target_is_directory=True)
+        os.symlink(self.root / ".git" / "hooks-x", self.root / "dangling")
+        for rel in ("scripts/check_content.py", "dangling"):
+            with self.subTest(rel):
+                with self.assertRaises(fu.Usage) as ctx:
+                    fu.inside(self.root, rel)
+                self.assertIn("symbolic link", str(ctx.exception))
+        with self.assertRaises(fu.Usage):
+            fu.read(self.root, "dangling")   # not "missing": writing it would create the link's target
+
+    def test_write_out_checks_every_path_first(self):
+        out = self.root.parent / "out"
+        for files in ({"ok.txt": b"x", "../escape.txt": b"x"}, {"ok.txt": b"x", ".git/config": b"x"}):
+            with self.subTest(sorted(files)):
+                with self.assertRaises(fu.Usage):
+                    fu.write_out(files, out)
+                self.assertFalse((out / "ok.txt").exists())
+        self.assertFalse((self.root.parent / "escape.txt").exists())
+
+    def test_archive_members_stay_in_the_render_folder(self):
+        def archive(*names):
+            buffer = io.BytesIO()
+            with tarfile.open(fileobj=buffer, mode="w") as tar:
+                for name in names:
+                    info = tarfile.TarInfo(name)
+                    info.size = 1
+                    tar.addfile(info, io.BytesIO(b"x"))
+            return buffer.getvalue()
+        dest = self.root.parent / "render"
+        dest.mkdir()
+        fu.extract(archive("templates/a.txt"), dest)
+        self.assertEqual(b"x", (dest / "templates/a.txt").read_bytes())
+        for name in ("../evil.txt", "/abs.txt", "C:/evil.txt", "templates/../../evil.txt"):
+            with self.subTest(name):
+                with self.assertRaises(fu.Usage):
+                    fu.extract(archive(name), dest)
+        self.assertFalse((self.root.parent / "evil.txt").exists())
+
+
+@unittest.skipUnless(SYMLINKS and os.name != "nt", "a committed symlink needs a system with symlinks in git")
+class LinkInProject(Base):
+    CHANGES = {"scripts/hooks/pre-commit": "#!/usr/bin/env bash\necho pre v2\n"}
+
+    def test_update_refuses_a_managed_path_that_is_a_link(self):
+        self.scaffold()
+        hook = self.project / "scripts" / "hooks" / "pre-commit"
+        hook.unlink()
+        os.symlink("../../.git/hooks/pre-commit", hook)
+        commit(self.project, "hook as a link")
+        done = self.update(code=2)
+        self.assertIn("symbolic link", done.stderr)
+        self.assertFalse((self.project / ".git" / "hooks" / "pre-commit").exists())
+        self.assertEqual("", git(self.project, "status", "--porcelain"))
+        self.assertEqual("v1.0.0", self.answers()["version"])
+
+
+class AnswerValues(unittest.TestCase):
+    """The names become paths, so they follow new-project.sh's rules (review finding of #30)."""
+
+    def test_bad_names_are_refused(self):
+        for key, value in (("template", "../generic"), ("template", "_shared"), ("template", "Generic"),
+                           ("project_name", "My App"), ("project_name", "../x"), ("package_name", "1x"),
+                           ("package_name", "a/b")):
+            with self.subTest(key=key, value=value):
+                with self.assertRaises(fu.Usage) as ctx:
+                    fu.check_answers({**ANSWERS, key: value})
+                self.assertIn(key, str(ctx.exception))
+        fu.check_answers(ANSWERS)
+
+    def test_template_must_be_a_folder_of_templates(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "templates" / "generic").mkdir(parents=True)
+            (Path(tmp) / "other").mkdir()
+            for template in ("../other", "generic/..", "missing"):
+                with self.subTest(template):
+                    with self.assertRaises(fu.Usage):
+                        fu.sources(tmp, template)
+
+
+class NotUtf8(Base):
+    CHANGES = {"templates/generic/AGENTS.md": "# {{PROJECT_NAME}}\n\n" + block("Standards v2.")}
+
+    def test_utf16_seeded_file_is_refused_not_a_traceback(self):
+        self.scaffold()
+        self.change({"AGENTS.md": "# Mine\n".encode("utf-16")})
+        done = self.update(code=2)
+        self.assertIn("AGENTS.md is not UTF-8", done.stderr)
+        self.assertNotIn("Traceback", done.stderr)
+        self.assertEqual("v1.0.0", self.answers()["version"])
+        self.assertEqual("", git(self.project, "status", "--porcelain"))
 
 
 def fake_tools(bin_dir):

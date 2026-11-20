@@ -61,6 +61,9 @@ UNKNOWN = "unknown"
 STABLE_RE = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
 VERSION_GLOB = "v[0-9]*.[0-9]*.[0-9]*"   # release tags; the moving major tag (v1) does not match
 PLAIN_RE = re.compile(r"^[A-Za-z_./][A-Za-z0-9_./-]*$")
+TEMPLATE_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+PROJECT_RE = re.compile(r"^[a-z][a-z0-9-]*$")   # as new-project.sh checks the name
+PACKAGE_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 RESERVED = {"true", "false", "yes", "no", "on", "off", "null"}
 SCAFFOLD_SUBJECT = "chore: scaffold from software-factory"
 REMOTE_RE = re.compile(r"[:/]([^/:]+)/([^/]+?)(?:\.git)?/?$")
@@ -186,6 +189,15 @@ def check_answers(answers, name=ANSWERS):
         raise Usage(f"{name}: 'skip' must be a list of paths")
     if not isinstance(answers.get("onboarded", False), bool):
         raise Usage(f"{name}: 'onboarded' must be true or false")
+    # The names become paths (the template folder, src/<package>/): the rules new-project.sh enforces, so an edited
+    # answers file cannot reach outside the factory's templates or the project.
+    for key, pattern, rule in (("template", TEMPLATE_RE, "lowercase letters, digits and dashes"),
+                               ("project_name", PROJECT_RE, "lowercase letters, digits and dashes, starting with a "
+                                                            "letter"),
+                               ("package_name", PACKAGE_RE, "letters, digits and underscores, not starting with a "
+                                                            "digit")):
+        if not pattern.match(answers[key]):
+            raise Usage(f"{name}: '{key}' must be {rule} (got '{answers[key]}')")
     return answers
 
 
@@ -241,9 +253,18 @@ def with_block(text, block, name):
     return "\n".join(lines[:span[0]] + block + lines[span[1] + 1:])
 
 
+def utf8(data, rel):
+    """A file's text with LF endings; a file that is not UTF-8 is refused (its marker block cannot be edited safely)."""
+    try:
+        return lf(data).decode("utf-8")
+    except UnicodeDecodeError:
+        raise Usage(f"{rel} is not UTF-8 text (UTF-16?), so its standards block cannot be updated: save it as UTF-8, "
+                    "then run this again. Nothing was changed.") from None
+
+
 def block_of(data, name):
     """The marker block of a rendered file as a list of lines, or None."""
-    lines = lf(data).decode("utf-8", errors="replace").split("\n")
+    lines = utf8(data, name).split("\n")
     span = block_span(lines, name)
     return None if span is None else lines[span[0]:span[1] + 1]
 
@@ -280,7 +301,9 @@ def sources(tree, template):
     """Project path -> source file of a factory tree, before placeholders: the shared layer, the template on top,
     the content guard and its hooks, and (versions that have file-kinds.txt) the standards."""
     tree = Path(tree)
-    if template.startswith("_") or not (tree / "templates" / template).is_dir():
+    folder = (tree / "templates" / template).resolve()
+    if (not TEMPLATE_RE.match(template) or folder.parent != (tree / "templates").resolve()
+            or not folder.is_dir()):
         raise Usage(f"unknown template '{template}'")
     found = {}
     for layer in ("_shared", template):
@@ -342,16 +365,23 @@ def export(factory, commit, dest):
     parts = sorted(tops & {"templates", "scripts", "standards"})
     if "templates" not in parts:
         raise Usage(f"{commit[:12]} of {factory} has no templates/ folder: not a software-factory commit")
-    data = git(factory, "archive", "--format=tar", commit, "--", *parts, binary=True)
-    dest = Path(dest)
+    extract(git(factory, "archive", "--format=tar", commit, "--", *parts, binary=True), dest)
+
+
+def extract(data, dest):
+    """The regular files of a tar archive into dest. Folders are made as needed and links skipped (the factory has
+    none); a member whose path would land outside dest (.., an absolute path, a drive letter) is refused."""
     with tarfile.open(fileobj=io.BytesIO(data)) as tar:
         for member in tar.getmembers():
-            parts_ = Path(member.name).parts
-            if not member.isfile() or member.name.startswith("/") or ".." in parts_:
-                continue   # folders are made below; the factory has no links
-            target = dest.joinpath(*parts_)
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(tar.extractfile(member).read())
+            if not member.isfile():
+                continue
+            real = contained(dest, member.name)
+            # ':' and '\' are refused on every system: Windows reads them as a drive and a separator
+            if (real is None or ".." in Path(member.name).parts or Path(member.name).is_absolute()
+                    or ":" in member.name or "\\" in member.name):
+                raise Usage(f"refusing the factory archive: '{member.name}' would be written outside the render folder")
+            Path(real).parent.mkdir(parents=True, exist_ok=True)
+            Path(real).write_bytes(tar.extractfile(member).read())
 
 
 def render(factory, ref, answers):
@@ -374,6 +404,9 @@ def write_out(files, out):
     out = Path(out)
     if out.exists() and any(out.iterdir()):
         raise Usage(f"{out} is not empty")
+    out.mkdir(parents=True, exist_ok=True)
+    for rel in files:
+        inside(out, rel)   # every path checked before anything is written, as update does
     for rel, data in files.items():
         path = out / rel
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -409,6 +442,13 @@ def major_of(version):
     return found[0] if found else None
 
 
+def at_or_past(factory, older, newer):
+    """True when commit `older` is `newer` or one of its ancestors (the project at `newer` already has it)."""
+    if older == newer:
+        return True
+    return git(factory, "merge-base", "--is-ancestor", older, newer, check=False).returncode == 0
+
+
 def base_ref(factory, answers, warn):
     """The commit the project was rendered from: _commit, else the tag in version (with a warning)."""
     commit = answers.get("_commit", UNKNOWN)
@@ -426,20 +466,47 @@ def base_ref(factory, answers, warn):
 
 # ---- The project -----------------------------------------------------------------------------------------------
 
+def contained(root, rel):
+    """The real path of root/rel when it stays inside root, else None. Resolving it catches what the text of rel does
+    not: a Windows drive letter, a backslash, a link in a parent folder."""
+    real_root = os.path.realpath(root)
+    real = os.path.realpath(os.path.join(real_root, rel))
+    try:
+        if os.path.commonpath([real_root, real]) != real_root:
+            return None
+    except ValueError:   # another drive on Windows
+        return None
+    return real
+
+
 def inside(project, rel):
-    """The project path of rel, refusing anything that would land outside the project or in .git."""
+    """The project path of rel, refusing anything that would land outside the project, in its .git folder, or go
+    through a symbolic link (a link committed in the project could point the write anywhere, such as .git/hooks)."""
     parts = Path(rel).parts
-    if not rel or Path(rel).is_absolute() or ".." in parts or parts[0] == ".git":
+    if not rel or Path(rel).is_absolute() or ".." in parts:
         raise Usage(f"refusing to write '{rel}': not a path inside the project")
-    path = Path(project) / rel
-    root = os.path.realpath(project)
-    if os.path.commonpath([root, os.path.realpath(path)]) != root:
+    current = Path(project)
+    for part in parts:
+        current = current / part
+        if current.is_symlink():
+            raise Usage(f"refusing to write '{rel}': {current.relative_to(project).as_posix()} is a symbolic link. "
+                        "Replace it with a regular file or folder, or list the file under skip in "
+                        f"{ANSWERS}. Nothing was changed.")
+    real = contained(project, rel)
+    if real is None:
         raise Usage(f"refusing to write '{rel}': it leads outside the project")
-    return path
+    first = Path(os.path.relpath(real, os.path.realpath(project))).parts[0]
+    if first.rstrip(". ").lower() == ".git":   # Windows ignores case and trailing dots and spaces
+        raise Usage(f"refusing to write '{rel}': it is inside the project's .git folder")
+    return Path(project) / rel
 
 
 def read(project, rel):
+    """The project's file, or None when it is missing. A dangling link is not missing: it is refused (writing the
+    file would create the link's target, wherever it points)."""
     path = Path(project) / rel
+    if path.is_symlink() and not path.exists():
+        inside(project, rel)   # raises: a link
     return path.read_bytes() if path.is_file() else None
 
 
@@ -506,11 +573,13 @@ def plan_update(project, base, target, rules, labels):
         if rel == ANSWERS:
             continue
         kind = kind_of(rel, rules)
+        if kind != "seeded":
+            inside(project, rel)   # a link at a path the update may write or delete: refused before anything is written
         b, t, p = base.get(rel), target.get(rel), read(project, rel)
         if kind == "seeded":
             block = block_of(t, rel) if t is not None and p is not None else None
             if block:
-                new = with_block(lf(p).decode("utf-8"), block, rel).encode("utf-8")
+                new = with_block(utf8(p, rel), block, rel).encode("utf-8")
                 if new != lf(p):
                     writes[rel] = new
                     s.add("blocks", rel)
@@ -580,6 +649,7 @@ def update(project, factory, to=None, out=print):
     clean_tree(project)
     warnings = []
     base_commit = base_ref(factory, answers, warnings.append)
+    explicit = to is not None
     if to is None:
         major = major_of(answers.get("version"))
         if major is None:
@@ -596,6 +666,16 @@ def update(project, factory, to=None, out=print):
     if target_commit == base_commit:
         out(f"Already at {to}: nothing to update.")
         return 0
+    # A project made from an untagged factory commit records the release before it (git describe), so the newest
+    # release can be older than the project: rendering it would replace newer managed files with older ones and merge
+    # the newer changes out, silently. Never move a project back.
+    if at_or_past(factory, target_commit, base_commit):
+        if not explicit:
+            out(f"Already at or past {to} (the project was made from factory commit {base_commit[:12]}): nothing "
+                "to update.")
+            return 0
+        raise Usage(f"--to {to} would move the project back from {base_commit[:12]} ({old}) to {to}, an older "
+                    "factory commit. Nothing was changed.")
     rules = rules_at(factory, target_commit)
     if rules is None:
         raise Usage(f"{to} has no {KINDS_FILE}: it is older than updates and cannot be updated to")
@@ -635,13 +715,23 @@ def check(project, factory, out=print):
         return 1
     major = major_of(recorded)
     latest = newest(factory, major) if major is not None else None
-    if latest and stable_tags(factory)[latest] > version_tuple(recorded):
-        out(f"Managed files match software-factory {recorded}; {latest} is available: run /factory-update.")
-        return 3
     if major is None:
         out(f"Managed files match the recorded factory commit; its release is {recorded}, so no newer one is looked for.")
+        return 0
+    if latest is None:
+        out(f"Managed files match software-factory {recorded}; the factory has no v{major} release tag to compare with.")
+        return 0
+    latest_commit = commit_of(factory, latest)
+    # Behind only when the project's commit does not contain the newest release (the version line alone would call a
+    # project made from a commit after the release "behind" or "at" it)
+    if not at_or_past(factory, latest_commit, commit):
+        out(f"Managed files match software-factory {recorded}; {latest} is available: run /factory-update.")
+        return 3
+    if latest_commit == commit:
+        out(f"Managed files match software-factory {latest}, the newest v{major} release here.")
     else:
-        out(f"Managed files match software-factory {recorded}, the newest v{major} release here.")
+        out(f"Managed files match the recorded factory commit {commit[:12]}, which is past {latest}, the newest "
+            f"v{major} release here.")
     return 0
 
 
@@ -742,7 +832,7 @@ def onboard(project, factory, answers, out):
         elif kind == "seeded":
             block = block_of(data, rel)
             if block:
-                new = with_block(lf(mine).decode("utf-8"), block, rel).encode("utf-8")
+                new = with_block(utf8(mine, rel), block, rel).encode("utf-8")
                 if new != lf(mine):
                     writes[rel] = new
         elif lf(mine) != data:
