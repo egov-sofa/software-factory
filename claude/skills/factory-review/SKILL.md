@@ -41,7 +41,7 @@ Extra context from the user: $ARGUMENTS
    `### Round <n> (reviewed <short HEAD>) by /factory-review`, with `<n>` one more than the highest `### Round <number>` there (the same rule `/factory-build` uses, so IDs never
    repeat), in the
    same table format `/factory-build` uses (IDs `REV-<n>.<k>`, `SEC-<n>.<k>`, and the `Result:` line with
-   `blocking <count>`). Leave `Stage` and `Round` as they are, and commit the plan alone:
-   `docs: review round <n> by /factory-review`. This lets `/factory-ship` tick "Reviewed" honestly. A legacy plan, or
+   `blocking <count>`). Leave `Stage` and `Round` as they are, and commit only the plan, even if other changes are staged:
+   `git commit -m "docs: review round <n> by /factory-review" -- <plan>`. This lets `/factory-ship` tick "Reviewed" honestly. A legacy plan, or
    no plan: change nothing.
 7. End with a clear verdict (**ready to ship** or **needs fixes**) and offer to fix the blocking items with the `implementer` agent.

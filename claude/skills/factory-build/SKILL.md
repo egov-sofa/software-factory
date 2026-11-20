@@ -96,7 +96,7 @@ Committing between stages gives a checkpoint to return to if a later stage goes 
 
 ## Stage 4: Test 🧪
 Launch the `tester` agent with the plan path and the base branch. Set `Stage: review` and commit: with the tests it
-added (`test: …`), or the plan alone (`chore: factory pipeline at review`).
+added (`test: …`), or only the plan (`git commit -m "chore: factory pipeline at review" -- <plan>`).
 If the result is `FAIL`, its failures are blocking findings `TEST-<round+1>.<n>` for the next round: record them when
 you log that round in Stage 5 (still run the review, so one round covers both).
 
@@ -133,8 +133,10 @@ Not blocking: REV-<n>.2 (MINOR) naming in src/page.ts
 ```
 IDs are `REV-<round>.<number of the finding in the report>`, `SEC-…` and `TEST-…`. From round 2, also write each
 earlier finding's outcome from the reviewers' `## Earlier findings` into its Answer cell (`resolved in round <n>`,
-`kept`). Blocking = reviewer BLOCKER/MAJOR + security CRITICAL/HIGH + test failures. Set `Stage: fix` (blocking > 0)
-or `Stage: docs`, and commit the plan: `docs: review round <n>`.
+`kept`). Blocking = the reviewer's and the security auditor's parsed `blocking` values (their new blocking findings
+plus earlier ones they report still open; write still-open ones in the round's table too) + test failures. Set
+`Stage: fix` (blocking > 0) or `Stage: docs`, and commit only the plan, even if other changes are staged:
+`git commit -m "docs: review round <n>" -- <plan>`.
 
 ## Stage 6: Fix loop 🔁 (max 2 rounds)
 If there are blocking findings:
