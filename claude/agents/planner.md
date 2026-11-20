@@ -55,6 +55,17 @@ Use Bash only for read-only commands (`git log`, `git status`, `ls`). Never inst
 - <what could go wrong; what we deliberately won't do>
 ```
 
+When revising a plan that already has `**Stage:**`, `**Round:**`, `**Base:**` and `**Branch:**` lines under
+`**Status:**`, or a `## Review rounds` section, keep them exactly as they are: they are the pipeline's state, kept by
+the conductor.
+
 ## Output
-Return to the caller: the plan file path, plus a 5-line summary (goal, number of acceptance criteria, files touched, main risk).
+Start the report with the header lines below, exactly as shown and before anything else: plain text, no `#` or
+`**`. The conductor reads them with `factory_state.py`; a report without them is sent back once.
+```
+Plan: docs/plans/<file>.md
+Criteria: <number of acceptance criteria>
+
+<5-line summary: goal, number of acceptance criteria, files touched, main risk>
+```
 Keep plans proportional: a small feature gets a short plan.
