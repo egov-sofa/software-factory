@@ -38,7 +38,8 @@ Extra context from the user: $ARGUMENTS
 |---|---|---|---|---|---|
 
 6. **Plan with pipeline state** (`$FS state` prints `stage=…`): append this review to its `## Review rounds` as
-   `### Round <n> (reviewed <short HEAD>) by /factory-review`, with `<n>` one more than the last round there, in the
+   `### Round <n> (reviewed <short HEAD>) by /factory-review`, with `<n>` one more than the highest `### Round <number>` there (the same rule `/factory-build` uses, so IDs never
+   repeat), in the
    same table format `/factory-build` uses (IDs `REV-<n>.<k>`, `SEC-<n>.<k>`, and the `Result:` line with
    `blocking <count>`). Leave `Stage` and `Round` as they are, and commit the plan alone:
    `docs: review round <n> by /factory-review`. This lets `/factory-ship` tick "Reviewed" honestly. A legacy plan, or

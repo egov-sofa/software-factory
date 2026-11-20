@@ -112,7 +112,9 @@ echo "<base>" > "$R/base.txt"
 Write `$R/checks.txt` with the latest test and lint results (the tester's report, or run the commands from
 `AGENTS.md`), followed by the dependency audit when the project has one (`npm audit --omit=dev`, or `pip-audit` /
 `uvx pip-audit`).
-**Round 2 and later** (`Round` ≥ 1): also write `$R/round.diff` with
+**The round number** `<n>` is one more than the highest `### Round <number>` already in the plan (1 if there is
+none), the same rule `/factory-review` uses, so IDs never repeat; the fix-round cap reads `Round`, not `<n>`.
+**Round 2 and later** (the plan already has a round): also write `$R/round.diff` with
 `{ git diff "$($FS last-reviewed <plan>)"..HEAD; git diff HEAD; }`, and tell the reviewers the round number.
 
 Launch the `reviewer` and `security-auditor` agents **in parallel, in one message**, with the plan path, the review
@@ -120,7 +122,7 @@ folder's full path, the base branch and the round number. Check both reports; fr
 blocking IDs that are not settled yet (`--ids REV-… --round <n>`, `--ids SEC-… --round <n>`).
 
 Then append the round to `## Review rounds` at the end of the plan (create the section on the first round), with
-`<n>` = `Round` + 1 and the commit the folder was built from:
+the round number `<n>` and the commit the folder was built from:
 ```
 ### Round <n> (reviewed <short HEAD>)
 | ID | Severity | Location | Finding | Answer |
