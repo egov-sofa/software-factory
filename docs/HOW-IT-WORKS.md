@@ -89,6 +89,13 @@ Then it replaces placeholders:
 | `{{FACTORY_REPO}}` | where the shared CI lives, read from the factory's git remote (`egov-sofa/software-factory`) |
 | `{{YEAR}}` | current year |
 
+Last, it ships the factory's standards into `.factory/standards/`, marks the files the factory owns (the content
+guard, its hooks, the standards) with a "Managed by software-factory" header, and writes `.factory/answers.yml`: the
+factory commit and release it rendered from, and the answers above. With them, `/factory-update` can later render the
+same project from the old and the new factory release and bring the project forward: it replaces the managed files,
+merges the workflows and config files with the project's own edits, and leaves the project's own files alone (see
+"Updating the files copied into a project" in [SHARED-SERVICES.md](SHARED-SERVICES.md)).
+
 ---
 
 ## Part 3: CI/CD
@@ -134,6 +141,10 @@ The files in [`standards/`](../standards/) are written for **both humans and AI*
 
 - The global `~/.claude/CLAUDE.md` summarizes them, so Claude follows them in every session
 - The agents are told to read them, for example the reviewer checks against `DEFINITION-OF-DONE.md`
+- Each project carries a copy in `.factory/standards/`, so they travel with it: its `AGENTS.md` lists them in a block
+  between `software-factory:standards` markers, the agents read the project's copy first, and the Claude review in CI
+  reads the copy on the pull request's base branch (a pull request cannot weaken the rules it is reviewed against).
+  `/factory-update` keeps the copy and the block current
 - Each project's `AGENTS.md` adds project-specific details (commands, folder layout). Claude Code reads it through
   the project's `CLAUDE.md` (`@AGENTS.md`); GitHub Copilot, Codex and Cursor read it directly
 

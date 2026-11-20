@@ -30,6 +30,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0   # the release tags: test_factory_update.py renders the real v1.2.0
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
@@ -157,6 +159,14 @@ jobs:
           test "$(git config core.hooksPath)" = scripts/hooks
           test -x scripts/hooks/pre-commit && test -x scripts/hooks/commit-msg
           "$PY" scripts/check_content.py --all
+
+      # The project ships the standards, and its managed files are exactly what factory_update.py renders for the
+      # recorded version: the bash scaffold and the Python renderer agree on this system too. Exit 3 only says a
+      # newer release exists.
+      - name: Standards shipped and managed files match the recorded version
+        run: |
+          test -f "$APP/.factory/answers.yml" && test -f "$APP/.factory/standards/SECURITY.md"
+          "$PY" scripts/factory_update.py check --project "$APP" || [ $? -eq 3 ]
 
       - name: Lockfile is in the first commit
         run: |

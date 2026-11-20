@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Managed by software-factory: /factory-update replaces this file. Change it in the factory, not here.
 """Look for content that must not be in this repository: secrets (private keys, cloud and API tokens), public IP
 addresses, internal host names, and terms from a denylist that is never committed (customer and employer names,
 internal system names).

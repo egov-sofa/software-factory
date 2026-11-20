@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Managed by software-factory: /factory-update replaces this file. Change it in the factory, not here.
 # Refuse a commit whose message holds a secret, a public IP address, an internal host name or a denylisted term:
 # once pushed, a message stays on GitHub under the pull request even after a force push.
 # Install once per clone: git config core.hooksPath scripts/hooks   (new-project.sh does it for you)

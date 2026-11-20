@@ -159,6 +159,22 @@ class Fixtures(unittest.TestCase):
             self.assertEqual(["missing uv.lock (run: python scripts/stacks.py fixtures)"],
                              stacks.compare(fixture, fixture, "uv.lock"))
 
+    def test_answers_file_commit_and_version_are_not_compared(self):
+        """They name the factory commit and the year that made the fixture: every commit, and every new year, would
+        make the fixtures stale."""
+        with tempfile.TemporaryDirectory() as tmp:
+            fresh, fixture = Path(tmp) / "fresh", Path(tmp) / "fixture"
+            for folder, commit, version, year in ((fresh, "abc", "v1.3.0", "2027"),
+                                                  (fixture, "unknown", "unknown", "2026")):
+                (folder / ".factory").mkdir(parents=True)
+                (folder / ".factory" / "answers.yml").write_text(
+                    f"_commit: {commit}\nversion: {version}\ngithub_owner: example\nyear: \"{year}\"\n",
+                    encoding="utf-8")
+            self.assertEqual([], stacks.compare(fresh, fixture, None))
+            (fixture / ".factory" / "answers.yml").write_text(
+                "_commit: abc\nversion: v1.3.0\ngithub_owner: other\nyear: \"2027\"\n", encoding="utf-8")
+            self.assertEqual(["differs .factory/answers.yml"], stacks.compare(fresh, fixture, None))
+
 
 if __name__ == "__main__":
     unittest.main()

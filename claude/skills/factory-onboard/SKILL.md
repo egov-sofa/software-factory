@@ -30,10 +30,26 @@ If the project would need project-specific changes to a shared workflow to fit, 
 - **From `{{FACTORY_HOME}}/templates/_shared/`:** `.editorconfig`, `.github/pull_request_template.md`, `.github/dependabot.yml` (keep only the ecosystems this project uses).
 - **Shared services the user chose**, from `{{FACTORY_HOME}}/templates/_shared/`, replacing the factory-repo placeholder as for CI (and `{{PROJECT_NAME}}` in the checklist):
   - Claude review: `.github/workflows/claude-review.yml`, `.github/workflows/claude-mention.yml`, and `.claude/skills/pr-review/SKILL.md`. Fill its "Project rules" section with rules you observed in this codebase. Then set up its access to the Claude API, if the repository is on GitHub: follow "Set up a repository from Claude Code" in `{{FACTORY_HOME}}/docs/CLAUDE-SERVICES-AUTH.md`. In short: make sure the Claude GitHub app is installed on the repository (ask; nothing can check it for you), run the preview yourself and show it, then give the user the one `--apply --set-variables` command to run with `!`; it needs their `org:admin` login, so never run it yourself. Never set `CLAUDE_REVIEW_ENABLED` by hand: the script sets it last, once the rules and the other variables exist.
-  - Content guard: `.github/workflows/content-guard.yml`; copy `{{FACTORY_HOME}}/scripts/check_content.py` to `scripts/` and `{{FACTORY_HOME}}/scripts/hooks/*` to `scripts/hooks/`, add `.content-denylist` to `.gitignore`, then run `python3 scripts/check_content.py --all`. The copy belongs to the factory, so exclude it from the project's own linters and formatters (for Ruff: `extend-exclude = ["scripts/check_content.py"]` under `[tool.ruff]`). Fix or mark (`content-ok`) what it finds **before** enabling the hooks with `git config core.hooksPath scripts/hooks`; if another hook manager owns the hooks, don't change `core.hooksPath`; show the user how to call the guard from their existing hook instead.
+  - Content guard: `.github/workflows/content-guard.yml` and `.content-denylist` in `.gitignore`. The guard itself (`scripts/check_content.py`) and its hooks (`scripts/hooks/*`) are written in step 5, by the factory's own script, with the header that marks them as the factory's. They belong to the factory, so exclude the guard from the project's own linters and formatters (for Ruff: `extend-exclude = ["scripts/check_content.py"]` under `[tool.ruff]`).
   - All callers use `@v1`, never `@main`.
 - **docs/plans/.gitkeep**, so the factory pipeline has somewhere to put plans.
 - Make sure `.gitignore` covers `.env`, plus dependency and build folders for the stack.
 
 ## 4. Verify and commit
-Run lint and test commands to confirm nothing broke. Commit with `chore: adopt software-factory standards`. Suggest `/factory-ship` to open a PR.
+Run lint and test commands to confirm nothing broke. Commit with `chore: adopt software-factory standards`.
+
+## 5. Record the factory version
+Every onboarded project gets `.factory/answers.yml`, so `/factory-update` can bring it later factory releases. `$FU`
+is `python3 "{{FACTORY_HOME}}/scripts/factory_update.py"` (or `python`), run from the project's root.
+- `git -C "{{FACTORY_HOME}}" fetch --tags --quiet origin`, then `$FU adopt --onboarded`: it prints the answers it
+  inferred (the newest factory release is the base, since no template made this project). Show them and let the user
+  confirm or correct each one (`--set key=value`). If the user did not want the content guard, add
+  `--set skip=scripts/check_content.py,scripts/hooks/commit-msg,scripts/hooks/pre-commit`.
+- Run it again with `--yes`. It writes the content guard, its hooks and `.factory/standards/` (showing the diff of
+  any guard file the project already had), adds the standards block to `AGENTS.md` and the review checklist, lists the
+  template files the project does not have under `skip:` (updates leave them out), and lists the factory files that
+  differ from the project's for a look by hand (it changes none of them).
+- Content guard chosen: run `python3 scripts/check_content.py --all`, fix or mark (`content-ok`) what it finds
+  **before** enabling the hooks with `git config core.hooksPath scripts/hooks`. If another hook manager owns the
+  hooks, don't change `core.hooksPath`; show the user how to call the guard from their existing hook instead.
+- Commit with `chore: record the software-factory version`. Suggest `/factory-ship` to open a PR.

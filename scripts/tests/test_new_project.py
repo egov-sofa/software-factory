@@ -20,15 +20,17 @@ PLACEHOLDER_RE = re.compile(r"(?<!\$)\{\{\s*[A-Z_]+\s*\}\}")
 GITHUB_EXPR_RE = re.compile(r"\$\{\{.*?\}\}")
 sys.path.insert(0, str(FACTORY / "scripts"))
 import stacks  # noqa: E402  (after the sys.path line above)
+import factory_update  # noqa: E402
 
 TEMPLATES = tuple(stacks.load())   # every stack of templates/stacks.toml
 NAME = "selftest-app"
 
 
 def fake_factory(tmp, remote):
-    """A copy of the factory's scripts and templates at <tmp>/ws/test-org/software-factory; remote None = no remote."""
+    """A copy of the factory's scripts, templates and standards at <tmp>/ws/test-org/software-factory, a git
+    repository without commits; remote None = no remote."""
     home = Path(tmp) / "ws" / "test-org" / "software-factory"
-    for part in ("scripts", "templates"):
+    for part in ("scripts", "templates", "standards"):
         shutil.copytree(FACTORY / part, home / part, ignore=shutil.ignore_patterns("__pycache__"))
     support.git(home, "init", "-q")
     if remote:
@@ -262,6 +264,91 @@ class FactoryRepo(Base):
         result, ci = self.factory_repo(None)
         self.assertIn("YOUR_ORG/software-factory/.github/workflows/", ci)
         self.assertIn("has no git remote", result.stdout)
+
+
+class AnswersAndStandards(Base):
+    """The project records what /factory-update needs, ships the standards and marks the factory's files."""
+
+    KEYS = ["_src_path", "_commit", "version", "template", "project_name", "package_name", "github_owner", "year",
+            "onboarded", "skip"]
+
+    def answers(self, project):
+        return factory_update.parse_answers((project / ".factory" / "answers.yml").read_text(encoding="utf-8"))
+
+    def test_answers_standards_and_headers(self):
+        result = self.created(NAME, "python", "--owner", "acme", "--dir", posix(self.out), "--no-git")
+        project = self.out / NAME
+        answers = self.answers(project)
+        self.assertEqual(self.KEYS, list(answers))
+        self.assertEqual({"_src_path": "test-org/test-factory", "template": "python", "project_name": NAME,
+                          "package_name": "selftest_app", "github_owner": "acme", "onboarded": False, "skip": []},
+                         {k: v for k, v in answers.items() if k not in ("_commit", "version", "year")})
+        self.assertRegex(answers["year"], r"^\d{4}$")
+        # the copy of the factory has no commit: recorded as unknown, with a warning, and the project is still made
+        self.assertEqual(("unknown", "unknown"), (answers["_commit"], answers["version"]))
+        self.assertIn("no commit or no release tag", result.stdout)
+        shipped = sorted(p.name for p in (project / ".factory" / "standards").iterdir())
+        self.assertEqual(sorted(p.name for p in (FACTORY / "standards").glob("*.md")), shipped)
+        header = factory_update.MANAGED_HEADER
+        self.assertEqual(f"<!-- {header} -->",
+                         (project / ".factory" / "standards" / "SECURITY.md").read_text(encoding="utf-8").splitlines()[0])
+        for rel in ("scripts/check_content.py", "scripts/hooks/pre-commit", "scripts/hooks/commit-msg"):
+            with self.subTest(rel):
+                lines = (project / rel).read_text(encoding="utf-8").splitlines()
+                self.assertTrue(lines[0].startswith("#!"))
+                self.assertEqual(f"# {header}", lines[1])
+        for rel in ("AGENTS.md", "CLAUDE.md", "pyproject.toml"):   # seeded and merged files carry no header
+            self.assertNotIn(header, (project / rel).read_text(encoding="utf-8"))
+        agents = (project / "AGENTS.md").read_text(encoding="utf-8").splitlines()
+        self.assertEqual(1, agents.count(factory_update.MARK_START))
+
+    def test_empty_owner_is_quoted(self):
+        self.created(NAME, "generic", "--dir", posix(self.out), "--no-git")
+        text = (self.out / NAME / ".factory" / "answers.yml").read_text(encoding="utf-8")
+        self.assertIn('github_owner: ""\n', text)
+        self.assertEqual("", self.answers(self.out / NAME)["github_owner"])
+
+    def test_answers_and_standards_are_in_the_first_commit(self):
+        self.created(NAME, "generic", "--dir", posix(self.out))
+        tracked = support.git(self.out / NAME, "ls-files").splitlines()
+        self.assertIn(".factory/answers.yml", tracked)
+        self.assertIn(".factory/standards/SECURITY.md", tracked)
+
+
+@needs_bash
+class FactoryVersion(unittest.TestCase):
+    """_commit and version come from the factory clone's history: the release tag, never the moving major tag."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.home = fake_factory(tmp.name, "https://github.com/test-org/test-factory.git")
+        self.out = Path(tmp.name) / "out"
+        support.git(self.home, "add", "-A")
+        support.git(self.home, "commit", "-q", "-m", "release")
+        support.git(self.home, "tag", "v1.4.0")
+        (self.home / "README.md").write_text("later\n", encoding="utf-8")
+        support.git(self.home, "add", "-A")
+        support.git(self.home, "commit", "-q", "-m", "after the release")
+        support.git(self.home, "tag", "v1")   # the moving major tag, on the untagged commit
+
+    def scaffold(self):
+        result = run(self.home / "scripts" / "new-project.sh", NAME, "generic", "--dir", posix(self.out), "--no-git")
+        self.assertEqual(0, result.returncode, result.stderr + result.stdout)
+        text = (self.out / NAME / ".factory" / "answers.yml").read_text(encoding="utf-8")
+        return result, factory_update.parse_answers(text)
+
+    def test_untagged_commit_records_the_last_release(self):
+        result, answers = self.scaffold()
+        self.assertEqual(support.git(self.home, "rev-parse", "HEAD").strip(), answers["_commit"])
+        self.assertEqual("v1.4.0", answers["version"])
+        self.assertNotIn("uncommitted changes", result.stdout)
+
+    def test_dirty_factory_warns(self):
+        with open(self.home / "templates" / "generic" / "README.md", "a", encoding="utf-8") as f:
+            f.write("local edit\n")
+        result, _ = self.scaffold()
+        self.assertIn("uncommitted changes", result.stdout)
 
 
 class Placeholders(Base):

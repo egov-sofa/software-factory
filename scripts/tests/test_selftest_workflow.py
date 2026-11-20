@@ -37,6 +37,12 @@ class SelftestWorkflow(unittest.TestCase):
             with self.subTest(local):
                 self.assertIn(f"uses: {local}", self.text)
 
+    def test_scaffolds_are_checked_against_the_renderer(self):
+        """After scaffolding, factory_update.py check passes: new-project.sh and the update renderer agree."""
+        self.assertIn('"$PY" scripts/factory_update.py check --project "$APP" || [ $? -eq 3 ]', self.text)
+        self.assertIn('test -f "$APP/.factory/standards/SECURITY.md"', self.text)
+        self.assertLess(self.text.index("bash scripts/new-project.sh"), self.text.index("factory_update.py check"))
+
     def test_other_systems_outside_pull_requests(self):
         """Linux on every pull request; macOS and Windows on main, weekly and on demand (inside the release gate)."""
         self.assertIn('\'["ubuntu-latest", "macos-latest", "windows-latest"]\'', self.text)

@@ -38,6 +38,7 @@ cd /c/DEV/PROJECTS/gitHub/egov-rdc/egov-sofa/my-app && claude
 | `/factory-review` | Runs only the reviewer and security auditor on your current changes |
 | `/factory-ship` | Commits, pushes, and opens a pull request with a good description |
 | `/factory-onboard` | Adds factory standards (AGENTS.md and CLAUDE.md, CI, PR template) to an **existing** project |
+| `/factory-update` | Brings a factory project up to a newer factory release: replaces the content guard and the standards, merges the workflows with your edits, on a branch |
 
 ## Templates
 

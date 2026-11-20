@@ -4,6 +4,7 @@ Claude review that keep secrets away from fork code.
 Run: python3 -m unittest discover -s scripts/tests
 """
 import re
+import sys
 import unittest
 from pathlib import Path
 
@@ -44,6 +45,32 @@ class ClaudeReview(unittest.TestCase):
         steps = re.split(r"\n\s*- (?=uses:|name:|if:|run:)", self.text)
         (checkout,) = [s for s in steps if "actions/checkout@" in s]
         self.assertIn("persist-credentials: false", checkout)
+
+    def test_standards_come_from_the_base_commit_never_the_head(self):
+        """A pull request must not weaken the standards it is reviewed against."""
+        steps = re.split(r"\n      - (?=uses:|name:)", self.text)
+        (step,) = [s for s in steps if s.startswith("name: Project standards from the base commit")]
+        self.assertIn("BASE_SHA: ${{ github.event.pull_request.base.sha }}", step)
+        for head in ("pull_request.head", "github.sha", "HEAD", "github.ref"):
+            self.assertNotIn(head, step)
+        self.assertIn('git fetch --quiet --no-tags --depth=1 origin "$BASE_SHA"', step)
+        self.assertIn('git show "$BASE_SHA:$path" > "$dest/', step)
+        self.assertIn('dest="$RUNNER_TEMP/factory-standards"', step)
+        for forbidden in ("git checkout", "git switch", "git worktree", "git reset", "actions/checkout"):
+            self.assertNotIn(forbidden, step)
+        # the only checkout is the pull request's own, as before, and the standards step comes after it
+        self.assertEqual(1, self.text.count("actions/checkout@"))
+        self.assertLess(self.text.index("actions/checkout@"), self.text.index("Project standards from the base"))
+        self.assertIn("${{ runner.temp }}/factory-standards/ holds files", self.text)
+        self.assertIn("--add-dir ${{ runner.temp }}/factory-standards", self.text)
+
+    def test_inputs_unchanged(self):
+        """@v1 callers: the standards step added no input and removed none."""
+        sys.path.insert(0, str(GITHUB.parent / "scripts"))
+        import stacks   # noqa: E402  (the reusable workflow input reader)
+        self.assertEqual({"checklist", "max-turns", "timeout-minutes", "max-budget-usd", "federation-rule-id",
+                          "organization-id", "service-account-id", "workspace-id", "debug"},
+                         stacks.workflow_inputs(GITHUB / "workflows" / "reusable-claude-review.yml"))
 
 
 class ClaudeComments(unittest.TestCase):
