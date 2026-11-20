@@ -51,6 +51,20 @@ matter most are also enforced:
 - Still only asked: what an agent does with Bash beyond git (a script could write a file), and everything in the
   main conversation. The `protect-main` ruleset on GitHub remains the boundary for `main`.
 
+**Pipeline state, so a run can resume.** Once you approve the plan, `/factory-build` writes four lines under its
+`**Status:**` (`Stage`, the next stage to run; `Round`, fix rounds done; `Base`; `Branch`) and updates them in the
+commit that closes each stage. Each review is logged at the end of the plan under `## Review rounds`, one table per
+round with an ID per finding (`REV-1.1`, `SEC-1.1`, `TEST-1.1`) and the implementer's answer (`fixed: …` or
+`disagree: …`). So:
+
+- `/factory-build --resume` continues an interrupted run from the plan, even in a new session.
+- Re-reviews read the earlier findings and judge the answers. From round 2 they raise new findings on unchanged code
+  only when they are BLOCKER or CRITICAL, so the target stops moving; a finding still disputed goes to you to decide.
+- Every agent's report starts with fixed lines (`Verdict:`, `Blocking:`, `Result:` …) that
+  [factory_state.py](../scripts/factory_state.py) checks. The conductor gates on those values, not on its reading of
+  the prose, and sends a malformed report back once.
+- The base branch is detected once and given to every agent, so a repository whose base is `master` works too.
+
 The **skills** (`/factory-build`, etc.) are the *conductors*: instructions that tell the main Claude session which agents to call, in what order, and what to do with their results.
 
 ---

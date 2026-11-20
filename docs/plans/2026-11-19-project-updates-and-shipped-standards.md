@@ -1,6 +1,8 @@
 # Plan: An update path for projects, with the standards shipped into them (roadmap I30 and the rest of I28)
 
 **Status:** Approved (2026-11-20: every recommended answer in "Open questions" accepted)
+**Amended 2026-11-20 (review of #26):** `new-project.sh` stays Python-free (two renderers, one parity test, see
+Design); the I31 fixture check ignores the `_commit` and `version` lines of `.factory/answers.yml`.
 **Request:** "Write an implementation plan for roadmap items I30 and the remaining part of I28." Roadmap I30: "Update
 path for existing projects. `.factory-answers.yml` at scaffold, files marked managed or seeded, `/factory-update` with
 a 3-way merge, and a weekly drift workflow that opens a pull request (the Copier and cruft pattern); or adopt Copier.
@@ -211,10 +213,15 @@ project. A base that is too **old** only produces extra conflicts; a base that i
 project's old lines silently (Copier's known pitfall). So every guess (`adopt`, a missing `_commit`) rounds down to
 an older tag, never up.
 
-**One renderer, two callers.** `new-project.sh` keeps its argument handling, checks, lockfile, git and GitHub steps,
-and calls `factory_update.py render` for the copy-and-fill part, so a scaffold and an update's "target" are the same
-code and cannot drift. Python is already needed for the content guard hooks. The existing `test_new_project.py`
-tests guard the move. Old factory versions are rendered from `git archive <ref>` of the factory into a temporary
+**Two renderers, one parity test** (amendment 2026-11-20, review of #26). `new-project.sh` stays free of Python, as
+the approved and built I31 plan decided (scaffolding must not need Python): it keeps rendering in bash and writes
+`.factory/answers.yml` itself. `factory_update.py render` is the Python renderer that updates use for the old and
+new versions. A **parity test** renders every template both ways at `HEAD` (and at `v1.2.0`) and requires identical
+output, except `.git`, the lockfile and the answers file's `_commit` and `version` lines, so the two cannot drift.
+The original text, kept for the record: `new-project.sh` keeps its argument handling, checks, lockfile, git and
+GitHub steps, and calls `factory_update.py render` for the copy-and-fill part, so a scaffold and an update's
+"target" are the same code and cannot drift. Python is already needed for the content guard hooks. The existing
+`test_new_project.py` tests guard the move. Old factory versions are rendered from `git archive <ref>` of the factory into a temporary
 folder; their layout is the same since `v1.0.0`, and the presence of `templates/file-kinds.txt` tells the renderer
 whether that version shipped the standards.
 
@@ -242,7 +249,7 @@ no token.
 |---|---|
 | `templates/file-kinds.txt` | New: the managed, merged and seeded rules |
 | `scripts/factory_update.py` | New: `render`, `update`, `check`, `adopt` |
-| `scripts/new-project.sh` | Calls `factory_update.py render`; writes `.factory/answers.yml`; executable bits as today |
+| `scripts/new-project.sh` | Writes `.factory/answers.yml` and the managed headers in bash (no Python, I31); executable bits as today |
 | `templates/{typescript,python,generic}/AGENTS.md` | The standards marker block |
 | `templates/_shared/.claude/skills/pr-review/SKILL.md` | The standards marker block |
 | `templates/_shared/.github/workflows/factory-update.yml` | New: weekly caller (second pull request) |

@@ -26,6 +26,9 @@ import re
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from factory_state import HEADERS  # noqa: E402  (stdlib only, next to this script)
+
 ROOT = Path(__file__).resolve().parent.parent
 
 # The aliases the review checklist allows; a full model ID would break at the next model release.
@@ -49,6 +52,10 @@ SHELL_TOOLS = {"Bash", "PowerShell"}   # a shell can write files too, so the rea
 # frontmatter): docs/plans/2026-11-19-enforce-agent-limits-with-hooks.md
 GUARDED_AGENTS = {"planner", "tester", "docs-writer", "implementer"}
 GUARD_MATCHER = 'matcher: "Edit|Write|NotebookEdit|Bash"'
+# Each agent's report starts with header lines the conductor parses; the table lives in factory_state.py.
+REPORT_HEADERS = HEADERS
+REPORT_HEADINGS = ("## Report format", "## Report", "## Output")
+HARD_CODED_BASE_RE = re.compile(r"(?<![\w/-])(?:origin/)?(?:main|master)\.\.\.?HEAD\b|--base (?:main|master)\b")
 
 KEY_RE = re.compile(r"([A-Za-z][\w-]*):(?:\s+(.*))?$")
 ITEM_RE = re.compile(r"\s*-\s+(.*)$")
@@ -195,7 +202,34 @@ def check(text, kind, expected_name):
         if not isinstance(hooks, str) or "PreToolUse:" not in hooks or GUARD_MATCHER not in hooks or guard not in hooks:
             problems.append((num, f"agent '{expected_name}' must declare the factory guard: a PreToolUse hook with "
                                   f"{GUARD_MATCHER} running agent_guard.py with '{expected_name}'"))
+    if kind == "agent" and expected_name in REPORT_HEADERS:
+        problems += report_problems(text, expected_name)
+    problems += base_problems(text)
     return sorted(problems)
+
+
+def report_problems(text, agent):
+    """The agent's report format (the first fenced block after its report heading) must start with the header lines
+    the conductor checks with factory_state.py (docs/plans/2026-11-19-pipeline-state-and-handoffs.md)."""
+    lines = text.splitlines()
+    heading = next((n for n, line in enumerate(lines) if line.strip() in REPORT_HEADINGS), None)
+    if heading is None:
+        return [(1, f"agent '{agent}' has no report format ({' or '.join(REPORT_HEADINGS)} with a fenced block)")]
+    fence = next((n for n in range(heading + 1, len(lines)) if lines[n].strip().startswith("```")), None)
+    if fence is None:
+        return [(heading + 1, f"agent '{agent}': no fenced report format after '{lines[heading].strip()}'")]
+    for offset, (key, _) in enumerate(REPORT_HEADERS[agent]):
+        n = fence + 1 + offset
+        if n >= len(lines) or not lines[n].startswith(f"{key}: "):
+            return [(n + 1, f"agent '{agent}': its report format must start with the header line '{key}: ...' "
+                            f"(lines: {', '.join(k for k, _ in REPORT_HEADERS[agent])})")]
+    return []
+
+
+def base_problems(text):
+    """A diff or pull request against a hard-coded `main`: the base branch comes from the plan or its detection."""
+    return [(n, f"hard-coded base branch '{m.group(0)}': use the base branch the agent or skill was given")
+            for n, line in enumerate(text.splitlines(), 1) for m in HARD_CODED_BASE_RE.finditer(line)]
 
 
 def targets(root):

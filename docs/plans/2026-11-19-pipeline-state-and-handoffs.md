@@ -1,6 +1,8 @@
 # Plan: Pipeline state and typed handoffs (roadmap I29)
 
-**Status:** Approved (2026-11-20: every recommended answer in "Open questions" accepted)
+**Status:** Implemented (2026-11-20; decisions: the recommended answer to every open question)
+**Amended 2026-11-20 (second review of #26):** `Blocking:` also counts the earlier findings the reviewer reports
+`still open`, so a round-2 review cannot `APPROVE` while an earlier blocker is unfixed (criterion 6).
 **Request:** "Write an implementation plan for roadmap item I29" — roadmap I29: "Pipeline state and typed handoffs.
 `Stage:` and `Round:` in the plan, a 'Review rounds' log, `/factory-build --resume`, re-reviews that receive earlier
 findings, strict `Verdict:` and `Blocking:` headers, the base branch passed to every agent. Why: state lives only in
@@ -251,8 +253,9 @@ Needs the I1 evals (prompt behaviour; by hand until then, on a scratch project):
 - **Header retries cost an agent call**; a reviewer that keeps getting the header wrong stops the run for the user
   rather than looping.
 - **The "no new findings on unchanged code" rule can hide a real MAJOR bug found late.** Mitigated: BLOCKER and
-  CRITICAL are always allowed (`missed earlier`), and MINOR/MAJOR notes can still appear in the final summary as not
-  blocking. If the user prefers fresh eyes each round, drop rule 4(c) (open question 3).
+  CRITICAL are always allowed (`missed earlier`). A late MAJOR on unchanged code is not raised as a finding (so it
+  does not count in `Blocking:`); the reviewer may mention it in prose, and the conductor lists it in the summary as
+  not fixed (amendment 2026-11-20, review of #26: the earlier wording contradicted criterion 6). If the user prefers fresh eyes each round, drop rule 4(c) (open question 3).
 - **The model can still edit the state wrongly**; the `state` check after planner and docs-writer runs and the
   "trust the plan" rule reduce this, they do not prevent it.
 - **Out of scope:** resuming legacy plans; `/factory-review` writing to the plan's log (open question 2); evidence

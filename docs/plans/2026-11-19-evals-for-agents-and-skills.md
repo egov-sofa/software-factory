@@ -236,8 +236,9 @@ feat/<case>`, copy `change/`, commit, then for review cases write the review fol
 
 **Limits:** `max_turns` 30 for agent cases, 40 for case 8, 6 for case 7; `timeout_seconds` 600 (900 for case 8);
 `runs` 3 (`--smoke` makes it 1). **Tools per case** (`allowed_tools`): read-only tools and `Agent` for cases 1 to 5
-and 7; `Bash(python -m unittest:*)`, `Edit`, `Write` for case 6; `Bash(git:*)`, `Bash(mkdir:*)`, `Write` for case 8
-(the skill prepares the review folder). The planner writes its plan, so case 5 also gets `Write`.
+and 7; `Bash(python -m unittest:*)`, `Edit`, `Write` for case 6; `Bash(git:*)`, `Bash(mkdir:*)`, `Bash(sort:*)`, `Bash(echo:*)`, the fixture's test command (`Bash(python -m
+unittest:*)`) and `Write` for case 8 (the skill prepares the review folder and `checks.txt`; amendment 2026-11-20,
+review of #26). The planner writes its plan, so case 5 also gets `Write`.
 
 **Free versus model graders:** the outcome of each case is decided by free graders on the strict report headers and on
 file contents, because they never drift and cost nothing; an `llm` grader (Haiku) is added only where the point is
