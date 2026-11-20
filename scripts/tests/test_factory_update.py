@@ -110,7 +110,9 @@ class Base(unittest.TestCase):
         commit(self.project, "chore: scaffold from software-factory (generic template)", when=when)
         for rel in files:
             if fu.executable(rel):
-                git(self.project, "update-index", "--chmod=+x", "--", rel)
+                # the file's mode and the index together, as new-project.sh does: on Linux and macOS an index-only +x
+                # leaves the file 644, and git status then shows it modified (Windows has no mode to differ)
+                fu.set_executable(self.project, rel)
         git(self.project, "commit", "-q", "--allow-empty", "-m", "chore: modes")
 
     def change(self, files, message="project change"):
