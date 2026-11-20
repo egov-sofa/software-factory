@@ -88,7 +88,9 @@ def check_report(agent, text, ids=(), round_=1, root="."):
         tags = "|".join(BLOCKING_TAGS[agent])
         counted = len(re.findall(rf"^\s*\d+\.\s*\[(?:{tags})\]", text, re.M))
         # an earlier blocker the agent still sees open blocks as much as a new one (else round 2 could APPROVE it)
-        still_open = len(re.findall(rf"^\s*-?\s*{ID_RE}\s*:\s*still open\b", section(text, "Earlier findings") or "", re.M))
+        open_ids = re.findall(rf"^\s*-?\s*({ID_RE})\s*:\s*still open\b", section(text, "Earlier findings") or "", re.M)
+        # only the IDs the conductor asked about count: a finding the user dropped is not passed, so it cannot block
+        still_open = len([i for i in open_ids if not ids or i in ids])
         blocking = int(values["blocking"])
         if blocking != counted + still_open:
             raise Problem(f"{agent} report: Blocking: {blocking}, but {counted} finding(s) are tagged "

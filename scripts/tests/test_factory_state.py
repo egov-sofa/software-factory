@@ -107,6 +107,13 @@ class Headers(unittest.TestCase):
         sec = "Verdict: ISSUES_FOUND\nBlocking: 1\n\n## Earlier findings\n- SEC-1.1: still open: the query is built from input\n"
         self.check("security-auditor", sec, ids=["SEC-1.1"], round_=2)
 
+    def test_a_finding_the_user_dropped_does_not_block(self):
+        """REV-1.2 was dropped by the user, so the conductor does not pass it; even if listed still open, it is not
+        counted (review of #28)."""
+        earlier = ("\n## Earlier findings\n- REV-1.1: resolved: guarded\n"
+                   "- REV-1.2: still open: the reviewer still disagrees\n")
+        self.check("reviewer", "Verdict: APPROVE\nBlocking: 0\n" + earlier, ids=["REV-1.1"], round_=2)
+
     def test_section_headings_as_the_templates_print_them(self):
         """The agents' report templates add words after the section name; a copied template must pass (review of #28)."""
         earlier = "\n## Earlier findings (round 2 and later)\n- REV-1.1: still open: not fixed\n"

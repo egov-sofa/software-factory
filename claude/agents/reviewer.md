@@ -35,7 +35,8 @@ The conductor tells you the round number and adds `round.diff` to the review fol
 review. Then:
 1. Read `## Review rounds` at the end of the plan: your earlier findings (REV-<round>.<n>) and the implementer's
    answer to each (`fixed: …` or `disagree: …`).
-2. Account for every earlier blocking finding of yours under `## Earlier findings`, one line each:
+2. Account for every earlier blocking finding of yours under `## Earlier findings`, one line each, except those
+   whose Answer reads `user: drop` (the user decided; leave them out and do not count them):
    `- <ID>: resolved | still open | disagreement accepted: <one line of reason>`. Judge a `disagree` answer on its
    merits: accept it when the reasoning holds.
 3. Report a **new** finding on code outside `round.diff` only if it is a BLOCKER, marked `(missed earlier)`. New findings

@@ -119,7 +119,8 @@ none), the same rule `/factory-review` uses, so IDs never repeat; the fix-round 
 
 Launch the `reviewer` and `security-auditor` agents **in parallel, in one message**, with the plan path, the review
 folder's full path, the base branch and the round number. Check both reports; from round 2 pass each its own earlier
-blocking IDs that are not settled yet (`--ids REV-… --round <n>`, `--ids SEC-… --round <n>`).
+blocking IDs that are not settled yet (`--ids REV-… --round <n>`, `--ids SEC-… --round <n>`). Settled means its
+Answer reads `resolved in round …` or `user: drop`: a dropped finding is never passed again, so it cannot block.
 
 Then append the round to `## Review rounds` at the end of the plan (create the section on the first round), with
 the round number `<n>` and the commit the folder was built from:
