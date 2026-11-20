@@ -11,12 +11,13 @@ command inside that environment (no activation needed).
 
 | Task | Command |
 |---|---|
-| Install | `uv sync` |
+| Install | `uv sync` (exactly as locked, as CI does: `uv sync --locked`) |
 | Test | `uv run pytest` |
 | Test + coverage | `uv run pytest --cov={{PACKAGE_NAME}}` |
 | Lint | `uv run ruff check .` |
 | Format | `uv run ruff format .` (check only: `uv run ruff format --check .`) |
 | Type check | `uv run mypy` |
+| Build | `uv build` (outputs to `dist/`) |
 | Add a dependency | `uv add <package>` (dev-only tool: `uv add --dev <tool>`) |
 
 Run `uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest` before declaring any

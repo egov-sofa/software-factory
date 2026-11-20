@@ -38,12 +38,16 @@ To include it in the pipeline, add a step to `claude/skills/factory-build/SKILL.
 
 ## Add a new template (e.g. Go, .NET, Java)
 
-1. Create `templates/<name>/` with the language-specific files.
-2. Put an `AGENTS.md` in it listing the exact build, test and lint commands. Every AI coding agent reads it; the
-   shared `CLAUDE.md` imports it for Claude Code (`@AGENTS.md`).
-3. Add `.github/workflows/ci.yml`. Either call an existing reusable workflow or create `reusable-<name>.yml` in `.github/workflows/`.
-4. Add the template to the matrix in `.github/workflows/factory-selftest.yml`.
-5. Test it: `bash scripts/new-project.sh test-app <name> --dir /tmp`.
+1. Create `templates/<name>/` with the language-specific files, an `AGENTS.md` listing the exact install, lint,
+   build and test commands (every AI coding agent reads it; the shared `CLAUDE.md` imports it for Claude Code), and
+   `.github/workflows/ci.yml` calling an existing reusable workflow, or a new `reusable-<name>.yml`.
+2. Add a `[stacks.<name>]` entry to [`templates/stacks.toml`](../templates/stacks.toml): what it is for, its
+   tools, its commands, its lockfile and its CI. `python scripts/stacks.py check` validates it.
+3. Generate its fixture project: `python scripts/stacks.py fixtures <name>`. The self-test runs the shared workflow on
+   it, and on every pull request a test checks it still matches a fresh scaffold.
+4. Run `python -m unittest discover -s scripts/tests` and do what the failing tests name: the README row, the
+   `new-project.sh` branches, the `ci-<name>` job and the matrix entry in `factory-selftest.yml`, the `/factory-new`
+   recommendation. Every place that names a stack is checked against the manifest, so none can be forgotten.
 
 Use `{{PROJECT_NAME}}`, `{{PACKAGE_NAME}}`, `{{GITHUB_OWNER}}`, `{{FACTORY_REPO}}` and `{{YEAR}}` anywhere in file contents.
 

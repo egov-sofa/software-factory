@@ -66,7 +66,7 @@ existing project, copy the caller files from [`templates/_shared/`](../templates
 
 | Service | Kind | What it does | Caller file in projects |
 |---|---|---|---|
-| CI pipeline | reusable workflow: `reusable-node.yml`, `reusable-python.yml`, `reusable-generic.yml` | Install, lint, build, test | `.github/workflows/ci.yml` |
+| CI pipeline | reusable workflow: `reusable-node.yml`, `reusable-python.yml`, `reusable-generic.yml` (all take a `working-directory`) | Install, lint, build, test | `.github/workflows/ci.yml` |
 | Claude review | reusable workflow: `reusable-claude-review.yml` | Claude Code reviews each pull request against the project's checklist and posts inline comments plus a summary | `.github/workflows/claude-review.yml` |
 | Claude on demand | reusable workflow: `reusable-claude-mention.yml` | Answers a pull request comment starting with `@claude` (write access only) | `.github/workflows/claude-mention.yml` |
 | Content guard | composite action: `.github/actions/content-guard` | Blocks secrets, public IP addresses, internal host names and denylisted terms in a pull request | `.github/workflows/content-guard.yml` |

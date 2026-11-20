@@ -1,0 +1,49 @@
+# Docs drift: a kind of Dependabot for documentation. Does nothing until the project lists its documents and their
+# sources in .factory/docs.yml (format and setup: docs/DOCS-DRIFT.md in the software factory).
+#   - on a pull request: reports documents whose sources change while the document does not (read-only)
+#   - every Monday: keeps one issue labelled docs-drift up to date, and closes it when every document is fine
+# Sources in other repositories need a read token: set the variable DOCS_DRIFT_APP_CLIENT_ID and the secret
+# DOCS_DRIFT_APP_PRIVATE_KEY of a GitHub App installed on them. Without it, those sources show as "unknown".
+name: Docs drift
+
+on:
+  pull_request:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pull-request:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: example/software-factory/.github/actions/docs-drift@v1
+        with:
+          mode: pr
+
+  weekly:
+    if: ${{ github.event_name != 'pull_request' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Read token for sources in other repositories
+        id: app
+        if: ${{ vars.DOCS_DRIFT_APP_CLIENT_ID != '' }}
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.DOCS_DRIFT_APP_CLIENT_ID }}
+          private-key: ${{ secrets.DOCS_DRIFT_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          permission-contents: read
+      - uses: example/software-factory/.github/actions/docs-drift@v1
+        with:
+          mode: scan
+          issue: "true"
+          token: ${{ steps.app.outputs.token }}

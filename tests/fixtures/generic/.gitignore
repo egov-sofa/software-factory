@@ -1,0 +1,15 @@
+.env
+.env.*
+!.env.example
+build/
+dist/
+out/
+bin/
+obj/
+target/
+*.log
+.DS_Store
+.idea/
+
+# Content guard denylist: never committed (see .github/workflows/content-guard.yml)
+.content-denylist

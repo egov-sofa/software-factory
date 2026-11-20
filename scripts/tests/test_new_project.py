@@ -7,6 +7,7 @@ Run: python3 -m unittest discover -s scripts/tests
 import os
 import re
 import shutil
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -17,7 +18,10 @@ import support
 # A factory placeholder; the $ lookbehind keeps GitHub expressions such as ${{ secrets.X }} out of it.
 PLACEHOLDER_RE = re.compile(r"(?<!\$)\{\{\s*[A-Z_]+\s*\}\}")
 GITHUB_EXPR_RE = re.compile(r"\$\{\{.*?\}\}")
-TEMPLATES = ("typescript", "python", "generic")
+sys.path.insert(0, str(FACTORY / "scripts"))
+import stacks  # noqa: E402  (after the sys.path line above)
+
+TEMPLATES = tuple(stacks.load())   # every stack of templates/stacks.toml
 NAME = "selftest-app"
 
 
