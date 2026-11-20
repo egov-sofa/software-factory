@@ -28,15 +28,22 @@ class FakeGh:
     """Records the calls; prs and issue are what GitHub has open; deny makes pull request creation fail as GitHub
     does when the repository setting is off."""
 
-    def __init__(self, prs=(), issue=None, deny=False, no_draft=False):
+    def __init__(self, prs=(), issue=None, deny=False, no_draft=False, closed_prs=(), closed_issues=()):
         self.prs, self.issue, self.deny, self.calls, self.created = list(prs), issue, deny, [], 0
         self.no_draft = no_draft   # a private repository on GitHub Free: no draft pull requests
+        self.closed_prs, self.closed_issues = list(closed_prs), list(closed_issues)   # what the real gh would filter
 
     def open_prs(self):
         return self.prs
 
     def open_issue(self):
         return self.issue
+
+    def declined_pr(self, branch):
+        return next((p for p in self.closed_prs if p["headRefName"] == branch), None)
+
+    def declined_issue(self, title):
+        return next((i for i in self.closed_issues if i["title"] == title), None)
 
     def create_pr(self, base, head, title, body, draft):
         self.calls.append(("create_pr", base, head, title, Path(body).read_text(encoding="utf-8"), draft))
@@ -179,6 +186,12 @@ class OnlyWorkflows(Base):
         self.assertNotIn("_workflows_from", (self.project / fu.ANSWERS).read_text(encoding="utf-8"))
         self.assertEqual("", git(self.origin, "branch", "--list", "factory-update/*"))   # nothing pushed
 
+    def test_an_issue_closed_as_not_planned_declines_the_release(self):
+        self.prepare()
+        gh = FakeGh(closed_issues=[{"number": 7, "title": "chore: update from software-factory v1.1.0"}])
+        self.assertEqual(0, job.publish(self.project, self.work, gh))
+        self.assertEqual([], gh.calls)
+
 
 class WorkflowsPending(Base):
     """A release that changes a managed file and a workflow file: the merged pull request records _workflows_from, so
@@ -313,6 +326,39 @@ class Publish(Base):
                 return "[]"
         Recording().open_prs()
         self.assertIn("isCrossRepository", calls[0][calls[0].index("--json") + 1])
+
+    def test_a_pull_request_closed_without_merging_declines_the_release(self):
+        """Review of #32: closing the update pull request must not bring it back every Monday."""
+        self.prepare()
+        gh = FakeGh(closed_prs=[{"number": 9, "headRefName": "factory-update/v1.1.0"}])
+        self.assertEqual(0, job.publish(self.project, self.work, gh))
+        self.assertEqual([], gh.calls)
+        self.assertEqual("", git(self.origin, "branch", "--list", "factory-update/*"))   # nothing pushed
+
+    def test_a_declined_older_release_does_not_stop_the_next_one(self):
+        self.prepare()
+        gh = FakeGh(closed_prs=[{"number": 9, "headRefName": "factory-update/v1.0.9"}])
+        job.publish(self.project, self.work, gh)
+        self.assertEqual(["create_pr"], gh.names())
+
+    def test_declined_lookups_keep_only_unmerged_same_repository_and_not_planned(self):
+        class Canned(job.Gh):
+            def run(self, *args):
+                self.args = args
+                if args[0] == "pr":
+                    return json.dumps([{"number": 1, "mergedAt": "2026-11-01T00:00:00Z", "isCrossRepository": False},
+                                       {"number": 2, "mergedAt": None, "isCrossRepository": True},
+                                       {"number": 3, "mergedAt": None, "isCrossRepository": False}])
+                title = "chore: update from software-factory v1.1.0"
+                return json.dumps([{"number": 4, "title": title, "stateReason": "COMPLETED"},
+                                   {"number": 5, "title": "chore: update from software-factory v1.0.9",
+                                    "stateReason": "NOT_PLANNED"},
+                                   {"number": 6, "title": title, "stateReason": "NOT_PLANNED"}])
+        gh = Canned()
+        self.assertEqual(3, gh.declined_pr("factory-update/v1.1.0")["number"])
+        self.assertEqual(("--head", "factory-update/v1.1.0"), gh.args[4:6])
+        self.assertEqual(6, gh.declined_issue("chore: update from software-factory v1.1.0")["number"])
+        self.assertIsNone(Canned().declined_issue("chore: update from software-factory v1.2.0"))
 
     def test_pushes_opens_and_closes_older_ones(self):
         self.prepare()

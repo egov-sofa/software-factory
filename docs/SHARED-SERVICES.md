@@ -105,6 +105,9 @@ demand). The action ([`scripts/factory_update_job.py`](../scripts/factory_update
 
 - does nothing when the project has no answers file (a notice), or when an open pull request already proposes that
   release;
+- skips a release you declined: its update pull request closed without merging, or its `factory-update` issue closed
+  as **not planned** (the job closes its own issues as completed, so only "not planned" counts). The next release is
+  proposed as usual;
 - when the project is at or past the newest release of its major version (a local `/factory-update`, a merged
   update), closes any open update pull request and the `factory-update` issue with "The project is at <version> now";
 - otherwise pushes `factory-update/<version>` and opens a pull request with the summary, the conflicts (the pull

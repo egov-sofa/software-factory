@@ -206,6 +206,19 @@ class Gh:
                                     "--limit", "1") or "[]")
         return found[0] if found else None
 
+    def declined_pr(self, branch):
+        """A pull request of this repository from the branch, closed without merging, or None."""
+        found = json.loads(self.run("pr", "list", "--state", "closed", "--head", branch, "--json",
+                                    "number,mergedAt,isCrossRepository", "--limit", "20") or "[]")
+        return next((p for p in found if not p.get("mergedAt") and not p.get("isCrossRepository", False)), None)
+
+    def declined_issue(self, title):
+        """The factory-update issue with this title closed as not planned, or None. The job closes its own issues as
+        completed, so only a person's "not planned" counts."""
+        found = json.loads(self.run("issue", "list", "--label", LABEL, "--state", "closed", "--json",
+                                    "number,title,stateReason", "--limit", "50") or "[]")
+        return next((i for i in found if i["title"] == title and i.get("stateReason") == "NOT_PLANNED"), None)
+
     def create_pr(self, base, head, title, body, draft):
         url = self.run("pr", "create", "--base", base, "--head", head, "--title", title, "--body-file", str(body),
                        *(["--draft"] if draft else [])).strip()
@@ -292,6 +305,14 @@ def publish(project, workdir, gh=None):
     # every run: the issue may say the repository did not allow it, and the setting may be on now.
     if state["action"] == "issue" and issue and f"software-factory {to}" in issue["title"]:
         notice(f"issue #{issue['number']} already tracks software-factory {to}")
+        return 0
+    # A maintainer who closes the update (a pull request without merging it, the issue as not planned) declines that
+    # release: it is not proposed again, and the next release is.
+    declined = (("pull request", gh.declined_pr(branch)) if state["action"] == "pr"
+                else ("issue", gh.declined_issue(title)))
+    if declined[1]:
+        notice(f"{declined[0]} #{declined[1]['number']} declined software-factory {to}; the job waits for the next "
+               "release")
         return 0
     details_md = (workdir / "details.md").read_text(encoding="utf-8")
     intro = f"Updates this project from software-factory {state['from']} to {to}, opened by the weekly factory-update job."
