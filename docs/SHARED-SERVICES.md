@@ -103,11 +103,14 @@ New projects get `.github/workflows/factory-update.yml`, which calls the `factor
 demand). The action ([`scripts/factory_update_job.py`](../scripts/factory_update_job.py)) clones the factory named in
 `.factory/answers.yml` without a token, runs its own copy of `factory_update.py` on the checkout, and:
 
-- does nothing when the project has no answers file (a notice), when it is at or past the newest release of its
-  major version, or when an open pull request or issue already proposes that release;
+- does nothing when the project has no answers file (a notice), or when an open pull request already proposes that
+  release;
+- when the project is at or past the newest release of its major version (a local `/factory-update`, a merged
+  update), closes any open update pull request and the `factory-update` issue with "The project is at <version> now";
 - otherwise pushes `factory-update/<version>` and opens a pull request with the summary, the conflicts (the pull
   request is then a draft), the decisions needed and the release notes' headlines, and closes any older update pull
-  request with a comment pointing at the new one.
+  request and the `factory-update` issue with a comment pointing at the new one. An open issue does not stop this:
+  every run tries the pull request again, so it opens once the repository setting below is turned on.
 
 The caller has `contents: write`, `pull-requests: write` and `issues: write`, and no secret: only `GITHUB_TOKEN`,
 which brings three limits:

@@ -29,7 +29,7 @@ class FakeGh:
     does when the repository setting is off."""
 
     def __init__(self, prs=(), issue=None, deny=False):
-        self.prs, self.issue, self.deny, self.calls = list(prs), issue, deny, []
+        self.prs, self.issue, self.deny, self.calls, self.created = list(prs), issue, deny, [], 0
 
     def open_prs(self):
         return self.prs
@@ -41,6 +41,7 @@ class FakeGh:
         self.calls.append(("create_pr", base, head, title, Path(body).read_text(encoding="utf-8"), draft))
         if self.deny:
             raise job.GhError("gh pr create failed: GitHub Actions is not permitted to create or approve pull requests")
+        self.prs.append({"number": 42, "headRefName": head, "title": title})
         return 42
 
     def comment(self, kind, number, text):
@@ -48,9 +49,15 @@ class FakeGh:
 
     def close(self, kind, number):
         self.calls.append(("close", kind, number))
+        if kind == "issue" and self.issue and self.issue["number"] == number:
+            self.issue = None
+        self.prs = [p for p in self.prs if not (kind == "pr" and p["number"] == number)]
 
     def save_issue(self, number, title, body):
         self.calls.append(("save_issue", number, title, Path(body).read_text(encoding="utf-8")))
+        if number is None:
+            self.created += 1
+            self.issue = {"number": 7, "title": title}
         return number or 7
 
     def names(self):
@@ -135,7 +142,7 @@ class Prepare(Base):
         answers = fu.parse_answers((self.project / fu.ANSWERS).read_text(encoding="utf-8"))
         write(self.project, {fu.ANSWERS: fu.dump_answers({**answers, "_commit": "unknown", "version": "v1.1.0"})})
         commit(self.project, "pretend v1.1.0")
-        self.assertEqual("none", self.prepare()["action"])
+        self.assertEqual("current", self.prepare()["action"])
         self.assertEqual("other", git(self.project, "branch", "--show-current").strip())
 
     def test_skips_without_answers_file(self):
@@ -271,14 +278,60 @@ class Publish(Base):
         pushed = git(self.origin, "rev-parse", "refs/heads/factory-update/v1.1.0").strip()
         self.assertEqual(git(self.project, "rev-parse", "HEAD").strip(), pushed)
 
-    def test_nothing_when_a_pull_request_or_issue_exists(self):
+    def test_nothing_when_a_pull_request_for_the_version_exists(self):
         self.prepare()
-        for gh in (FakeGh(prs=[{"number": 9, "headRefName": "factory-update/v1.1.0", "title": "x"}]),
-                   FakeGh(issue={"number": 5, "title": "chore: update from software-factory v1.1.0"})):
-            with self.subTest(gh.prs or gh.issue):
-                self.assertEqual(0, job.publish(self.project, self.work, gh))
-                self.assertEqual([], gh.calls)
+        gh = FakeGh(prs=[{"number": 9, "headRefName": "factory-update/v1.1.0", "title": "x"}],
+                    issue={"number": 5, "title": "chore: update from software-factory v1.1.0"})
+        self.assertEqual(0, job.publish(self.project, self.work, gh))
+        self.assertEqual([], gh.calls)
         self.assertEqual("", git(self.origin, "branch", "--list", "factory-update/*"))
+
+    def test_the_pull_request_opens_once_the_setting_is_on(self):
+        """Review of #32: the fallback issue says to turn the setting on and run again; that run must open the pull
+        request, not stop at the issue it opened itself."""
+        self.prepare()
+        gh = FakeGh(deny=True)
+        job.publish(self.project, self.work, gh)
+        self.assertEqual((1, 7), (gh.created, gh.issue["number"]))
+        job.publish(self.project, self.work, gh)   # the setting is still off: the same issue is refreshed
+        self.assertEqual(["create_pr", "save_issue", "create_pr", "save_issue"], gh.names())
+        self.assertEqual(7, gh.calls[-1][1])
+        gh.deny, gh.calls = False, []   # the maintainer turns the setting on
+        self.assertEqual(0, job.publish(self.project, self.work, gh))
+        self.assertEqual(["create_pr", "comment", "close"], gh.names())
+        self.assertEqual(("comment", "issue", 7, "Superseded by pull request #42 (software-factory v1.1.0)."),
+                         gh.calls[1])
+        self.assertIsNone(gh.issue)
+        self.assertEqual(1, gh.created)   # one issue, ever
+        gh.calls = []
+        job.publish(self.project, self.work, gh)   # the next run: the pull request is open, nothing more
+        self.assertEqual([], gh.calls)
+
+    def test_current_project_closes_open_update_pull_requests_and_the_issue(self):
+        answers = fu.parse_answers((self.project / fu.ANSWERS).read_text(encoding="utf-8"))
+        write(self.project, {fu.ANSWERS: fu.dump_answers({**answers, "_commit": "unknown", "version": "v1.1.0"})})
+        commit(self.project, "updated locally")
+        self.assertEqual({"action": "current", "version": "v1.1.0"}, self.prepare())
+        gh = FakeGh(prs=[{"number": 3, "headRefName": "factory-update/v1.1.0", "title": "update"},
+                         {"number": 4, "headRefName": "feat/other", "title": "theirs"}],
+                    issue={"number": 5, "title": "chore: update from software-factory v1.1.0"})
+        self.assertEqual(0, job.publish(self.project, self.work, gh))
+        text = "The project is at v1.1.0 now; nothing to update."
+        self.assertEqual([("comment", "pr", 3, text), ("close", "pr", 3), ("comment", "issue", 5, text),
+                          ("close", "issue", 5)], gh.calls)
+        self.assertEqual([4], [p["number"] for p in gh.prs])   # not an update pull request: untouched
+        gh = FakeGh(prs=[{"number": 4, "headRefName": "feat/other", "title": "theirs"}])
+        job.publish(self.project, self.work, gh)
+        self.assertEqual([], gh.calls)   # nothing open for updates: nothing to do
+
+    def test_no_answers_file_touches_nothing(self):
+        (self.project / fu.ANSWERS).unlink()
+        commit(self.project, "no answers")
+        self.prepare()
+        gh = FakeGh(prs=[{"number": 3, "headRefName": "factory-update/v1.1.0", "title": "update"}],
+                    issue={"number": 5, "title": "x"})
+        job.publish(self.project, self.work, gh)
+        self.assertEqual([], gh.calls)
 
     def test_falls_back_to_one_issue_naming_the_setting(self):
         self.prepare()

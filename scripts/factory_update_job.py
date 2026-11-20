@@ -7,10 +7,11 @@ Two steps, so the token is only present for the second:
             factory_update.py update on the checkout, takes the changes to .github/workflows/ back out (GITHUB_TOKEN
             cannot push them), commits the rest on branch factory-update/<version>, and writes what publish needs
             into the work folder.
-  publish   (GH_TOKEN, GH_REPO) does nothing when an open pull request or issue for that version exists; else
-            pushes the branch and opens a pull request (a draft when it has conflicts), closing older update pull
-            requests; when the repository does not let GitHub Actions open pull requests, or when only workflow files
-            changed, it keeps one issue labelled factory-update up to date instead.
+  publish   (GH_TOKEN, GH_REPO) does nothing when an open pull request for that version exists; closes the open
+            update pull requests and issue when the project is current; else pushes the branch and opens a pull
+            request (a draft when it has conflicts), closing older update pull requests and the issue; when the
+            repository does not let GitHub Actions open pull requests, or when only workflow files changed, it keeps
+            one issue labelled factory-update up to date instead (an open issue never stops the pull request).
 
 Usage:
   python3 -I scripts/factory_update_job.py prepare --workdir <dir> [--project <dir>] [--factory-url <url>]
@@ -152,7 +153,8 @@ def prepare(project, workdir, factory_url=None):
         raise fu.Usage(f"the target '{to}' is not a release name")
     if report["status"] == "current":
         notice(f"the project is already at or past software-factory {to}: nothing to update")
-        state.write_text(json.dumps({"action": "none", "to": to}), encoding="utf-8")
+        # publish closes what is still open for an update that is done (a local /factory-update, a merged one)
+        state.write_text(json.dumps({"action": "current", "version": report["from"]}), encoding="utf-8")
         return 0
     workflows = report.get("workflows", [])
     others = [p for p in report["changed"] if p != fu.ANSWERS]
@@ -252,14 +254,23 @@ def publish(project, workdir, gh=None):
     if state["action"] == "none":
         print("nothing to publish")
         return 0
-    to, branch, title = state["to"], state["branch"], state["title"]
     updates = [p for p in gh.open_prs() if p["headRefName"].startswith(BRANCH_PREFIX)]
+    issue = gh.open_issue()
+    if state["action"] == "current":
+        text = f"The project is at {state['version']} now; nothing to update."
+        for kind, number in [("pr", p["number"]) for p in updates] + ([("issue", issue["number"])] if issue else []):
+            gh.comment(kind, number, text)
+            gh.close(kind, number)
+        print(f"nothing to update; closed {len(updates)} pull request(s) and {1 if issue else 0} issue")
+        return 0
+    to, branch, title = state["to"], state["branch"], state["title"]
     same = [p for p in updates if p["headRefName"] == branch]
     if same:
         notice(f"pull request #{same[0]['number']} already proposes software-factory {to}")
         return 0
-    issue = gh.open_issue()
-    if issue and f"software-factory {to}" in issue["title"]:
+    # An open issue stops only the workflow-only case. With a commit to propose, the pull request is tried again
+    # every run: the issue may say the repository did not allow it, and the setting may be on now.
+    if state["action"] == "issue" and issue and f"software-factory {to}" in issue["title"]:
         notice(f"issue #{issue['number']} already tracks software-factory {to}")
         return 0
     details_md = (workdir / "details.md").read_text(encoding="utf-8")

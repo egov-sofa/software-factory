@@ -1,6 +1,6 @@
 # Factory update: every Monday, proposes the newest software-factory release of this project's major version as a
 # pull request (docs/SHARED-SERVICES.md in the software factory, "Updates"). It does nothing until a new release
-# exists, and nothing while a pull request or issue for it is open.
+# exists, and nothing while a pull request for it is open.
 #   - The content guard, its hooks and .factory/standards/ are replaced; workflows and config files are merged with
 #     this project's edits (conflicts make the pull request a draft); the project's own files are left alone.
 #   - Changes to .github/workflows/ are listed but not included: GITHUB_TOKEN cannot push them. Run /factory-update

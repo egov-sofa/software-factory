@@ -8,8 +8,8 @@
 #   - skips with a notice when the project has no .factory/answers.yml;
 #   - clones the factory named in the answers file without a token (it is public) and runs this action's own
 #     scripts/factory_update.py on the checkout; nothing from the project runs, and git runs with hooks off;
-#   - does nothing when the project is at or past the newest release, or when an open pull request or issue
-#     already proposes it;
+#   - does nothing when an open pull request already proposes the newest release; when the project is at or past
+#     it, closes the open update pull requests and issue;
 #   - otherwise pushes branch factory-update/<version> and opens a pull request (a draft when it has conflicts),
 #     closing older update pull requests. Changes to .github/workflows/ are left out (GITHUB_TOKEN cannot push them)
 #     and listed, with "run /factory-update locally"; _workflows_from in the answers file records the commit they
