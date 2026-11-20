@@ -46,11 +46,31 @@ class Frontmatter(unittest.TestCase):
 
     def test_skills_with_side_effects_run_only_when_the_user_types_them(self):
         """They push, open pull requests, create repositories or run a long, costly pipeline."""
-        for name in ("factory-build", "factory-new", "factory-onboard", "factory-ship"):
+        for name in ("factory-build", "factory-new", "factory-onboard", "factory-ship", "factory-update"):
             with self.subTest(skill=name):
                 text = (validate.ROOT / "claude" / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
                 fields, _ = validate.frontmatter(text)
                 self.assertEqual("true", fields.get("disable-model-invocation", ("missing",))[0])
+        self.assertIn((1, "skill 'factory-update' has side effects: it needs 'disable-model-invocation: true', so it "
+                          "runs only when the user types it"),
+                      self.skill(SKILL.replace("do-thing", "factory-update"), name="factory-update"))
+
+    def test_every_managed_rule_matches_a_rendered_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for rel in ("templates/_shared/CLAUDE.md", "templates/generic/AGENTS.md", "scripts/check_content.py",
+                        "scripts/hooks/pre-commit", "standards/SECURITY.md"):
+                (root / rel).parent.mkdir(parents=True, exist_ok=True)
+                (root / rel).write_text("x\n", encoding="utf-8")
+            kinds = root / "templates" / "file-kinds.txt"
+            kinds.write_text("managed scripts/check_content.py\nmanaged .factory/standards/*.md\n"
+                             "managed scripts/check_contents.py\nmerged nothing/*\n", encoding="utf-8")
+            self.assertEqual(["templates/file-kinds.txt:3: managed rule 'scripts/check_contents.py' matches no file "
+                              "a template renders"], validate.kinds_problems(root))
+            kinds.write_text("owned x\n", encoding="utf-8")
+            self.assertTrue(validate.kinds_problems(root))
+            kinds.unlink()
+            self.assertEqual([], validate.kinds_problems(root))   # a tree from before file kinds
 
     def test_valid_files(self):
         self.assertEqual([], self.agent(AGENT))
@@ -135,9 +155,12 @@ class Frontmatter(unittest.TestCase):
 
     def test_stdlib_only(self):
         """The validator runs on a bare Python in CI and on any machine: it may import the standard library only, and
-        its sibling factory_state.py (the report header table), which is held to the same rule."""
+        its siblings factory_state.py (the report header table) and factory_update.py (the file kinds), which are
+        held to the same rule."""
         import ast
-        for script, siblings in ((SCRIPT, {"factory_state"}), (SCRIPT.parent / "factory_state.py", set())):
+        for script, siblings in ((SCRIPT, {"factory_state", "factory_update"}),
+                                 (SCRIPT.parent / "factory_state.py", set()),
+                                 (SCRIPT.parent / "factory_update.py", set())):
             tree = ast.parse(script.read_text(encoding="utf-8"))
             modules = set()
             for node in ast.walk(tree):

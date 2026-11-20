@@ -1,0 +1,11 @@
+# Written by software-factory; /factory-update reads it. Edit only "skip".
+_src_path: example/software-factory
+_commit: unknown
+version: unknown
+template: generic
+project_name: selftest-app
+package_name: selftest_app
+github_owner: example
+year: "2026"
+onboarded: false
+skip: []

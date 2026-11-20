@@ -7,12 +7,13 @@ What is checked:
   claude/skills/*/SKILL.md                 skills installed by scripts/install.sh
   .claude/skills/*/SKILL.md                the factory's own project skills (pr-review)
   templates/*/.claude/skills/*/SKILL.md    skills copied into every new project
+  templates/file-kinds.txt                 every managed rule matches a file some template renders
 
 Rules: the file starts with a frontmatter block between two '---' lines; `name` and a non-empty `description` are
 present; `name` matches the file name (agents) or the folder name (skills); `model`, if present, is one of MODELS;
 `tools` (agents) and `allowed-tools` (skills) name only known Claude Code tools, MCP tools (mcp__server__tool) or
 permission rules on a known tool (Bash(git status:*)); every key is a known one; the read-only agents declare `tools`
-and never get a tool that writes files.
+and never get a tool that writes files; the skills with side effects have `disable-model-invocation: true`.
 
 The frontmatter reader handles what the factory uses: `key: value` (quoted or not), inline lists `[a, b]` and block
 lists (`- item` lines). Anything else, such as folded `>` values, is reported instead of guessed.
@@ -28,6 +29,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from factory_state import HEADERS  # noqa: E402  (stdlib only, next to this script)
+import factory_update  # noqa: E402  (stdlib only, next to this script: the file kinds and the renderer's file list)
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -55,6 +57,9 @@ GUARD_MATCHER = 'matcher: "Edit|Write|NotebookEdit|Bash"'
 # Each agent's report starts with header lines the conductor parses; the table lives in factory_state.py.
 REPORT_HEADERS = HEADERS
 REPORT_HEADINGS = ("## Report format", "## Report", "## Output")
+# Skills that push, open pull requests, create repositories, rewrite project files or run a long, costly pipeline:
+# they run only when the user types them.
+SIDE_EFFECT_SKILLS = {"factory-build", "factory-new", "factory-onboard", "factory-ship", "factory-update"}
 HARD_CODED_BASE_RE = re.compile(r"(?<![\w/-])(?:origin/)?(?:main|master)\.\.\.?HEAD\b|--base (?:main|master)\b")
 
 KEY_RE = re.compile(r"([A-Za-z][\w-]*):(?:\s+(.*))?$")
@@ -204,6 +209,11 @@ def check(text, kind, expected_name):
                                   f"{GUARD_MATCHER} running agent_guard.py with '{expected_name}'"))
     if kind == "agent" and expected_name in REPORT_HEADERS:
         problems += report_problems(text, expected_name)
+    if kind == "skill" and expected_name in SIDE_EFFECT_SKILLS:
+        value, num = fields.get("disable-model-invocation", ("", 1))
+        if value != "true":
+            problems.append((num, f"skill '{expected_name}' has side effects: it needs "
+                                  "'disable-model-invocation: true', so it runs only when the user types it"))
     problems += base_problems(text)
     return sorted(problems)
 
@@ -242,9 +252,33 @@ def targets(root):
             yield path, "skill", path.parent.name
 
 
+def kinds_problems(root):
+    """Every managed rule of templates/file-kinds.txt must match a file some template renders: a rule that matches
+    nothing (a renamed guard, a typo) would let that file go unmanaged without anyone noticing."""
+    path = root / factory_update.KINDS_FILE
+    if not path.is_file():
+        return []
+    rel = path.relative_to(root).as_posix()
+    text = path.read_text(encoding="utf-8")
+    try:
+        factory_update.parse_kinds(text)
+    except factory_update.Usage as ex:
+        return [str(ex)]
+    rendered = set()
+    for template in sorted(p.name for p in (root / "templates").iterdir() if p.is_dir() and not p.name.startswith("_")):
+        rendered |= {name.replace("{{PACKAGE_NAME}}", "package") for name in factory_update.sources(root, template)}
+    found = []
+    for num, line in enumerate(text.splitlines(), 1):
+        parts = line.split()
+        if len(parts) == 2 and parts[0] == "managed" and not any(factory_update.kind_of(name, [("managed", parts[1])])
+                                                                   == "managed" for name in rendered):
+            found.append(f"{rel}:{num}: managed rule '{parts[1]}' matches no file a template renders")
+    return found
+
+
 def validate(root):
     """(number of files checked, problems as 'path:line: message' strings)."""
-    count, found = 0, []
+    count, found = 0, kinds_problems(root)
     for path, kind, expected in targets(root):
         count += 1
         rel = path.relative_to(root).as_posix()

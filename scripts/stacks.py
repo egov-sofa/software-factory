@@ -9,7 +9,9 @@ Usage:
   python3 scripts/stacks.py check                      validate the manifest against the templates and workflows
   python3 scripts/stacks.py fixtures [--check] [stack ...]
       Scaffold tests/fixtures/<stack>/ with new-project.sh (the self-test runs the real shared workflows on them);
-      --check compares them with a fresh scaffold instead (the lockfile is not compared: it is resolved anew).
+      --check compares them with a fresh scaffold instead (the lockfile is not compared: it is resolved anew, nor
+      the _commit, version and year lines of .factory/answers.yml: they name the factory commit and the year that
+      made the fixture).
 
 Exit code 0 if all is well, 1 if a problem is found, 2 on a usage error. Standard library only, Python 3.11 or later.
 """
@@ -33,6 +35,10 @@ FIXTURES = "tests/fixtures"
 REQUIRED = {"description", "tools", "recommend_for", "next_steps", "commands", "ci"}
 OPTIONAL = {"lockfile"}
 FIXTURE_NAME, FIXTURE_OWNER, FIXTURE_FACTORY = "selftest-app", "example", "example/software-factory"
+ANSWERS = ".factory/answers.yml"
+# The answers file's lines that name the factory commit, not the templates: every commit would change them. And the
+# year of the scaffold, or the weekly self-test would fail every 1 January.
+VOLATILE_ANSWERS = (b"_commit:", b"version:", b"year:")
 
 
 class Problem(Exception):
@@ -117,7 +123,7 @@ def scaffold(stack, out, root=ROOT, env=None):
     FIXTURE_FACTORY, so the files do not depend on whose clone ran it."""
     with tempfile.TemporaryDirectory(prefix="factory-fixture-") as tmp:
         home = Path(tmp) / FIXTURE_OWNER / "software-factory"
-        for part in ("scripts", "templates"):
+        for part in ("scripts", "templates", "standards"):   # standards: new-project.sh ships them
             shutil.copytree(Path(root) / part, home / part, ignore=shutil.ignore_patterns("__pycache__"))
         git = ["git", "-c", "init.defaultBranch=main", "-C", str(home)]
         subprocess.run([*git, "init", "-q"], check=True)
@@ -135,18 +141,23 @@ def files(folder):
     return {p.relative_to(folder).as_posix() for p in Path(folder).rglob("*") if p.is_file()}
 
 
-def same(a, b):
+def same(a, b, name=""):
     if filecmp.cmp(a, b, shallow=False):
         return True
-    return Path(a).read_bytes().replace(b"\r\n", b"\n") == Path(b).read_bytes().replace(b"\r\n", b"\n")
+    texts = [Path(p).read_bytes().replace(b"\r\n", b"\n") for p in (a, b)]
+    if name == ANSWERS:
+        texts = [[line for line in t.split(b"\n") if not line.startswith(VOLATILE_ANSWERS)] for t in texts]
+    return texts[0] == texts[1]
 
 
 def compare(fresh, fixture, lockfile):
-    """How a committed fixture differs from a fresh scaffold (the lockfile only has to exist)."""
+    """How a committed fixture differs from a fresh scaffold (the lockfile only has to exist; the answers file's
+    _commit, version and year lines may differ)."""
     want, have = files(fresh), files(fixture)
     found = [f"missing {name}" for name in sorted(want - have)]
     found += [f"extra {name}" for name in sorted(have - want) if name != lockfile]
-    found += [f"differs {name}" for name in sorted(want & have) if name != lockfile and not same(fresh / name, fixture / name)]
+    found += [f"differs {name}" for name in sorted(want & have)
+              if name != lockfile and not same(fresh / name, fixture / name, name)]
     if lockfile and lockfile not in have:
         found.append(f"missing {lockfile} (run: python scripts/stacks.py fixtures)")
     return found

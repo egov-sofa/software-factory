@@ -51,6 +51,27 @@ To include it in the pipeline, add a step to `claude/skills/factory-build/SKILL.
 
 Use `{{PROJECT_NAME}}`, `{{PACKAGE_NAME}}`, `{{GITHUB_OWNER}}`, `{{FACTORY_REPO}}` and `{{YEAR}}` anywhere in file contents.
 
+### Classify a new template file
+
+Every file a template adds has a kind, which decides what `/factory-update` does with it in existing projects. Add a
+rule to [`templates/file-kinds.txt`](../templates/file-kinds.txt) (`<kind> <glob>`, the first matching rule wins) or
+leave it seeded, the default:
+
+- **managed** when projects must never change it and every update replaces it (the content guard, its hooks, the
+  standards). Only Markdown files and files with `#` comments can be managed: scaffolding adds a header saying
+  "Managed by software-factory: /factory-update replaces this file", as an HTML comment in Markdown and after the
+  shebang line in a script. A managed file a project has edited fails `factory_update.py check`, and its edit is
+  replaced (and reported) at the next update.
+- **merged** when the factory keeps improving it but a project may adapt it (caller workflows, config files): an update
+  merges both sides, leaving conflict markers where they overlap.
+- **seeded** for everything a project makes its own (`AGENTS.md`, `README.md`, the code). Updates never touch it. If
+  the factory must keep part of a seeded file current, put that part between the `software-factory:standards` markers,
+  as `AGENTS.md` and the review checklist do.
+
+`python scripts/validate.py` fails when a managed rule matches no file a template renders. Changing the scaffold
+means changing both renderers, `new-project.sh` and `scripts/factory_update.py`; the parity test in
+`scripts/tests/test_factory_update.py` fails until they agree.
+
 ## Change the CI pipeline (or another shared service) for all projects
 
 Projects call the factory's workflows and actions at `@v1`, not `@main`. A merge to `main` changes nothing for them

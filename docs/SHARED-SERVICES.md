@@ -70,10 +70,32 @@ existing project, copy the caller files from [`templates/_shared/`](../templates
 | Claude review | reusable workflow: `reusable-claude-review.yml` | Claude Code reviews each pull request against the project's checklist and posts inline comments plus a summary | `.github/workflows/claude-review.yml` |
 | Claude on demand | reusable workflow: `reusable-claude-mention.yml` | Answers a pull request comment starting with `@claude` (write access only) | `.github/workflows/claude-mention.yml` |
 | Content guard | composite action: `.github/actions/content-guard` | Blocks secrets, public IP addresses, internal host names and denylisted terms in a pull request | `.github/workflows/content-guard.yml` |
-| Local hooks | files copied into the project | Run the same guard before each commit | `scripts/hooks/`, `scripts/check_content.py` |
+| Local hooks | managed files in the project, kept current by `/factory-update` | Run the same guard before each commit | `scripts/hooks/`, `scripts/check_content.py` |
+| Standards | managed files in the project, kept current by `/factory-update` | The factory's standards, read by every AI tool (through the `AGENTS.md` block), the agents and the Claude review (from the base branch) | `.factory/standards/*.md` |
+| Updates | script: `scripts/factory_update.py`, run by `/factory-update` | Brings a project to a newer factory release: managed files replaced, merged files merged 3-way, seeded files left alone (see below) | `.factory/answers.yml` |
 | Docs drift | composite action: `.github/actions/docs-drift` | A kind of Dependabot for documentation: reports documents whose sources changed after them, on pull requests and as a weekly issue. Does nothing until the project adds `.factory/docs.yml`. Setup and the private dashboard of all projects: [DOCS-DRIFT.md](DOCS-DRIFT.md) | `.github/workflows/docs-drift.yml` |
 
 ![Shared services: five thin callers in the project call the factory at v1, docs drift among them; the content guard reads the pull request, an untrusted zone, only as data; the two Claude workflows get a short-lived token for the Claude API](diagrams/shared-services.png)
+
+### Updating the files copied into a project
+
+The caller workflows, the content guard's local copy, its hooks and the standards are files in the project, so `@v1`
+alone does not update them. [`scripts/new-project.sh`](../scripts/new-project.sh) records what it rendered the project
+from in `.factory/answers.yml` (the factory repository, commit and release, the template and the names), and
+`/factory-update` ([`scripts/factory_update.py`](../scripts/factory_update.py)) renders that release and the new one
+again, then treats each file by its kind, declared in [`templates/file-kinds.txt`](../templates/file-kinds.txt):
+
+| Kind | Files | What an update does |
+|---|---|---|
+| **managed** | `scripts/check_content.py`, `scripts/hooks/*`, `.factory/standards/*.md` | Replaces it whole; a local change is lost and reported. The file starts with a "Managed by software-factory" header |
+| **merged** | `.github/workflows/*.yml`, `.github/dependabot.yml`, the PR template, `.editorconfig`, `.gitattributes`, `.gitignore`, `CLAUDE.md`, `eslint.config.js`, `tsconfig*.json` | Merges the factory's change with the project's edits (`git merge-file`); overlapping edits are left as conflict markers |
+| **seeded** | everything else: `AGENTS.md`, `README.md`, `package.json`, `pyproject.toml`, the code and tests | Never touched, except the block between the `software-factory:standards` markers in `AGENTS.md` and the review checklist |
+
+A file the factory removed is deleted when the project never changed it, and kept (and reported) otherwise; a seeded
+file is never deleted. A file listed under `skip:` in the answers file is never added or updated. Updates stay on the
+project's major version unless `--to` names another. `factory_update.py check` exits 1 when a managed file was
+edited and 3 when a newer release exists. Projects made before this have no answers file: `/factory-update` infers
+one (`adopt`) and asks the user to confirm it; `/factory-onboard` writes it for the projects it onboards.
 
 ### Why the content guard is an action, not a reusable workflow
 

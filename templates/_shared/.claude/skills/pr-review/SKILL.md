@@ -27,6 +27,13 @@ gh pr diff <number>
 Read `AGENTS.md` (the project's instructions) and `CLAUDE.md`, the plan in `docs/plans/` if the description links one, and every changed file **in full**, not only
 the diff. Open the code that calls what changed when a change cannot be judged from the diff alone.
 
+<!-- software-factory:standards:start -->
+Read the factory standards this project follows: `.factory/standards/DEFINITION-OF-DONE.md` (what a finished change
+has) and `.factory/standards/SECURITY.md` (what the security check below looks for). In the Claude review workflow,
+read them from the folder the workflow names instead: that is the base branch's copy, which this pull request cannot
+change. The project's own rules (`AGENTS.md`, "Project rules" below) win where they conflict.
+<!-- software-factory:standards:end -->
+
 ## 2. Check, most important first
 
 **Correctness (blocker or should-fix).** Logic errors, off-by-one, null or undefined handling, wrong conditions,

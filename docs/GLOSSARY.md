@@ -9,6 +9,11 @@ Plain-English definitions of every term used in the factory.
 | **CLAUDE.md** | A file Claude reads automatically at the start of every session. The global one (`~/.claude/CLAUDE.md`) applies everywhere; a project one applies to that project. |
 | **Scaffolding** | Generating the starting files and folders of a project, so you don't begin from an empty folder. |
 | **Template** | A ready-made project skeleton that scaffolding copies. |
+| **Answers file** | `.factory/answers.yml` in a project: which factory commit and release made it, from which template, with which names. `/factory-update` reads it to render the old and new factory versions. |
+| **Managed file** | A file in a project that the factory owns (the content guard, its hooks, `.factory/standards/`). It starts with a "Managed by software-factory" header; `/factory-update` replaces it whole. Change it in the factory, not in the project. |
+| **Merged file** | A file the factory provides and a project may edit (caller workflows, `.gitignore`, `CLAUDE.md`). `/factory-update` merges the factory's changes with the project's (a 3-way merge). |
+| **Seeded file** | A file written once at scaffold that the project owns (`AGENTS.md`, `README.md`, the code). Updates never touch it, except the factory's standards block between markers. |
+| **3-way merge** | Combining two edited versions of a file using the version both started from, so each side's changes are kept; where both changed the same lines, conflict markers are left for a person to resolve. |
 | **Repository (repo)** | A folder tracked by git, holding the full history of every change. |
 | **Branch** | A parallel copy of the code where you can work safely. `main` is the official version. |
 | **Commit** | A saved snapshot of changes, with a message describing them. |

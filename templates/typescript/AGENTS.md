@@ -27,3 +27,16 @@ Run `npm run lint && npm test` before declaring any change done.
 - Named exports only, no default exports.
 - Throw `Error` with a descriptive message; don't return `null` to signal failure.
 - Config comes from `process.env`; document every variable in `.env.example`.
+
+<!-- software-factory:standards:start -->
+## Standards
+
+This project follows the software factory's standards, shipped in `.factory/standards/`:
+- `.factory/standards/CODING-STANDARDS.md`: how code is written here (simplicity, naming, errors, tests, dependencies).
+- `.factory/standards/DEFINITION-OF-DONE.md`: what every change needs before it is done (the reviewer checks it).
+- `.factory/standards/GIT-WORKFLOW.md`: branches, Conventional Commits and pull requests.
+- `.factory/standards/SECURITY.md`: secrets, input handling, dependencies (the security audit checks it).
+
+The rules in this file win where they conflict with the standards. Do not edit the standards here: change them in
+the software factory, and `/factory-update` brings them in. `/factory-update` also keeps this block current.
+<!-- software-factory:standards:end -->
