@@ -33,6 +33,9 @@ for provider in ippontech mozilla; do
   plan -generate-config-out=generated.tf | grep -E -A4 '^(Plan:|Error)' || true
   if [[ -f generated.tf ]]; then
     echo "-- plan again with the generated configuration (anything but 0 to change is a finding):"
-    plan | grep -E '^(Plan:|Error)|will be (updated|replaced|created|destroyed)|^ +[~+-] ' | head -40 || true
+    out="$(plan || true)"
+    # the changes, capped; then always the summary and errors, which Terraform prints last and decide the result
+    grep -E 'will be (updated|replaced|created|destroyed)|^ +[~+-] ' <<< "$out" | head -40 || true
+    grep -E '^(Plan:|Error)' <<< "$out" || true
   fi
 done

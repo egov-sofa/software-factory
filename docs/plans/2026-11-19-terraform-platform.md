@@ -75,7 +75,7 @@ in [2026-11-19-terraform-platform-spike/](2026-11-19-terraform-platform-spike/RE
   plugins (`x509: certificate signed by unknown authority` in `GetProviderSchema`); `TF_DISABLE_PLUGIN_TLS=1` fixes it
   locally. CI runners are not affected.
 
-### Anthropic side: mozilla passed, ippontech not run (needs an `org:admin` login)
+### Anthropic side: mozilla passed, ippontech not run (Windows would not start it)
 
 **Prerequisite: a team organization.** The Admin API, which both providers and `claude_federation.py` use, is not
 available to an individual Anthropic organization: every call is refused (403 or 404) even for its owner. Convert the
