@@ -307,12 +307,13 @@ def publish(project, workdir, gh=None):
         notice(f"issue #{issue['number']} already tracks software-factory {to}")
         return 0
     # A maintainer who closes the update (a pull request without merging it, the issue as not planned) declines that
-    # release: it is not proposed again, and the next release is.
-    declined = (("pull request", gh.declined_pr(branch)) if state["action"] == "pr"
-                else ("issue", gh.declined_issue(title)))
-    if declined[1]:
-        notice(f"{declined[0]} #{declined[1]['number']} declined software-factory {to}; the job waits for the next "
-               "release")
+    # release: it is not proposed again, and the next release is. The issue counts for a pull request update too: it
+    # is the fallback where Actions may not open pull requests.
+    declined = [("pull request", gh.declined_pr(branch))] if state["action"] == "pr" else []
+    declined = [(kind, found) for kind, found in declined + [("issue", gh.declined_issue(title))] if found]
+    if declined:
+        kind, found = declined[0]
+        notice(f"{kind} #{found['number']} declined software-factory {to}; the job waits for the next release")
         return 0
     details_md = (workdir / "details.md").read_text(encoding="utf-8")
     intro = f"Updates this project from software-factory {state['from']} to {to}, opened by the weekly factory-update job."

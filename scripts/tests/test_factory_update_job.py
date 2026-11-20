@@ -335,6 +335,14 @@ class Publish(Base):
         self.assertEqual([], gh.calls)
         self.assertEqual("", git(self.origin, "branch", "--list", "factory-update/*"))   # nothing pushed
 
+    def test_the_fallback_issue_closed_as_not_planned_declines_the_release(self):
+        """Review of #32: where Actions may not open pull requests, the issue is what the maintainer closes."""
+        self.prepare()
+        gh = FakeGh(deny=True, closed_issues=[{"number": 7, "title": "chore: update from software-factory v1.1.0"}])
+        self.assertEqual(0, job.publish(self.project, self.work, gh))
+        self.assertEqual([], gh.calls)
+        self.assertEqual("", git(self.origin, "branch", "--list", "factory-update/*"))   # nothing pushed
+
     def test_a_declined_older_release_does_not_stop_the_next_one(self):
         self.prepare()
         gh = FakeGh(closed_prs=[{"number": 9, "headRefName": "factory-update/v1.0.9"}])
