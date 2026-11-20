@@ -12,9 +12,10 @@ Usage:
   python3 scripts/factory_update.py render --ref <ref> --answers <file> --out <dir> [--factory <dir>]
       Render one factory version for one project, as that version's new-project.sh would have (without the git
       repository and the lockfile). Files listed in the answers' skip are left out.
-  python3 scripts/factory_update.py update [--to <ref>] [--project <dir>] [--factory <dir>]
+  python3 scripts/factory_update.py update [--to <ref>] [--json <file>] [--project <dir>] [--factory <dir>]
       Update the project from its recorded version to <ref> (default: the newest stable tag of its major version).
-      Needs a clean working tree. Conflicts are left as markers in the files.
+      Needs a clean working tree. Conflicts are left as markers in the files. --json: also write the result (status
+      current or updated, from, to, the summary's items, the changed files) for the weekly job.
   python3 scripts/factory_update.py check [--project <dir>] [--factory <dir>]
       Exit 1 naming the managed files that differ from the recorded version; exit 3 when a newer release of the
       same major version exists (information, so CI can choose whether to fail on it).
@@ -33,6 +34,7 @@ import argparse
 import difflib
 import fnmatch
 import io
+import json
 import os
 import re
 import subprocess
@@ -651,7 +653,13 @@ def apply(project, writes, deletes, rules):
         inside(project, rel).unlink()
 
 
-def update(project, factory, to=None, out=print):
+def write_report(path, report):
+    """The update's result as JSON, for the weekly job (factory_update_job.py) to build its pull request from."""
+    if path:
+        Path(path).write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+
+
+def update(project, factory, to=None, out=print, report=None):
     answers = read_answers(project)
     clean_tree(project)
     warnings = []
@@ -670,8 +678,11 @@ def update(project, factory, to=None, out=print):
     for warning in warnings:
         print(f"warning: {warning}", file=sys.stderr)
     old = answers.get("version", UNKNOWN)
+    current = {"status": "current", "from": old, "to": to, "base_commit": base_commit, "commit": target_commit,
+               "conflicts": 0, "items": {}, "changed": []}
     if target_commit == base_commit:
         out(f"Already at {to}: nothing to update.")
+        write_report(report, current)
         return 0
     # A project made from an untagged factory commit records the release before it (git describe), so the newest
     # release can be older than the project: rendering it would replace newer managed files with older ones and merge
@@ -680,6 +691,7 @@ def update(project, factory, to=None, out=print):
         if not explicit:
             out(f"Already at or past {to} (the project was made from factory commit {base_commit[:12]}): nothing "
                 "to update.")
+            write_report(report, current)
             return 0
         raise Usage(f"--to {to} would move the project back from {base_commit[:12]} ({old}) to {to}, an older "
                     "factory commit. Nothing was changed.")
@@ -693,6 +705,10 @@ def update(project, factory, to=None, out=print):
     writes[ANSWERS] = dump_answers({**answers, "_commit": commit, "version": version}).encode("utf-8")
     apply(project, writes, deletes, rules)
     summary.print(f"software-factory update {old} -> {version}")
+    write_report(report, {"status": "updated", "from": old, "to": version, "base_commit": base_commit,
+                          "commit": commit, "conflicts": len(summary.items["conflicts"]),
+                          "items": {key: summary.items[key] for key, _ in Summary.TITLES if summary.items[key]},
+                          "changed": sorted([*writes, *deletes])})
     return 1 if summary.items["conflicts"] else 0
 
 
@@ -892,6 +908,7 @@ def main(argv):
     commands["render"].add_argument("--answers", required=True)
     commands["render"].add_argument("--out", required=True)
     commands["update"].add_argument("--to")
+    commands["update"].add_argument("--json", help="also write the result as JSON to this file")
     commands["adopt"].add_argument("--onboarded", action="store_true")
     commands["adopt"].add_argument("--set", action="append", default=[], dest="sets")
     commands["adopt"].add_argument("--yes", action="store_true")
@@ -906,7 +923,7 @@ def main(argv):
             print(f"Rendered {answers['template']} at {version} into {a.out} ({len(files)} files)")
             return 0
         if a.command == "update":
-            return update(a.project, a.factory, a.to)
+            return update(a.project, a.factory, a.to, report=a.json)
         if a.command == "check":
             return check(a.project, a.factory)
         return adopt(a.project, a.factory, a.onboarded, a.sets, a.yes)

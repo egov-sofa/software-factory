@@ -73,6 +73,75 @@ class ClaudeReview(unittest.TestCase):
                          stacks.workflow_inputs(GITHUB / "workflows" / "reusable-claude-review.yml"))
 
 
+class FactoryUpdate(unittest.TestCase):
+    """The weekly update job: the caller asks for exactly what it needs, and the action runs nothing from the project
+    and gives the token only to the step that pushes and calls gh."""
+
+    def setUp(self):
+        self.caller = (GITHUB.parent / "templates" / "_shared" / ".github" / "workflows" / "factory-update.yml"
+                       ).read_text(encoding="utf-8")
+        self.action = (GITHUB / "actions" / "factory-update" / "action.yml").read_text(encoding="utf-8")
+        self.steps = re.split(r"\n    - ", self.action.split("\n  steps:\n", 1)[1])
+
+    def run_text(self, step):
+        """The run: script of a step (one line or a | block)."""
+        lines = step.splitlines()
+        start = next((n for n, line in enumerate(lines) if line.startswith("      run:")), None)
+        if start is None:
+            return ""
+        value = lines[start][len("      run:"):].strip()
+        if value not in ("|", ">-", ">"):
+            return value
+        return "\n".join(line for line in lines[start + 1:] if line.startswith("        "))
+
+    def test_caller_permissions_timeout_and_no_secrets(self):
+        block = re.search(r"\npermissions:\n((?:  .*\n)+)", self.caller).group(1)
+        self.assertEqual(["contents: write", "pull-requests: write", "issues: write"],
+                         [line.strip() for line in block.splitlines()])
+        self.assertEqual(1, self.caller.count("permissions:"))   # no job-level widening
+        self.assertNotIn("secrets.", self.caller)
+        self.assertRegex(self.caller, r"\n    timeout-minutes: 10\n")
+        self.assertIn("uses: {{FACTORY_REPO}}/.github/actions/factory-update@v1\n", self.caller)
+        self.assertIn("workflow_dispatch:", self.caller)
+        self.assertRegex(self.caller, r'cron: "\d+ \d+ \* \* 1"')   # Mondays
+
+    def test_caller_is_a_merged_file(self):
+        sys.path.insert(0, str(GITHUB.parent / "scripts"))
+        import factory_update   # noqa: E402
+        rules = factory_update.parse_kinds((GITHUB.parent / "templates" / "file-kinds.txt").read_text(encoding="utf-8"))
+        self.assertEqual("merged", factory_update.kind_of(".github/workflows/factory-update.yml", rules))
+
+    def test_runs_its_own_script_isolated_and_no_expression_in_run(self):
+        runs = [self.run_text(step) for step in self.steps]
+        scripts = [r for r in runs if "factory_update_job.py" in r]
+        self.assertEqual(2, len(scripts))
+        for script in scripts:
+            self.assertIn('python3 -I "$GITHUB_ACTION_PATH/../../../scripts/factory_update_job.py"', script)
+        for run in runs:
+            self.assertNotIn("${{", run)   # values reach scripts through env, never pasted into the code
+        self.assertNotIn("git commit", self.action)   # the script commits, with hooks off
+
+    def test_token_only_where_it_is_needed(self):
+        (checkout,) = [s for s in self.steps if "actions/checkout@" in s]
+        self.assertIn("persist-credentials: false", checkout)
+        with_token = [s for s in self.steps if "github.token" in s]
+        self.assertEqual(1, len(with_token))
+        self.assertIn(" publish ", with_token[0])
+        self.assertIn("GH_TOKEN: ${{ github.token }}", with_token[0])
+        (prepare,) = [s for s in self.steps if " prepare " in s]
+        self.assertNotIn("env:", prepare)
+        self.assertNotIn("secrets.", self.action)
+
+    def test_skips_without_answers_file(self):
+        self.assertIn("if [ -f .factory/answers.yml ]; then", self.action)
+        self.assertIn("::notice::no .factory/answers.yml", self.action)
+
+    def test_the_script_commits_with_hooks_off(self):
+        script = (GITHUB.parent / "scripts" / "factory_update_job.py").read_text(encoding="utf-8")
+        self.assertIn('GIT = ["git", "-c", "core.hooksPath=/dev/null"', script)
+        self.assertIn('"commit", "--no-verify"', script)
+
+
 class ClaudeComments(unittest.TestCase):
     """Text injected into a pull request must not make Claude comment on another one."""
 

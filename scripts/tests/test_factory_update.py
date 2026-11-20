@@ -7,6 +7,7 @@ support.py, so the developer's own git settings (autocrlf, hooks) cannot change 
 Run: python3 -m unittest discover -s scripts/tests
 """
 import io
+import json
 import os
 import shutil
 import subprocess
@@ -479,6 +480,36 @@ class Adopt(Base):
         self.assertEqual("their own\n", self.text("CLAUDE.md"))
         self.assertEqual("theirs\n", self.text("README.md"))
         self.assertIn("compare them by hand): CLAUDE.md", done.stdout)
+
+
+class JsonReport(Base):
+    """update --json: what the weekly job builds its pull request from; the exit codes stay the same."""
+    CHANGES = {"scripts/check_content.py": "#!/usr/bin/env python3\nprint('guard v2')\n",
+               "templates/_shared/CLAUDE.md": CLAUDE.replace("line c", "C!")}
+
+    def test_updated_with_conflicts_then_current(self):
+        self.scaffold()
+        self.change({"CLAUDE.md": CLAUDE.replace("line c", "line c (project)")})
+        report = self.tmp / "report.json"
+        self.update("--json", str(report), code=1)
+        data = json.loads(report.read_text(encoding="utf-8"))
+        self.assertEqual({"status": "updated", "from": "v1.0.0", "to": "v1.1.0", "conflicts": 1,
+                          "commit": git(self.factory, "rev-parse", "v1.1.0").strip()},
+                         {k: data[k] for k in ("status", "from", "to", "conflicts", "commit")})
+        self.assertEqual({"replaced": ["scripts/check_content.py"], "conflicts": ["CLAUDE.md (1 conflict(s))"]},
+                         data["items"])
+        self.assertEqual([fu.ANSWERS, "CLAUDE.md", "scripts/check_content.py"], data["changed"])
+        commit(self.project, "resolved")
+        self.update("--json", str(report))
+        data = json.loads(report.read_text(encoding="utf-8"))
+        self.assertEqual(("current", "v1.1.0", []), (data["status"], data["to"], data["changed"]))
+
+    def test_no_report_on_a_refusal(self):
+        self.scaffold()
+        write(self.project, {"CLAUDE.md": "dirty\n"})
+        report = self.tmp / "report.json"
+        self.update("--json", str(report), code=2)
+        self.assertFalse(report.exists())
 
 
 class NoDowngrade(Base):

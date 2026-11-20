@@ -1,0 +1,251 @@
+"""Tests of scripts/factory_update_job.py, the weekly update job: prepare (clone, update, workflow files out, commit
+with hooks off) against a throwaway factory, and publish against a fake gh and a local bare repository as origin.
+
+Run: python3 -m unittest discover -s scripts/tests
+"""
+import json
+import os
+import tempfile
+import unittest
+from pathlib import Path
+
+import support
+from test_factory_update import ANSWERS, T0, DAY, V1, commit, git, write
+
+import sys
+sys.path.insert(0, str(support.SCRIPTS))
+import factory_update as fu  # noqa: E402
+import factory_update_job as job  # noqa: E402
+
+CHANGES = {
+    "scripts/check_content.py": "#!/usr/bin/env python3\nprint('guard v2')\n",
+    "templates/_shared/.github/workflows/ci.yml": "jobs:\n  ci:\n    uses: x/y/.github/workflows/ci.yml@v1\n# v2\n",
+}
+
+
+class FakeGh:
+    """Records the calls; prs and issue are what GitHub has open; deny makes pull request creation fail as GitHub
+    does when the repository setting is off."""
+
+    def __init__(self, prs=(), issue=None, deny=False):
+        self.prs, self.issue, self.deny, self.calls = list(prs), issue, deny, []
+
+    def open_prs(self):
+        return self.prs
+
+    def open_issue(self):
+        return self.issue
+
+    def create_pr(self, base, head, title, body, draft):
+        self.calls.append(("create_pr", base, head, title, Path(body).read_text(encoding="utf-8"), draft))
+        if self.deny:
+            raise job.GhError("gh pr create failed: GitHub Actions is not permitted to create or approve pull requests")
+        return 42
+
+    def comment(self, kind, number, text):
+        self.calls.append(("comment", kind, number, text))
+
+    def close(self, kind, number):
+        self.calls.append(("close", kind, number))
+
+    def save_issue(self, number, title, body):
+        self.calls.append(("save_issue", number, title, Path(body).read_text(encoding="utf-8")))
+        return number or 7
+
+    def names(self):
+        return [c[0] for c in self.calls]
+
+
+class Base(unittest.TestCase):
+    CHANGES = CHANGES
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.tmp = Path(tmp.name)
+        self.env = {k: os.environ.get(k) for k in ("GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM", "GITHUB_ACTIONS")}
+        os.environ.update({k: v for k, v in support.environment().items() if k.startswith("GIT_")})
+        os.environ.pop("GITHUB_ACTIONS", None)
+        self.addCleanup(self.restore_env)
+        self.factory = self.tmp / "factory"
+        self.factory.mkdir()
+        git(self.factory, "init", "-q", "-b", "main")
+        write(self.factory, V1)
+        commit(self.factory, "feat: the first release", when=T0)
+        git(self.factory, "tag", "v1.0.0")
+        write(self.factory, self.CHANGES)
+        commit(self.factory, "fix: a better guard", when=T0 + 60 * DAY)
+        git(self.factory, "tag", "v1.1.0")
+        self.origin = self.tmp / "origin.git"
+        git(self.tmp, "init", "-q", "--bare", str(self.origin))
+        self.project = self.tmp / "my-app"
+        files, _, _ = fu.render(self.factory, "v1.0.0", ANSWERS)
+        write(self.project, files)
+        git(self.project, "init", "-q", "-b", "main")
+        commit(self.project, "chore: scaffold from software-factory (generic template)")
+        git(self.project, "remote", "add", "origin", str(self.origin))
+        git(self.project, "push", "-q", "origin", "main")
+        self.work = self.tmp / "work"
+
+    def restore_env(self):
+        for k, v in self.env.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+    def prepare(self):
+        self.assertEqual(0, job.prepare(self.project, self.work, factory_url=str(self.factory)))
+        return json.loads((self.work / "state.json").read_text(encoding="utf-8"))
+
+    def head_file(self, rel):
+        return git(self.project, "show", f"HEAD:{rel}")
+
+
+class Prepare(Base):
+    def test_commits_the_update_without_workflow_files_and_without_hooks(self):
+        # pre-commit is skipped by --no-verify; prepare-commit-msg is not, only by core.hooksPath=/dev/null
+        for name in ("pre-commit", "prepare-commit-msg"):
+            hook = self.project / ".git" / "hooks" / name
+            hook.write_text("#!/bin/sh\necho hook ran >&2\nexit 1\n", encoding="utf-8")
+            hook.chmod(0o755)
+        state = self.prepare()
+        self.assertEqual({"action": "pr", "to": "v1.1.0", "branch": "factory-update/v1.1.0", "base": "main",
+                          "draft": False, "workflows": [".github/workflows/ci.yml"]},
+                         {k: state[k] for k in ("action", "to", "branch", "base", "draft", "workflows")})
+        self.assertEqual("factory-update/v1.1.0", git(self.project, "branch", "--show-current").strip())
+        self.assertIn("guard v2", self.head_file("scripts/check_content.py"))
+        self.assertNotIn("# v2", self.head_file(".github/workflows/ci.yml"))   # left out
+        self.assertIn("version: v1.0.0", self.head_file(fu.ANSWERS))   # recorded only with the workflows
+        self.assertEqual("", git(self.project, "status", "--porcelain"))
+        self.assertEqual(f"{job.BOT_NAME}\n", git(self.project, "log", "-1", "--format=%an"))
+        self.assertIn("- fix: a better guard", git(self.project, "log", "-1", "--format=%B"))
+        details = (self.work / "details.md").read_text(encoding="utf-8")
+        self.assertIn("### Workflow files left out", details)
+        self.assertIn("`.github/workflows/ci.yml`", details)
+        self.assertIn("Run `/factory-update` locally", details)
+        self.assertIn("- `fix: a better guard`", details)
+        self.assertNotIn("feat: the first release", details)   # before the base
+
+    def test_nothing_when_current(self):
+        git(self.project, "checkout", "-q", "-b", "other")
+        answers = fu.parse_answers((self.project / fu.ANSWERS).read_text(encoding="utf-8"))
+        write(self.project, {fu.ANSWERS: fu.dump_answers({**answers, "_commit": "unknown", "version": "v1.1.0"})})
+        commit(self.project, "pretend v1.1.0")
+        self.assertEqual("none", self.prepare()["action"])
+        self.assertEqual("other", git(self.project, "branch", "--show-current").strip())
+
+    def test_skips_without_answers_file(self):
+        (self.project / fu.ANSWERS).unlink()
+        commit(self.project, "no answers")
+        self.assertEqual("none", self.prepare()["action"])
+        self.assertFalse((self.work / "factory").exists())
+
+    def test_bad_source_is_refused(self):
+        answers = fu.parse_answers((self.project / fu.ANSWERS).read_text(encoding="utf-8"))
+        write(self.project, {fu.ANSWERS: fu.dump_answers({**answers, "_src_path": "--upload-pack=x/y"})})
+        commit(self.project, "bad source")
+        with self.assertRaises(fu.Usage):
+            job.prepare(self.project, self.work)
+
+
+class OnlyWorkflows(Base):
+    CHANGES = {"templates/_shared/.github/workflows/ci.yml": CHANGES["templates/_shared/.github/workflows/ci.yml"]}
+
+    def test_issue_and_no_commit(self):
+        state = self.prepare()
+        self.assertEqual("issue", state["action"])
+        self.assertEqual("main", git(self.project, "branch", "--show-current").strip())
+        self.assertEqual("", git(self.project, "status", "--porcelain"))
+        gh = FakeGh()
+        self.assertEqual(0, job.publish(self.project, self.work, gh))
+        (call,) = gh.calls
+        self.assertEqual(("save_issue", None, "chore: update from software-factory v1.1.0"), call[:3])
+        self.assertIn("Only workflow files change", call[3])
+        self.assertEqual("", git(self.origin, "branch", "--list", "factory-update/*"))   # nothing pushed
+
+
+class Conflicts(Base):
+    CHANGES = {"templates/_shared/CLAUDE.md": "# Claude\n\nfactory line\n"}
+
+    def test_draft(self):
+        write(self.project, {"CLAUDE.md": "# Claude\n\nproject line\n"})
+        commit(self.project, "own CLAUDE.md")
+        state = self.prepare()
+        self.assertTrue(state["draft"])
+        self.assertIn("### Conflicts", (self.work / "details.md").read_text(encoding="utf-8"))
+        gh = FakeGh()
+        job.publish(self.project, self.work, gh)
+        self.assertTrue(gh.calls[0][5])   # --draft
+
+
+class Publish(Base):
+    def test_pushes_opens_and_closes_older_ones(self):
+        self.prepare()
+        gh = FakeGh(prs=[{"number": 3, "headRefName": "factory-update/v1.0.9", "title": "old"},
+                         {"number": 4, "headRefName": "feat/other", "title": "theirs"}],
+                    issue={"number": 5, "title": "chore: update from software-factory v1.0.9"})
+        self.assertEqual(0, job.publish(self.project, self.work, gh))
+        create = gh.calls[0]
+        self.assertEqual(("create_pr", "main", "factory-update/v1.1.0", "chore: update from software-factory v1.1.0"),
+                         create[:4])
+        self.assertIn("### CI has not run on this pull request", create[4])
+        self.assertIn("close and reopen it, or push a commit to `factory-update/v1.1.0`", create[4])
+        self.assertFalse(create[5])
+        self.assertIn(("comment", "pr", 3, "Superseded by #42 (software-factory v1.1.0)."), gh.calls)
+        self.assertIn(("close", "pr", 3), gh.calls)
+        self.assertNotIn(("close", "pr", 4), gh.calls)   # not an update pull request
+        self.assertIn(("close", "issue", 5), gh.calls)
+        pushed = git(self.origin, "rev-parse", "refs/heads/factory-update/v1.1.0").strip()
+        self.assertEqual(git(self.project, "rev-parse", "HEAD").strip(), pushed)
+
+    def test_nothing_when_a_pull_request_or_issue_exists(self):
+        self.prepare()
+        for gh in (FakeGh(prs=[{"number": 9, "headRefName": "factory-update/v1.1.0", "title": "x"}]),
+                   FakeGh(issue={"number": 5, "title": "chore: update from software-factory v1.1.0"})):
+            with self.subTest(gh.prs or gh.issue):
+                self.assertEqual(0, job.publish(self.project, self.work, gh))
+                self.assertEqual([], gh.calls)
+        self.assertEqual("", git(self.origin, "branch", "--list", "factory-update/*"))
+
+    def test_falls_back_to_one_issue_naming_the_setting(self):
+        self.prepare()
+        for issue, expected in ((None, None), ({"number": 5, "title": "chore: update from software-factory v1.0.9"}, 5)):
+            with self.subTest(issue=issue):
+                gh = FakeGh(issue=issue, deny=True)
+                self.assertEqual(0, job.publish(self.project, self.work, gh))
+                self.assertEqual(["create_pr", "save_issue"], gh.names())
+                saved = gh.calls[1]
+                self.assertEqual(expected, saved[1])   # the open issue is updated, never a second one
+                self.assertIn("Allow GitHub Actions to create and approve pull requests", saved[3])
+                self.assertIn("`factory-update/v1.1.0`", saved[3])
+
+    def test_other_gh_errors_fail(self):
+        self.prepare()
+
+        class Broken(FakeGh):
+            def create_pr(self, *args):
+                raise job.GhError("gh pr create failed: HTTP 500")
+        with self.assertRaises(job.GhError):
+            job.publish(self.project, self.work, Broken())
+
+
+class Safety(unittest.TestCase):
+    """The rules the action relies on, read from the script itself."""
+
+    def test_git_runs_with_hooks_off_and_commits_without_verify(self):
+        self.assertEqual(["git", "-c", "core.hooksPath=/dev/null"], job.GIT[:3])
+        text = (support.SCRIPTS / "factory_update_job.py").read_text(encoding="utf-8")
+        self.assertIn('git(project, "commit", "--no-verify"', text)
+        self.assertNotIn("shell=True", text)
+        self.assertEqual(1, text.count("subprocess.run([*GIT"))   # every git call goes through git()
+
+    def test_prepare_drops_every_token(self):
+        os.environ["GH_TOKEN"] = "x"
+        self.addCleanup(os.environ.pop, "GH_TOKEN", None)
+        self.assertNotIn("GH_TOKEN", job.no_token_env())
+        self.assertEqual("0", job.no_token_env()["GIT_TERMINAL_PROMPT"])
+
+
+if __name__ == "__main__":
+    unittest.main()
