@@ -87,6 +87,11 @@ ties the factory to objects that would leave with claude-skills' work skills if 
 Plus the shared variables `ANTHROPIC_ORGANIZATION_ID`, `ANTHROPIC_SERVICE_ACCOUNT_ID`, `ANTHROPIC_WORKSPACE_ID`, and
 `CLAUDE_REVIEW_ENABLED` set to `true`. Every rule uses scope `workspace:developer` and a token lifetime of 600 seconds.
 
+**Least privilege, always:** a rule's scope never includes `org:admin`, and the service account it targets has the
+organization role `developer`, never `admin`. A review needs model calls in one workspace, nothing more; an
+`org:admin` scope or an admin account would give every matched run an organization-admin token (found and fixed on
+2026-11-20, see [the Terraform plan](plans/2026-11-19-terraform-platform.md#security-finding-federation-rule-scopes-2026-11-20)).
+
 - **`<prefix>`** is the repository's OIDC subject prefix. Read it with
   `gh api repos/OWNER/NAME/actions/oidc/customization/sub`: with GitHub's immutable subject format it holds the owner
   and repository IDs (`repo:egov-ai@333615140/claude-skills@1386710680`), and a rule written with the plain names
@@ -210,7 +215,7 @@ You need the admin, owner or primary owner role in the Anthropic organization.
    | Allowed events | **pull_request**: the default *Only push* never matches a review | `issue_comment` |
    | Organization numeric ID | the number from step 1 | same |
    | Enable in workspaces | only the factory's workspace; **not** *All workspaces* | same |
-   | Advanced rule options | lifetime `600`, scope `workspace:developer` | same |
+   | Advanced rule options | lifetime `600`, scope `workspace:developer` only (never `org:admin`) | same |
 
    **Advanced match options** replace the guided fields once you edit them, including the numeric ID. If you use
    them (for example because the event you need is not in the list), put everything there:
@@ -224,7 +229,8 @@ You need the admin, owner or primary owner role in the Anthropic organization.
    | Expected audience | `https://api.anthropic.com` (or blank, the default) | same |
    | CEL condition | blank | blank |
 
-   Step 3, *Target*: a **new** service account for the factory (or the team), a member of that workspace only.
+   Step 3, *Target*: a **new** service account for the factory (or the team), a member of that workspace only, with
+   the organization role **`developer`** (never `admin`: see "Least privilege, always" above).
    Step 4, *Test*: optional; the real test is the next pull request.
 4. Check the saved rule in the Console: the subject must end in `:pull_request` and no `ref` or push event may be
    left over from the guided fields.

@@ -24,7 +24,7 @@ visible (drift), and every change is reviewed like code.
 | D3 | State backend | HCP Terraform / a cloud bucket you already run (S3, Azure Blob, GCS) with OIDC from Actions | whichever cloud the team already uses; **no secrets in state** (D5) makes the choice less critical |
 | D4 | Rules per repository or one per organization | per repository (today) / one per organization with a wildcard subject and `job_workflow_ref` pinned to `reusable-claude-review.yml@refs/tags/v1` | **per repository** for now: with Terraform a rule per repository costs nothing more to write, and keeps cost and audit per project |
 | D5 | Secrets | manage secret values in Terraform / keep them out | **out**: state would hold them. Terraform manages variables (IDs, not secrets) and settings only |
-| D6 | First scope | the three repositories set up today (software-factory, claude-skills, struts-modernization) and their organizations | yes; the other organizations (egov-sandbox, egov-tech, pentagone-digital) follow in phase 3 |
+| D6 | First scope | the five repositories that have a Claude review rule today (software-factory, claude-skills and three in egov-tech) and their organizations | yes, so no live rule stays outside Terraform; struts-modernization and the other organizations (egov-sandbox, pentagone-digital, egov-legacy) follow in phase 3 |
 
 ## Facts this plan relies on (checked 2026-11-19)
 
@@ -233,7 +233,7 @@ Each phase is useful on its own and can stop there.
 | Phase | What | Acceptance | Size |
 |---|---|---|---|
 | 1. Spike | this document's spike | GitHub: passed. Anthropic: mozilla passed (`0 to change`); ippontech still to run on Linux CI; D2 recommended | S, done for mozilla |
-| 2. Anthropic in code | the chosen provider manages the rules, service account (and workspaces, if the provider allows it keyless) of the three repositories, applied locally with your `ant` login | `plan` clean after import; one new rule created by Terraform works on a real pull request; `claude_federation.py` documented as the fallback | S |
+| 2. Anthropic in code | the chosen provider manages the rules, service account (and workspaces, if the provider allows it keyless) of the five repositories with a rule (D6), applied locally with your `ant` login | `plan` clean after import; one new rule created by Terraform works on a real pull request; `claude_federation.py` documented as the fallback | S |
 | 3. GitHub in code | org workflow permissions and variables of all six organizations, repository settings and variables of the factory repositories; the GitHub Apps `platform-read` and `platform-write` | `plan` clean after import; the egov-sofa default token permission set to `read` through a reviewed change | M |
 | 4. CI apply | platform repository (D1), state backend (D3), the Console `org:admin` rule, the environments `production-plan` and `production` | a pull request shows the GitHub plan and validates the Anthropic code; after a merge the plan on `main` shows both, and the saved plan is applied only after your approval, with no local login; a test pull request that edits the workflow gets neither an `org:admin` token nor the `platform-write` key (only `platform-read`, whose token cannot change anything), and its state access is read-only | M |
 | 5. `/factory-new` through the platform | the skill opens the platform pull request instead of running commands | a new repository from `/factory-new` gets its review working with no command and no login | S |
