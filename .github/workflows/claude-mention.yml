@@ -9,7 +9,7 @@ on:
 jobs:
   answer:
     permissions:
-      contents: read
+      contents: readthe rest of I28
       pull-requests: write
       id-token: write
     uses: ./.github/workflows/reusable-claude-mention.yml

@@ -1,0 +1,16 @@
+# CI: runs automatically on every push and pull request.
+# The actual steps live in the shared software-factory repo. `@v1` follows every compatible factory release;
+# a breaking change gets `@v2`, and this project moves to it only when you change the line below.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  ci:
+    uses: example/software-factory/.github/workflows/reusable-python.yml@v1
+    with:
+      python-version: "3.12"
+      package-manager: uv   # installs exactly what uv.lock pins

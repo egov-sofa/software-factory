@@ -24,9 +24,24 @@ class SelftestWorkflow(unittest.TestCase):
         uses = USES_RE.findall(self.text)
         self.assertTrue(uses)
         for action, comment in uses:
+            if action.startswith("./"):
+                continue   # this repository's own workflow or action, at the commit being tested
             with self.subTest(action):
                 self.assertRegex(action, r"^[\w.-]+/[\w./-]+@[0-9a-f]{40}$")
                 self.assertRegex(comment, r"#\s*v\d")
+
+    def test_runs_the_real_shared_services(self):
+        """The reusable workflows and the content-guard action are exercised from this commit, not copied."""
+        for local in ("./.github/workflows/reusable-node.yml", "./.github/workflows/reusable-python.yml",
+                      "./.github/workflows/reusable-generic.yml", "./.github/actions/content-guard"):
+            with self.subTest(local):
+                self.assertIn(f"uses: {local}", self.text)
+
+    def test_other_systems_outside_pull_requests(self):
+        """Linux on every pull request; macOS and Windows on main, weekly and on demand (inside the release gate)."""
+        self.assertIn('\'["ubuntu-latest", "macos-latest", "windows-latest"]\'', self.text)
+        self.assertIn("schedule:", self.text)
+        self.assertIn("workflow_dispatch:", self.text)
 
 
 if __name__ == "__main__":

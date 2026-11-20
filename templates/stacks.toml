@@ -1,0 +1,38 @@
+# The factory's stacks: one entry per template folder (not the _shared layer).
+# scripts/stacks.py reads it; scripts/tests/test_stacks.py checks the README, new-project.sh, the self-test,
+# /factory-new and each template's ci.yml and AGENTS.md against it. Adding a stack: docs/CUSTOMIZING.md.
+#
+#   description    the README "Use it for" column
+#   tools          the README "Tools included" column
+#   recommend_for  the phrase /factory-new uses to recommend this stack
+#   next_steps     what new-project.sh prints after scaffolding
+#   commands       what a developer and the self-test run, in order (each must appear in the template's AGENTS.md)
+#   lockfile       the tool new-project.sh locks dependencies with (none for generic)
+#   ci             the factory's reusable workflow the template's ci.yml calls, and the inputs it passes
+
+[stacks.typescript]
+description = "Web apps, APIs, CLIs in Node/TypeScript"
+tools = "TypeScript, Vitest (tests), ESLint (lint), `package-lock.json`"
+recommend_for = "web, API or CLI in JS"
+next_steps = "npm install && npm test"
+commands = ["npm ci", "npm run lint", "npm run build", "npm test"]
+lockfile = { tool = "npm", file = "package-lock.json", command = "npm install --package-lock-only --no-audit --no-fund" }
+ci = { workflow = "reusable-node.yml", with = { node-version = "22" } }
+
+[stacks.python]
+description = "APIs, scripts, data and AI work"
+tools = "uv (dependencies, `uv.lock`), pytest (tests), Ruff (lint + format), mypy (types)"
+recommend_for = "data, AI or scripting"
+next_steps = "uv sync && uv run pytest"
+commands = ["uv sync --locked", "uv run ruff check .", "uv run ruff format --check .", "uv run mypy",
+            "uv run pytest", "uv build"]
+lockfile = { tool = "uv", file = "uv.lock", command = "uv lock" }
+ci = { workflow = "reusable-python.yml", with = { python-version = "3.12", package-manager = "uv" } }
+
+[stacks.generic]
+description = "Any other language (Go, Rust, C#, Java…)"
+tools = "A `scripts/check.sh` you fill in; CI runs it"
+recommend_for = "anything else"
+next_steps = "edit scripts/check.sh and AGENTS.md for your language"
+commands = ["bash scripts/check.sh"]
+ci = { workflow = "reusable-generic.yml", with = {} }

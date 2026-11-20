@@ -1,6 +1,6 @@
 # Plan: Stack manifest and a real self-test (roadmap I31)
 
-**Status:** Approved (2026-11-20: every recommended answer in "Open questions" accepted)
+**Status:** Implemented (2026-11-20; decisions: the recommended answer to every open question)
 **Request:** "draft the I31 plan": roadmap I31: "Stack manifest and a real self-test. One `stacks.yaml` drives
 templates, CI, the self-test matrix, `new-project.sh` and the catalog (I10). The self-test calls the real
 `reusable-*.yml` and the content-guard action, on Linux, macOS and Windows. Why: adding a stack means five edits; a

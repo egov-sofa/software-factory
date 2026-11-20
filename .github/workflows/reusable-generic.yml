@@ -14,6 +14,10 @@ on:
         description: Script that runs lint, build and test
         type: string
         default: "scripts/check.sh"
+      working-directory:
+        description: Folder the setup command and the check script run in (for a project in a subfolder)
+        type: string
+        default: "."
 
 permissions:
   contents: read
@@ -23,6 +27,9 @@ jobs:
     name: Run checks
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 

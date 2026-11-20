@@ -74,6 +74,16 @@ class ClaudeCosts(unittest.TestCase):
                 self.assertIn("timeout-minutes: ${{ inputs.timeout-minutes }}", text)
 
 
+class GenericCI(unittest.TestCase):
+    def test_working_directory_is_an_input_that_defaults_to_the_root(self):
+        """Added for the self-test's fixture and for projects in a subfolder; existing callers are unchanged."""
+        text = (GITHUB / "workflows" / "reusable-generic.yml").read_text(encoding="utf-8")
+        lines = text.splitlines()
+        start = lines.index("      working-directory:")
+        self.assertIn('        default: "."', lines[start + 1:start + 4])
+        self.assertIn("working-directory: ${{ inputs.working-directory }}", text)
+
+
 class PythonCI(unittest.TestCase):
     """Existing @v1 callers keep pip; uv is chosen by the caller, never switched on by a file in the repository."""
 
