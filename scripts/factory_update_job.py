@@ -198,8 +198,8 @@ class Gh:
         return done.stdout
 
     def open_prs(self):
-        return json.loads(self.run("pr", "list", "--state", "open", "--json", "number,headRefName,title",
-                                   "--limit", "100") or "[]")
+        return json.loads(self.run("pr", "list", "--state", "open", "--json",
+                                   "number,headRefName,title,isCrossRepository", "--limit", "100") or "[]")
 
     def open_issue(self):
         found = json.loads(self.run("issue", "list", "--label", LABEL, "--state", "open", "--json", "number,title",
@@ -247,6 +247,23 @@ CI_NOTE = ("### CI has not run on this pull request\n\nA pull request opened wit
            "To run CI, close and reopen it, or push a commit to `{branch}`.\n")
 
 
+NO_DRAFT_RE = re.compile(r"draft[^\n]*not (?:supported|available)|not (?:supported|available)[^\n]*draft", re.I)
+NO_DRAFT_NOTE = ("**Draft pull requests are not available in this repository, so this one is open for review although "
+                 "it has unresolved conflicts: resolve them (see Conflicts below) before merging.**\n\n")
+
+
+def create_update_pr(gh, state, branch, title, body):
+    """Open the pull request, a draft when it has conflicts. Private repositories on GitHub Free have no drafts: then
+    it opens as a normal one, marked [conflicts] in the title and the first line, instead of failing every week."""
+    try:
+        return gh.create_pr(state["base"], branch, title, body, state["draft"])
+    except GhError as ex:
+        if not (state["draft"] and NO_DRAFT_RE.search(str(ex))):
+            raise
+    body.write_text(NO_DRAFT_NOTE + body.read_text(encoding="utf-8"), encoding="utf-8")
+    return gh.create_pr(state["base"], branch, f"[conflicts] {title}", body, False)
+
+
 def publish(project, workdir, gh=None):
     gh = gh or Gh()
     workdir = Path(workdir)
@@ -254,7 +271,10 @@ def publish(project, workdir, gh=None):
     if state["action"] == "none":
         print("nothing to publish")
         return 0
-    updates = [p for p in gh.open_prs() if p["headRefName"].startswith(BRANCH_PREFIX)]
+    # The job's own pull requests: a branch of this repository. A fork's branch can have the same name; it must
+    # neither stop the update nor be closed by it.
+    updates = [p for p in gh.open_prs()
+               if p["headRefName"].startswith(BRANCH_PREFIX) and not p.get("isCrossRepository", False)]
     issue = gh.open_issue()
     if state["action"] == "current":
         text = f"The project is at {state['version']} now; nothing to update."
@@ -280,7 +300,7 @@ def publish(project, workdir, gh=None):
         body = workdir / "pr.md"
         body.write_text(f"{intro}\n\n{details_md}\n{CI_NOTE.format(branch=branch)}", encoding="utf-8")
         try:
-            number = gh.create_pr(state["base"], branch, title, body, state["draft"])
+            number = create_update_pr(gh, state, branch, title, body)
         except GhError as ex:
             if not NOT_ALLOWED_RE.search(str(ex)):
                 raise

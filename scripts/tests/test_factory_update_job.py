@@ -28,8 +28,9 @@ class FakeGh:
     """Records the calls; prs and issue are what GitHub has open; deny makes pull request creation fail as GitHub
     does when the repository setting is off."""
 
-    def __init__(self, prs=(), issue=None, deny=False):
+    def __init__(self, prs=(), issue=None, deny=False, no_draft=False):
         self.prs, self.issue, self.deny, self.calls, self.created = list(prs), issue, deny, [], 0
+        self.no_draft = no_draft   # a private repository on GitHub Free: no draft pull requests
 
     def open_prs(self):
         return self.prs
@@ -41,6 +42,9 @@ class FakeGh:
         self.calls.append(("create_pr", base, head, title, Path(body).read_text(encoding="utf-8"), draft))
         if self.deny:
             raise job.GhError("gh pr create failed: GitHub Actions is not permitted to create or approve pull requests")
+        if draft and self.no_draft:
+            raise job.GhError("gh pr create failed: GraphQL: Draft pull requests are not supported in this "
+                              "repository. (createPullRequest)")
         self.prs.append({"number": 42, "headRefName": head, "title": title})
         return 42
 
@@ -257,8 +261,59 @@ class Conflicts(Base):
         job.publish(self.project, self.work, gh)
         self.assertTrue(gh.calls[0][5])   # --draft
 
+    def test_no_drafts_here_opens_a_marked_pull_request(self):
+        """Review of #32: private repositories on GitHub Free have no drafts; the job must not fail every week."""
+        write(self.project, {"CLAUDE.md": "# Claude\n\nproject line\n"})
+        commit(self.project, "own CLAUDE.md")
+        self.prepare()
+        gh = FakeGh(no_draft=True)
+        self.assertEqual(0, job.publish(self.project, self.work, gh))
+        self.assertEqual(["create_pr", "create_pr"], gh.names())
+        _, _, _, title, body, draft = gh.calls[1]
+        self.assertEqual("[conflicts] chore: update from software-factory v1.1.0", title)
+        self.assertFalse(draft)
+        self.assertTrue(body.startswith("**Draft pull requests are not available in this repository"))
+        self.assertIn("### Conflicts", body)
+        self.assertEqual(1, body.count("Draft pull requests are not available"))
+
+    def test_the_no_draft_message_is_recognised(self):
+        for text in ("Draft pull requests are not supported in this repository",
+                     "draft PRs are NOT AVAILABLE for this plan", "not supported: draft"):
+            self.assertRegex(text, job.NO_DRAFT_RE)
+        self.assertNotRegex("GitHub Actions is not permitted to create or approve pull requests", job.NO_DRAFT_RE)
+
 
 class Publish(Base):
+    def test_a_fork_branch_with_the_same_name_is_not_the_jobs(self):
+        """Review of #32: a fork's factory-update/<version> branch neither stops the update nor gets closed."""
+        self.prepare()
+        fork = {"number": 8, "headRefName": "factory-update/v1.1.0", "title": "contributor", "isCrossRepository": True}
+        gh = FakeGh(prs=[fork])
+        self.assertEqual(0, job.publish(self.project, self.work, gh))
+        self.assertEqual(["create_pr"], gh.names())   # opened, and the fork's pull request is not superseded
+        self.assertIn(fork, gh.prs)
+
+    def test_current_project_leaves_fork_pull_requests_open(self):
+        answers = fu.parse_answers((self.project / fu.ANSWERS).read_text(encoding="utf-8"))
+        write(self.project, {fu.ANSWERS: fu.dump_answers({**answers, "_commit": "unknown", "version": "v1.1.0"})})
+        commit(self.project, "updated locally")
+        self.prepare()
+        gh = FakeGh(prs=[{"number": 8, "headRefName": "factory-update/v1.0.9", "title": "x", "isCrossRepository": True},
+                         {"number": 3, "headRefName": "factory-update/v1.1.0", "title": "y", "isCrossRepository": False}])
+        job.publish(self.project, self.work, gh)
+        self.assertEqual([("comment", "pr", 3, "The project is at v1.1.0 now; nothing to update."), ("close", "pr", 3)],
+                         gh.calls)
+
+    def test_pr_list_asks_whether_the_branch_is_a_fork(self):
+        calls = []
+
+        class Recording(job.Gh):
+            def run(self, *args):
+                calls.append(args)
+                return "[]"
+        Recording().open_prs()
+        self.assertIn("isCrossRepository", calls[0][calls[0].index("--json") + 1])
+
     def test_pushes_opens_and_closes_older_ones(self):
         self.prepare()
         gh = FakeGh(prs=[{"number": 3, "headRefName": "factory-update/v1.0.9", "title": "old"},
