@@ -1,8 +1,8 @@
 # Plan: Terraform for the organizations and the Claude services (roadmap E1.4)
 
-**Status:** Proposed. Phase 1 (spike) half done: GitHub side done 2026-11-19; Anthropic side needed a team
-organization (the Admin API is not available to individual ones), converted 2026-11-20 (see
-[Spike results](#spike-phase-1-results)).
+**Status:** Proposed. Phase 1 (spike) done for one provider: GitHub side passed 2026-11-19, Anthropic side passed with
+mozilla 2026-11-20 after two prerequisites (a team organization, and the rule scopes reduced; see
+[Spike results](#spike-phase-1-results)); ippontech still to run on a machine that lets it start.
 **Request:** "Is it possible to also automate the `--apply --set-variables` run, which needs my admin login? My goal
 is to automate as much as possible. Can we also use Terraform? Analyse the opportunity across all my organizations and
 repositories." Then: "write the Terraform plan up and start the one-day test."
@@ -20,7 +20,7 @@ visible (drift), and every change is reviewed like code.
 | # | Decision | Options | Recommendation |
 |---|---|---|---|
 | D1 | Where the platform repository lives | a new repository in `pentagone-digital` (Team plan) / a public one in `egov-sofa` / a private one on a Free organization | **`pentagone-digital`**, private: the only organization whose plan lets a private repository protect `main` and require reviews; the platform repository can change every organization, so its `main` must be protected. Public works too but publishes the organizations' configuration |
-| D2 | Anthropic provider | `ippontech/anthropic` / `mozilla/anthropic` | **Decide after the Anthropic spike run.** Today: ippontech is the mature one (9 contributors, 208 Go test files, 159 releases) but needs a long-lived Admin API key for workspaces until its issue #524 lands; mozilla manages everything with the one keyless token but is four weeks old with one maintainer |
+| D2 | Anthropic provider | `ippontech/anthropic` / `mozilla/anthropic` | **mozilla for phase 2**, pinned, and ippontech run once more on a Linux CI runner before phase 4. Why: mozilla passed the spike (7 objects, `0 to change`) and manages workspaces with the one keyless `org:admin` token, while ippontech needs a long-lived Admin API key for workspaces until its issue #524 lands and could not be run here. The cost: mozilla is four weeks old with one maintainer, so pin the version and keep `claude_federation.py` as the fallback (R2) |
 | D3 | State backend | HCP Terraform / a cloud bucket you already run (S3, Azure Blob, GCS) with OIDC from Actions | whichever cloud the team already uses; **no secrets in state** (D5) makes the choice less critical |
 | D4 | Rules per repository or one per organization | per repository (today) / one per organization with a wildcard subject and `job_workflow_ref` pinned to `reusable-claude-review.yml@refs/tags/v1` | **per repository** for now: with Terraform a rule per repository costs nothing more to write, and keeps cost and audit per project |
 | D5 | Secrets | manage secret values in Terraform / keep them out | **out**: state would hold them. Terraform manages variables (IDs, not secrets) and settings only |
@@ -75,7 +75,7 @@ in [2026-11-19-terraform-platform-spike/](2026-11-19-terraform-platform-spike/RE
   plugins (`x509: certificate signed by unknown authority` in `GetProviderSchema`); `TF_DISABLE_PLUGIN_TLS=1` fixes it
   locally. CI runners are not affected.
 
-### Anthropic side: to run (needs your `org:admin` login)
+### Anthropic side: mozilla passed, ippontech not run (needs an `org:admin` login)
 
 **Prerequisite: a team organization.** The Admin API, which both providers and `claude_federation.py` use, is not
 available to an individual Anthropic organization: every call is refused (403 or 404) even for its owner. Convert the
@@ -105,17 +105,21 @@ That evidence settles D2.
   not exist" and "403". **Cause: the organization type.** It was an individual organization, and the Admin API is not
   available to individual accounts, whatever the role: the login belongs to the organization's owner. The fix is the
   prerequisite above (convert to a team organization); the organization was converted on 2026-11-20.
+
 **Second run (2026-11-20, after the conversion to a team organization):**
 
 - **mozilla reads everything now.** The two workspaces import with `0 to change`. The service account and the four
   rules are read, but the configuration mozilla generates for them fails its own validation, because of the real
   values below. So the provider cannot manage today's objects as they are; that is not a pass.
-- **Security finding: the rules mint org-admin tokens.** See
-  [Security finding: federation rule scopes](#security-finding-federation-rule-scopes-2026-11-20). Until it is
-  fixed, mozilla cannot represent the rules and the service account, so the spike cannot pass.
+- **Security finding: the rules minted org-admin tokens** (fixed the same day): see
+  [Security finding: federation rule scopes](#security-finding-federation-rule-scopes-2026-11-20).
 - **ippontech could not start on this machine:** Windows refused to run its provider executable (`Access is denied`,
   no Defender detection), which points at a policy that blocks unsigned executables (Smart App Control or similar).
   mozilla's executable ran. Retry on another machine or in CI, or allow the file, before judging ippontech.
+
+**Third run (2026-11-20, after the fix): mozilla passed.** All 7 objects (the service account, 4 rules, 2
+workspaces) imported, and the second plan showed `Plan: 7 to import, 0 to add, 0 to change, 0 to destroy`.
+ippontech still could not start on this machine.
 
 ### Provider comparison so far
 
@@ -125,9 +129,13 @@ That evidence settles D2.
 | Workspaces, spend limits with the keyless `org:admin` token | **no**: needs a long-lived Admin API key (issue #524) | **yes** |
 | Maturity | 9 contributors, 208 Go test files, releases almost daily | 1 maintainer, 9 Go test files, first release 2026-10-21 |
 | Known risks | #378 duplicates on retried creates; 104 open issues and pull requests | young; small team |
-| Spike result | to run | to run |
+| Spike result | not run: Windows would not start its executable | **passed**: 7 objects, `0 to change` (third run) |
 
 ## Security finding: federation rule scopes (2026-11-20)
+
+**Status: fixed on 2026-11-20.** Every rule now mints `workspace:developer` tokens, the service account is a
+`developer`, and real reviews in software-factory and claude-skills passed afterwards. What follows records the finding,
+why it mattered, and how it was fixed.
 
 **What was found.** The spike's second run read the real objects, and the official SDK confirmed them: **all 8 active
 federation rules** of the Anthropic organization mint tokens with `oauth_scope = "org:admin workspace:developer"`, and
@@ -139,32 +147,39 @@ made in the Console; the organization was converted to a team organization the s
 
 ![As found: a review or mention run exchanges its GitHub token at a federation rule whose scope is org:admin plus workspace:developer; the 10-minute token acts as a service account with the admin role, so besides the Claude API it reaches the Admin API: keys, members, rules, all workspaces. A note warns that write access to one repository is enough: a pull request that edits the workflow gets this token](../diagrams/rule-scopes-1.png)
 
-**Why it matters.** Any run a rule matches gets a 10-minute **org-admin** token over the whole Anthropic
+**Why it mattered.** Any run a rule matched got a 10-minute **org-admin** token over the whole Anthropic
 organization: it could create API keys, change members and rules, and spend from every workspace. The review rules
 match pull request runs, and most of them have no `job_workflow_ref` pin, so anyone with write access to one of
-those repositories can open a pull request that edits the workflow and get such a token.
+those repositories could open a pull request that edits the workflow and get such a token.
 
 ![Target: the same run exchanges its token at a rule whose scope is workspace:developer; the token acts as a service account with the developer role and reaches the Claude API only; the Admin API is out of reach](../diagrams/rule-scopes-2.png)
 
-**The fix, and its order.** Two changes, and the order matters, as a test on 2026-11-20 showed:
+**The fix, and its order.** Two changes, and the order matters, as a test on 2026-11-20 showed. All four steps are
+done.
 
 ![Reducing the rule scopes, in order: Claude Code snapshots the rules and the account; you set each rule to workspace:developer in the Console; Claude Code then sets the account's role to developer; a real review is re-run to prove it](../diagrams/rule-scopes-fix.png)
 
 1. **Snapshot** every rule and the service account (done: a local JSON file, outside the repository, from which every
    field can be restored).
-2. **Each rule to `workspace:developer`, in the Console.** The Admin API refuses this to OAuth callers: "OAuth
-   callers may only manage rules scoped to workspace:developer or workspace:inference; use a Console session". In
-   the Console: Settings, Workload identity, open each rule, set the scope to `workspace:developer`, save. Archive
-   the obsolete rule instead.
-3. **The service account's role to `developer`**, through the Admin API (it accepts this one). **Only after step 2:**
+2. **Each rule to `workspace:developer`, in the Console** (done by the owner; the obsolete rule archived). The Admin
+   API refuses this to OAuth callers: "OAuth callers may only manage rules scoped to workspace:developer or
+   workspace:inference; use a Console session". That is by design: if an OAuth caller could edit `org:admin` rules,
+   a stolen admin token (one minted by a federation rule included) could create more of them and keep its access; a
+   person in the Console breaks that chain. In the Console: Settings, Workload identity, open each rule, set the
+   scope, save.
+3. **The service account's role to `developer`**, through the Admin API (it accepts this one; done). **Only after
+   step 2:**
    tried first on 2026-11-20, it made every review fail at once (a rule asking for `org:admin` cannot mint a token
    for a `developer` account), so the role was restored from the snapshot within minutes and a re-run review passed
    again.
-4. **Re-run a real review** in each repository with a rule. If one fails, restore that change from the snapshot.
+4. **Re-run a real review** (done: software-factory and claude-skills passed). A `developer` account can only use the
+   workspaces it is a member of, so each rule's workspaces were checked against its memberships first: all match. The
+   three other repositories with a review rule were not re-run (a re-run posts a comment on someone's pull request);
+   their next pull request confirms them.
 
-**After the fix:** re-run this spike; mozilla's validation then matches the real values. And add the
-`job_workflow_ref` pin to the review rules (I19 in the roadmap), so even a `workspace:developer` token can only be
-obtained through the factory's reviewed workflow.
+**Still open:** the `job_workflow_ref` pin on the review rules (I19 in the roadmap), so that even a
+`workspace:developer` token can only be obtained through the factory's reviewed workflow. With the scopes reduced, a
+pull request that edits the workflow can now spend model calls from that workspace, not change the organization.
 
 ## Target architecture
 
@@ -217,7 +232,7 @@ Each phase is useful on its own and can stop there.
 
 | Phase | What | Acceptance | Size |
 |---|---|---|---|
-| 1. Spike | this document's spike | GitHub: done. Anthropic: both providers import with `0 to change`; D2 decided | S, half done |
+| 1. Spike | this document's spike | GitHub: passed. Anthropic: mozilla passed (`0 to change`); ippontech still to run on Linux CI; D2 recommended | S, done for mozilla |
 | 2. Anthropic in code | the chosen provider manages the rules, service account (and workspaces, if the provider allows it keyless) of the three repositories, applied locally with your `ant` login | `plan` clean after import; one new rule created by Terraform works on a real pull request; `claude_federation.py` documented as the fallback | S |
 | 3. GitHub in code | org workflow permissions and variables of all six organizations, repository settings and variables of the factory repositories; the GitHub Apps `platform-read` and `platform-write` | `plan` clean after import; the egov-sofa default token permission set to `read` through a reviewed change | M |
 | 4. CI apply | platform repository (D1), state backend (D3), the Console `org:admin` rule, the environments `production-plan` and `production` | a pull request shows the GitHub plan and validates the Anthropic code; after a merge the plan on `main` shows both, and the saved plan is applied only after your approval, with no local login; a test pull request that edits the workflow gets neither an `org:admin` token nor the `platform-write` key (only `platform-read`, whose token cannot change anything), and its state access is read-only | M |
