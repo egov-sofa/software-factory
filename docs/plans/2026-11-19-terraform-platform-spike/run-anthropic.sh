@@ -9,7 +9,9 @@
 # intercepted, Terraform cannot talk to its own plugins: prefix the command with TF_DISABLE_PLUGIN_TLS=1 (README).
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-token="$(ant auth print-credentials --profile admin --access-token)"
+# without ANTHROPIC_API_KEY: when it is set, ant prints that key instead of the profile's org:admin token
+token="$(env -u ANTHROPIC_API_KEY ant auth print-credentials --profile admin --access-token)"
+[[ "$token" == sk-ant-oat01-* ]] || { echo "error: ant did not return an org:admin OAuth token; log in again" >&2; exit 1; }
 
 plan() {
   # the token reaches only this terraform process: ippontech reads ANTHROPIC_AUTH_TOKEN, mozilla ANTHROPIC_OAUTH_TOKEN

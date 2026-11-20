@@ -1,7 +1,7 @@
 # Plan: Terraform for the organizations and the Claude services (roadmap E1.4)
 
-**Status:** Proposed. Phase 1 (spike) half done: GitHub side done 2026-11-19, Anthropic side waits for an `org:admin`
-run (see [Spike results](#spike-phase-1-results)).
+**Status:** Proposed. Phase 1 (spike) half done: GitHub side done 2026-11-19; Anthropic side blocked 2026-11-20 by an
+Admin API permission on the login (see [Spike results](#spike-phase-1-results)).
 **Request:** "Is it possible to also automate the `--apply --set-variables` run, which needs my admin login? My goal
 is to automate as much as possible. Can we also use Terraform? Analyse the opportunity across all my organizations and
 repositories." Then: "write the Terraform plan up and start the one-day test."
@@ -88,6 +88,22 @@ TF_DISABLE_PLUGIN_TLS=1 bash docs/plans/2026-11-19-terraform-platform-spike/run-
 **Pass:** both providers import every object and the second plan shows `0 to change`. Record here, per provider: the
 import result, any diff on the second plan, and whether the generated configuration is readable enough to maintain.
 That evidence settles D2.
+
+**First run (2026-11-20): blocked, no result on the providers yet.**
+
+- **Script bug, fixed:** with `ANTHROPIC_API_KEY` set in the shell, `ant auth print-credentials` prints that key
+  instead of the profile's `org:admin` token. The script now unsets it for `ant` too, and refuses anything that is not
+  an `sk-ant-oat01-` token.
+- **The Admin API refuses the login itself.** With a valid `org:admin` token for the organization that holds the rules
+  (checked with `ant auth status`), the official Python SDK gets `403 Missing permissions` on the organization and the
+  workspaces and `404` on the federation issuers, rules and service accounts. mozilla reports the same as "object does
+  not exist" and "403". So neither provider can be judged until the account behind the login can read these objects.
+  The likely cause, not confirmed: an `org:admin` token grants only what the account's role allows, and the Admin API
+  needs the admin or owner role. Check the role in the Console (Settings, Members), or run the spike as the person who
+  created the rules.
+- **ippontech could not start on this machine:** Windows refused to run its provider executable (`Access is denied`,
+  no Defender detection), which points at a policy that blocks unsigned executables (Smart App Control or similar).
+  mozilla's executable ran. Retry on another machine or in CI, or allow the file, before judging ippontech.
 
 ### Provider comparison so far
 
