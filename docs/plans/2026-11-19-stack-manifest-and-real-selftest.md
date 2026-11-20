@@ -101,7 +101,9 @@ fails before a release moves `v1`. Today it is found only after the move, by the
 5. `tests/fixtures/<stack>/` holds a scaffolded project per stack, made with `python scripts/stacks.py fixtures`
    (name `selftest-app`, owner `example`, factory remote `example/software-factory`, no git), lockfile included.
    `fixtures --check` (and a unit test that calls it with the fake npm and uv of `test_new_project.py`) fails when
-   any file other than the lockfile differs from a fresh scaffold, or when a file is missing or extra.
+   any file other than the lockfile differs from a fresh scaffold, or when a file is missing or extra. (Amendment
+   2026-11-20, review of #26: once I30 writes `.factory/answers.yml`, its `_commit` and `version` lines, which name
+   the factory commit, are not compared either; I30 adds that rule to `stacks.compare`.)
 6. `reusable-generic.yml` gets a `working-directory` input (default `"."`) used as `defaults.run.working-directory`.
    Its behaviour for existing callers is unchanged, and `test_shared_workflows.py` checks the default.
 7. `factory-selftest.yml`:
