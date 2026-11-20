@@ -110,15 +110,9 @@ That evidence settles D2.
 - **mozilla reads everything now.** The two workspaces import with `0 to change`. The service account and the four
   rules are read, but the configuration mozilla generates for them fails its own validation, because of the real
   values below. So the provider cannot manage today's objects as they are; that is not a pass.
-- **Security finding: the rules mint org-admin tokens.** Confirmed with the official SDK: **all 8 active federation
-  rules** of the organization have `oauth_scope = "org:admin workspace:developer"`, and the one service account they
-  act as has the organization role `admin`. This guide and `claude_federation.py` assume `workspace:developer` only.
-  Any run a rule matches gets a 10-minute org-admin token over the whole Anthropic organization; the factory's own
-  review rule has no `job_workflow_ref` pin, so anyone with write access can open a pull request that edits the
-  workflow and get one. Not known: whether the scopes were set this way from the start or changed by the conversion.
-  **To fix before phase 2** (an organization change, for the owner to decide): set every rule's scope to
-  `workspace:developer` and the service account's role to `developer`, then re-run this spike; mozilla's validation
-  then matches, and the review keeps working (it needs no admin scope).
+- **Security finding: the rules mint org-admin tokens.** See
+  [Security finding: federation rule scopes](#security-finding-federation-rule-scopes-2026-11-20). Until it is
+  fixed, mozilla cannot represent the rules and the service account, so the spike cannot pass.
 - **ippontech could not start on this machine:** Windows refused to run its provider executable (`Access is denied`,
   no Defender detection), which points at a policy that blocks unsigned executables (Smart App Control or similar).
   mozilla's executable ran. Retry on another machine or in CI, or allow the file, before judging ippontech.
@@ -132,6 +126,45 @@ That evidence settles D2.
 | Maturity | 9 contributors, 208 Go test files, releases almost daily | 1 maintainer, 9 Go test files, first release 2026-10-21 |
 | Known risks | #378 duplicates on retried creates; 104 open issues and pull requests | young; small team |
 | Spike result | to run | to run |
+
+## Security finding: federation rule scopes (2026-11-20)
+
+**What was found.** The spike's second run read the real objects, and the official SDK confirmed them: **all 8 active
+federation rules** of the Anthropic organization mint tokens with `oauth_scope = "org:admin workspace:developer"`, and
+the one service account they act as has the organization role **`admin`**. The 8 rules: 5 pull request reviews, 1
+`@claude` mention rule, 1 evals rule, and 1 obsolete rule whose subject uses the short `repo:OWNER/NAME` format, which
+these repositories' tokens no longer carry. None of them needs more than model calls. This guide and
+`claude_federation.py` assume `workspace:developer` only; how the rules got the admin scope is not known (they were
+made in the Console; the organization was converted to a team organization the same day).
+
+![As found: a review or mention run exchanges its GitHub token at a federation rule whose scope is org:admin plus workspace:developer; the 10-minute token acts as a service account with the admin role, so besides the Claude API it reaches the Admin API: keys, members, rules, all workspaces. A note warns that write access to one repository is enough: a pull request that edits the workflow gets this token](../diagrams/rule-scopes-1.png)
+
+**Why it matters.** Any run a rule matches gets a 10-minute **org-admin** token over the whole Anthropic
+organization: it could create API keys, change members and rules, and spend from every workspace. The review rules
+match pull request runs, and most of them have no `job_workflow_ref` pin, so anyone with write access to one of
+those repositories can open a pull request that edits the workflow and get such a token.
+
+![Target: the same run exchanges its token at a rule whose scope is workspace:developer; the token acts as a service account with the developer role and reaches the Claude API only; the Admin API is out of reach](../diagrams/rule-scopes-2.png)
+
+**The fix, and its order.** Two changes, and the order matters, as a test on 2026-11-20 showed:
+
+![Reducing the rule scopes, in order: Claude Code snapshots the rules and the account; you set each rule to workspace:developer in the Console; Claude Code then sets the account's role to developer; a real review is re-run to prove it](../diagrams/rule-scopes-fix.png)
+
+1. **Snapshot** every rule and the service account (done: a local JSON file, outside the repository, from which every
+   field can be restored).
+2. **Each rule to `workspace:developer`, in the Console.** The Admin API refuses this to OAuth callers: "OAuth
+   callers may only manage rules scoped to workspace:developer or workspace:inference; use a Console session". In
+   the Console: Settings, Workload identity, open each rule, set the scope to `workspace:developer`, save. Archive
+   the obsolete rule instead.
+3. **The service account's role to `developer`**, through the Admin API (it accepts this one). **Only after step 2:**
+   tried first on 2026-11-20, it made every review fail at once (a rule asking for `org:admin` cannot mint a token
+   for a `developer` account), so the role was restored from the snapshot within minutes and a re-run review passed
+   again.
+4. **Re-run a real review** in each repository with a rule. If one fails, restore that change from the snapshot.
+
+**After the fix:** re-run this spike; mozilla's validation then matches the real values. And add the
+`job_workflow_ref` pin to the review rules (I19 in the roadmap), so even a `workspace:developer` token can only be
+obtained through the factory's reviewed workflow.
 
 ## Target architecture
 

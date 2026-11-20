@@ -1,0 +1,49 @@
+# Source of rule-scopes-fix.drawio and .png (docs/plans/2026-11-19-terraform-platform.md, security finding).
+# Regenerate: bash docs/diagrams/build.sh rule-scopes-fix
+diagram:
+  title: Reducing the rule scopes, in order
+  statement: "The rules first, in the Console; the account's role only after, through the API; a real review proves it (if it fails, the snapshot restores the role)."
+  notation: bpmn
+  viewpoint: process
+  status: approved
+  version: "1"
+  author: software-factory
+  date: 2026-11-20
+pages:
+  - name: Fix
+    flow: left-to-right
+    items:
+      - container: fix
+        kind: pool
+        name: Least privilege for the review rules
+        items:
+          - container: claude
+            kind: lane
+            name: Claude Code
+            layout: row
+            align: middle
+            items:
+              - {node: start, kind: start-event, name: Finding confirmed, step: 1}
+              - {node: snapshot, kind: task, name: Snapshot rules and account, step: 2}
+              - {node: role, kind: task, name: Account role to developer, step: 4}
+          - container: you
+            kind: lane
+            name: You, in the Console
+            layout: row
+            align: middle
+            items:
+              - {node: scopes, kind: task, name: Each rule to workspace:developer, step: 3}
+          - container: github
+            kind: lane
+            name: GitHub
+            layout: row
+            align: middle
+            items:
+              - {node: review, kind: task, name: Re-run a real review, step: 5}
+              - {node: done, kind: end-event, name: "Least privilege, reviews pass", step: 6}
+    edges:
+      - {from: start, to: snapshot, kind: sequence}
+      - {from: snapshot, to: scopes, kind: sequence}
+      - {from: scopes, to: role, kind: sequence}
+      - {from: role, to: review, kind: sequence}
+      - {from: review, to: done, kind: sequence}

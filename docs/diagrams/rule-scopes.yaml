@@ -1,0 +1,62 @@
+# Source of rule-scopes.drawio and rule-scopes-1..2.png (docs/plans/2026-11-19-terraform-platform.md, security finding).
+# Regenerate: bash docs/diagrams/build.sh rule-scopes
+diagram:
+  title: Federation rule scopes
+  statement: "What a review run's token can reach: as found on 2026-11-20, and with least privilege."
+  notation: c4
+  viewpoint: current-vs-target
+  status: approved
+  version: "1"
+  author: software-factory
+  date: 2026-11-20
+pages:
+  - name: As found
+    title: "As found: every run gets an org-admin token"
+    statement: "Each rule mints org:admin and its account is an admin, so a matched run reaches the Admin API too."
+    flow: left-to-right
+    items:
+      - container: gh
+        kind: zone
+        name: GitHub Actions run
+        layout: column
+        items:
+          - {node: run, kind: component, name: Review or mention run, qualifier: "any run a rule matches"}
+          - {node: risk, kind: note, risk: true, name: "Write access to one repo is enough: a PR that edits the workflow gets this token"}
+      - container: anth
+        kind: system-boundary
+        name: Anthropic organization
+        layout: column
+        items:
+          - {node: rule, kind: component, name: Federation rules (8), qualifier: "scope org:admin + workspace:developer"}
+          - {node: sa, kind: component, name: Service account, qualifier: "role admin"}
+          - {node: claudeapi, kind: system, name: Claude API, qualifier: "model calls in one workspace"}
+          - {node: adminapi, kind: system, name: Admin API, qualifier: "keys, members, rules, all workspaces"}
+    edges:
+      - {from: run, to: rule, kind: identity, label: exchanges its GitHub token}
+      - {from: rule, to: sa, kind: sync, label: 10-minute token acting as}
+      - {from: run, to: claudeapi, kind: sync, label: what a review needs, primary: true}
+      - {from: run, to: adminapi, kind: sync, label: "what it can also do"}
+  - name: Target
+    title: "Target: least privilege"
+    statement: "Each rule mints workspace:developer and its account is a developer: the Admin API is out of reach."
+    flow: left-to-right
+    items:
+      - container: gh
+        kind: zone
+        name: GitHub Actions run
+        layout: column
+        items:
+          - {node: run, kind: component, name: Review or mention run, qualifier: "any run a rule matches"}
+      - container: anth
+        kind: system-boundary
+        name: Anthropic organization
+        layout: column
+        items:
+          - {node: rule, kind: component, name: Federation rules (8), qualifier: "scope workspace:developer"}
+          - {node: sa, kind: component, name: Service account, qualifier: "role developer"}
+          - {node: claudeapi, kind: system, name: Claude API, qualifier: "model calls in one workspace"}
+          - {node: adminapi, kind: system, name: Admin API, qualifier: "keys, members, rules, all workspaces"}
+    edges:
+      - {from: run, to: rule, kind: identity, label: exchanges its GitHub token}
+      - {from: rule, to: sa, kind: sync, label: 10-minute token acting as}
+      - {from: run, to: claudeapi, kind: sync, label: what a review needs, primary: true}
