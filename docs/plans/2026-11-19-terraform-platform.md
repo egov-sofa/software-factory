@@ -1,7 +1,8 @@
 # Plan: Terraform for the organizations and the Claude services (roadmap E1.4)
 
-**Status:** Proposed. Phase 1 (spike) half done: GitHub side done 2026-11-19; Anthropic side blocked 2026-11-20 by an
-Admin API permission on the login (see [Spike results](#spike-phase-1-results)).
+**Status:** Proposed. Phase 1 (spike) half done: GitHub side done 2026-11-19; Anthropic side needed a team
+organization (the Admin API is not available to individual ones), converted 2026-11-20 (see
+[Spike results](#spike-phase-1-results)).
 **Request:** "Is it possible to also automate the `--apply --set-variables` run, which needs my admin login? My goal
 is to automate as much as possible. Can we also use Terraform? Analyse the opportunity across all my organizations and
 repositories." Then: "write the Terraform plan up and start the one-day test."
@@ -76,6 +77,10 @@ in [2026-11-19-terraform-platform-spike/](2026-11-19-terraform-platform-spike/RE
 
 ### Anthropic side: to run (needs your `org:admin` login)
 
+**Prerequisite: a team organization.** The Admin API, which both providers and `claude_federation.py` use, is not
+available to an individual Anthropic organization: every call is refused (403 or 404) even for its owner. Convert the
+organization to a team organization in the Claude Console first. The egov organization was converted on 2026-11-20.
+
 The configuration for both providers is ready and validated (`terraform validate`): the shared service account and
 the four existing rules (software-factory's review rule; claude-skills' review, mention and evals rules), plus, with
 mozilla, the two workspaces. One command runs both, read-only:
@@ -97,10 +102,23 @@ That evidence settles D2.
 - **The Admin API refuses the login itself.** With a valid `org:admin` token for the organization that holds the rules
   (checked with `ant auth status`), the official Python SDK gets `403 Missing permissions` on the organization and the
   workspaces and `404` on the federation issuers, rules and service accounts. mozilla reports the same as "object does
-  not exist" and "403". So neither provider can be judged until the account behind the login can read these objects.
-  The likely cause, not confirmed: an `org:admin` token grants only what the account's role allows, and the Admin API
-  needs the admin or owner role. Check the role in the Console (Settings, Members), or run the spike as the person who
-  created the rules.
+  not exist" and "403". **Cause: the organization type.** It was an individual organization, and the Admin API is not
+  available to individual accounts, whatever the role: the login belongs to the organization's owner. The fix is the
+  prerequisite above (convert to a team organization); the organization was converted on 2026-11-20.
+**Second run (2026-11-20, after the conversion to a team organization):**
+
+- **mozilla reads everything now.** The two workspaces import with `0 to change`. The service account and the four
+  rules are read, but the configuration mozilla generates for them fails its own validation, because of the real
+  values below. So the provider cannot manage today's objects as they are; that is not a pass.
+- **Security finding: the rules mint org-admin tokens.** Confirmed with the official SDK: **all 8 active federation
+  rules** of the organization have `oauth_scope = "org:admin workspace:developer"`, and the one service account they
+  act as has the organization role `admin`. This guide and `claude_federation.py` assume `workspace:developer` only.
+  Any run a rule matches gets a 10-minute org-admin token over the whole Anthropic organization; the factory's own
+  review rule has no `job_workflow_ref` pin, so anyone with write access can open a pull request that edits the
+  workflow and get one. Not known: whether the scopes were set this way from the start or changed by the conversion.
+  **To fix before phase 2** (an organization change, for the owner to decide): set every rule's scope to
+  `workspace:developer` and the service account's role to `developer`, then re-run this spike; mozilla's validation
+  then matches, and the review keeps working (it needs no admin scope).
 - **ippontech could not start on this machine:** Windows refused to run its provider executable (`Access is denied`,
   no Defender detection), which points at a policy that blocks unsigned executables (Smart App Control or similar).
   mozilla's executable ran. Retry on another machine or in CI, or allow the file, before judging ippontech.
