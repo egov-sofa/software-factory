@@ -611,6 +611,13 @@ class AnswerValues(unittest.TestCase):
                 self.assertIn(key, str(ctx.exception))
         fu.check_answers(ANSWERS)
 
+    def test_a_factory_file_that_is_not_text_has_no_block(self):
+        """A binary template file (an icon no rule names) must not stop every update (second review of #30)."""
+        self.assertIsNone(fu.block_of(bytes([0x89, 0x50, 0x4E, 0x47, 0xFF, 0xFE, 0x00]), "favicon.ico"))
+        self.assertIsNone(fu.block_of(b"no marker here\n", "README.md"))
+        marked = f"text\n{fu.MARK_START}\nrules\n{fu.MARK_END}\n".encode("utf-8")
+        self.assertEqual([fu.MARK_START, "rules", fu.MARK_END], fu.block_of(marked, "AGENTS.md"))
+
     def test_template_must_be_a_folder_of_templates(self):
         with tempfile.TemporaryDirectory() as tmp:
             (Path(tmp) / "templates" / "generic").mkdir(parents=True)

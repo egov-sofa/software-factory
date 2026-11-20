@@ -263,8 +263,15 @@ def utf8(data, rel):
 
 
 def block_of(data, name):
-    """The marker block of a rendered file as a list of lines, or None."""
-    lines = utf8(data, name).split("\n")
+    """The marker block of a file the factory rendered, as a list of lines, or None. Lenient: a factory file without
+    the marker, or one that is not text (an icon no rule names), simply has no block. The project's own copy is
+    decoded strictly where it is changed."""
+    if MARK_START.encode("utf-8") not in data:
+        return None
+    try:
+        lines = data.decode("utf-8").split("\n")
+    except UnicodeDecodeError:
+        return None
     span = block_span(lines, name)
     return None if span is None else lines[span[0]:span[1] + 1]
 
@@ -852,7 +859,10 @@ def adopt(project, factory, onboarded, sets, yes, out=print):
     answers = apply_sets(infer(project, factory, onboarded, warnings.append), sets, factory)
     for warning in warnings:
         print(f"warning: {warning}", file=sys.stderr)
-    check_answers(answers, "the inferred answers")
+    try:
+        check_answers(answers, "the inferred answers")
+    except Usage as ex:   # e.g. a folder named MyApp: say how to correct it
+        raise Usage(f"{ex} Correct it with --set key=value (for a project name, also --set package_name=...).") from None
     out("Inferred answers (correct any of them with --set key=value):")
     out(dump_answers(answers).rstrip("\n"))
     if not yes:
