@@ -124,7 +124,8 @@ class Frontmatter(unittest.TestCase):
     def test_guarded_agent_declares_the_guard(self):
         hooks = ("hooks:\n  PreToolUse:\n    - matcher: \"Edit|Write|NotebookEdit|Bash\"\n      hooks:\n"
                  "        - type: command\n          command: 'python \"{{FACTORY_HOME}}/claude/hooks/agent_guard.py\" tester'\n")
-        tester = AGENT.replace("name: helper", "name: tester")
+        tester = AGENT.replace("name: helper", "name: tester").replace(
+            "Body.", "## Report format\n```\nResult: PASS | FAIL\nFailures: <n>\n```")   # a valid report: only the guard is tested
         with_guard = tester.replace("model: sonnet\n", "model: sonnet\n" + hooks)
         self.assertEqual([], self.agent(with_guard, name="tester"))   # the indented block parses
         missing = self.agent(tester, name="tester")
@@ -133,16 +134,40 @@ class Frontmatter(unittest.TestCase):
         self.assertTrue(any("must declare the factory guard" in text for _, text in wrong_agent), wrong_agent)
 
     def test_stdlib_only(self):
-        """The validator runs on a bare Python in CI and on any machine: it may import the standard library only."""
+        """The validator runs on a bare Python in CI and on any machine: it may import the standard library only, and
+        its sibling factory_state.py (the report header table), which is held to the same rule."""
         import ast
-        tree = ast.parse(SCRIPT.read_text(encoding="utf-8"))
-        modules = set()
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                modules |= {alias.name.split(".")[0] for alias in node.names}
-            elif isinstance(node, ast.ImportFrom):
-                modules.add((node.module or "").split(".")[0])
-        self.assertEqual(set(), modules - set(sys.stdlib_module_names))
+        for script, siblings in ((SCRIPT, {"factory_state"}), (SCRIPT.parent / "factory_state.py", set())):
+            tree = ast.parse(script.read_text(encoding="utf-8"))
+            modules = set()
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    modules |= {alias.name.split(".")[0] for alias in node.names}
+                elif isinstance(node, ast.ImportFrom):
+                    modules.add((node.module or "").split(".")[0])
+            with self.subTest(script.name):
+                self.assertEqual(set(), modules - set(sys.stdlib_module_names) - siblings)
+
+    def test_report_format_starts_with_the_header_lines(self):
+        """The conductor parses these lines (factory_state.py); an agent whose format lacks them would fail every run."""
+        def reviewer(block):
+            return AGENT.replace("name: helper", "name: reviewer").replace("Body.", "## Report format\n```\n" + block + "\n```")
+        self.assertEqual([], self.agent(reviewer("Verdict: APPROVE | CHANGES_REQUESTED\nBlocking: <n>"), name="reviewer"))
+        for block in ("Verdict: APPROVE | CHANGES_REQUESTED", "## Verdict: APPROVE | CHANGES_REQUESTED\nBlocking: <n>",
+                      "Blocking: <n>\nVerdict: APPROVE"):
+            with self.subTest(block=block):
+                found = self.agent(reviewer(block), name="reviewer")
+                self.assertTrue(any("must start with the header line" in text for _, text in found), found)
+        missing = self.agent(AGENT.replace("name: helper", "name: reviewer"), name="reviewer")
+        self.assertTrue(any("has no report format" in text for _, text in missing), missing)
+
+    def test_hard_coded_base_branch_is_reported(self):
+        for line in ("Run `git diff main...HEAD --stat`.", "Use `git log main..HEAD`.", "gh pr create --base main",
+                     "git diff origin/main...HEAD", "git diff master...HEAD"):
+            with self.subTest(line=line):
+                found = self.skill(SKILL.replace("Body.", line))
+                self.assertTrue(any("hard-coded base branch" in text for _, text in found), found)
+        self.assertEqual([], self.skill(SKILL.replace("Body.", "Never push to `main`; use `git diff <base>...HEAD`.")))
 
     def test_messages_never_hold_other_content(self):
         found = self.agent(AGENT.replace("model: sonnet", "model: sonnet\nsecret_key: s3cr3t-value"))

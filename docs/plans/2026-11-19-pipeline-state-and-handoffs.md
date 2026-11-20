@@ -1,6 +1,6 @@
 # Plan: Pipeline state and typed handoffs (roadmap I29)
 
-**Status:** Approved (2026-11-20: every recommended answer in "Open questions" accepted)
+**Status:** Implemented (2026-11-20; decisions: the recommended answer to every open question)
 **Request:** "Write an implementation plan for roadmap item I29" — roadmap I29: "Pipeline state and typed handoffs.
 `Stage:` and `Round:` in the plan, a 'Review rounds' log, `/factory-build --resume`, re-reviews that receive earlier
 findings, strict `Verdict:` and `Blocking:` headers, the base branch passed to every agent. Why: state lives only in
