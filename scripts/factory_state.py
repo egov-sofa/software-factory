@@ -86,10 +86,12 @@ def check_report(agent, text, ids=(), round_=1, root="."):
     elif agent in BLOCKING_TAGS:
         tags = "|".join(BLOCKING_TAGS[agent])
         counted = len(re.findall(rf"^\s*\d+\.\s*\[(?:{tags})\]", text, re.M))
+        # an earlier blocker the agent still sees open blocks as much as a new one (else round 2 could APPROVE it)
+        still_open = len(re.findall(rf"^\s*-?\s*{ID_RE}\s*:\s*still open\b", section(text, "Earlier findings") or "", re.M))
         blocking = int(values["blocking"])
-        if blocking != counted:
+        if blocking != counted + still_open:
             raise Problem(f"{agent} report: Blocking: {blocking}, but {counted} finding(s) are tagged "
-                          f"{' or '.join(BLOCKING_TAGS[agent])}")
+                          f"{' or '.join(BLOCKING_TAGS[agent])} and {still_open} earlier one(s) are still open")
         clean = "APPROVE" if agent == "reviewer" else "PASS"
         if values["verdict"] == clean and blocking:
             raise Problem(f"{agent} report: Verdict: {clean} with Blocking: {blocking}")

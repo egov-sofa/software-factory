@@ -39,7 +39,8 @@ review. Then:
 ## Report format
 Start the report with the header lines below, exactly as shown and before anything else: plain text, no `#` or
 `**`. The conductor reads them with `factory_state.py`; a report without them is sent back once.
-`Blocking` is the number of CRITICAL and HIGH findings; `PASS` only if it is 0.
+`Blocking` is the number of CRITICAL and HIGH findings, plus the earlier findings you report `still open`; `PASS`
+only if it is 0.
 ```
 Verdict: PASS | ISSUES_FOUND
 Blocking: <n>

@@ -94,6 +94,19 @@ class Headers(unittest.TestCase):
             self.check("reviewer", approve, ids=["REV-1.1", "REV-1.2"], round_=2)
         self.check("reviewer", approve, ids=["REV-1.1", "REV-1.2"], round_=1)   # round 1 has no earlier findings
 
+    def test_an_earlier_blocker_still_open_blocks(self):
+        """Round 2 with REV-1.1 unfixed and nothing new must not APPROVE (second review of #26)."""
+        earlier = "\n## Earlier findings\n- REV-1.1: still open: the last page is still skipped\n"
+        ok = "Verdict: CHANGES_REQUESTED\nBlocking: 1\n" + earlier
+        self.assertEqual("1", self.check("reviewer", ok, ids=["REV-1.1"], round_=2)["blocking"])
+        with self.assertRaisesRegex(fs.Problem, "Verdict: APPROVE with Blocking: 1|0 finding\\(s\\) are tagged .* 1 earlier"):
+            self.check("reviewer", "Verdict: APPROVE\nBlocking: 0\n" + earlier, ids=["REV-1.1"], round_=2)
+        # a new MAJOR and an earlier one still open: 2
+        two = "Verdict: CHANGES_REQUESTED\nBlocking: 2\n1. [MAJOR] a.py:1: x\n" + earlier
+        self.check("reviewer", two, ids=["REV-1.1"], round_=2)
+        sec = "Verdict: ISSUES_FOUND\nBlocking: 1\n\n## Earlier findings\n- SEC-1.1: still open: the query is built from input\n"
+        self.check("security-auditor", sec, ids=["SEC-1.1"], round_=2)
+
     def test_planner_names_a_plan_that_exists(self):
         with tempfile.TemporaryDirectory() as root:
             (Path(root) / "docs" / "plans").mkdir(parents=True)

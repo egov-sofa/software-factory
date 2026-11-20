@@ -44,7 +44,8 @@ review. Then:
 ## Report format
 Start the report with the header lines below, exactly as shown and before anything else: plain text, no `#` or
 `**`. The conductor reads them with `factory_state.py`; a report without them is sent back once.
-`Blocking` is the number of BLOCKER and MAJOR findings; `CHANGES_REQUESTED` if it is more than 0.
+`Blocking` is the number of BLOCKER and MAJOR findings, plus the earlier findings you report `still open`;
+`CHANGES_REQUESTED` if it is more than 0.
 ```
 Verdict: APPROVE | CHANGES_REQUESTED
 Blocking: <n>
