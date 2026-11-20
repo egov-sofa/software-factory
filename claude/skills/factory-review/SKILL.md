@@ -1,6 +1,6 @@
 ---
 name: factory-review
-description: Run the factory's reviewer and security-auditor agents in parallel on the current branch or uncommitted changes, without changing anything.
+description: Run the factory's reviewer and security-auditor agents in parallel on the current branch or uncommitted changes. Changes no project file; when the branch has a /factory-build plan with pipeline state, it records the review as a round in that plan (one commit of the plan only).
 argument-hint: "[optional: plan file or focus area]"
 ---
 

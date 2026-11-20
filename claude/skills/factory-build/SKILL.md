@@ -97,7 +97,7 @@ Committing between stages gives a checkpoint to return to if a later stage goes 
 ## Stage 4: Test 🧪
 Launch the `tester` agent with the plan path and the base branch. Set `Stage: review` and commit: with the tests it
 added (`test: …`), or only the plan (`git commit -m "chore: factory pipeline at review" -- <plan>`).
-If the result is `FAIL`, its failures are blocking findings `TEST-<round+1>.<n>` for the next round: record them when
+If the result is `FAIL`, its failures are blocking findings `TEST-<n>.<k>` for the next round, with `<n>` that round's number (Stage 5): record them when
 you log that round in Stage 5 (still run the review, so one round covers both).
 
 ## Stage 5: Review 🔍🛡️
