@@ -251,8 +251,9 @@ Needs the I1 evals (prompt behaviour; by hand until then, on a scratch project):
 - **Header retries cost an agent call**; a reviewer that keeps getting the header wrong stops the run for the user
   rather than looping.
 - **The "no new findings on unchanged code" rule can hide a real MAJOR bug found late.** Mitigated: BLOCKER and
-  CRITICAL are always allowed (`missed earlier`), and MINOR/MAJOR notes can still appear in the final summary as not
-  blocking. If the user prefers fresh eyes each round, drop rule 4(c) (open question 3).
+  CRITICAL are always allowed (`missed earlier`). A late MAJOR on unchanged code is not raised as a finding (so it
+  does not count in `Blocking:`); the reviewer may mention it in prose, and the conductor lists it in the summary as
+  not fixed (amendment 2026-11-20, review of #26: the earlier wording contradicted criterion 6). If the user prefers fresh eyes each round, drop rule 4(c) (open question 3).
 - **The model can still edit the state wrongly**; the `state` check after planner and docs-writer runs and the
   "trust the plan" rule reduce this, they do not prevent it.
 - **Out of scope:** resuming legacy plans; `/factory-review` writing to the plan's log (open question 2); evidence
