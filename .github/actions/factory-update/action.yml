@@ -12,7 +12,8 @@
 #     already proposes it;
 #   - otherwise pushes branch factory-update/<version> and opens a pull request (a draft when it has conflicts),
 #     closing older update pull requests. Changes to .github/workflows/ are left out (GITHUB_TOKEN cannot push them)
-#     and listed, with "run /factory-update locally";
+#     and listed, with "run /factory-update locally"; _workflows_from in the answers file records the commit they
+#     are still at, so a merged update is not proposed again;
 #   - when the repository does not let GitHub Actions open pull requests, or only workflow files change, it keeps
 #     one issue labelled factory-update up to date instead.
 # A pull request opened with GITHUB_TOKEN starts no workflows: its body says how to start CI.

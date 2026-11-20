@@ -89,7 +89,7 @@ def headlines(factory, base, target):
 def details(report, workflows, notes):
     """The Markdown shared by the pull request and the issue: the summary, the conflicts, the decisions, the workflow
     files left out, the release notes."""
-    lines, to, old = [], report["to"], report["from"]
+    lines, to = [], report["to"]
     titles = dict(fu.Summary.TITLES)
     shown = {k: [i for i in v if not i.startswith(WORKFLOWS)] for k, v in report["items"].items()}
     summary = [(k, v) for k, v in shown.items() if v and k not in ("conflicts", "decide")]
@@ -107,10 +107,11 @@ def details(report, workflows, notes):
     if workflows:
         lines += ["### Workflow files left out", "",
                   "`GITHUB_TOKEN` cannot change files under `.github/workflows/`, so the factory's changes to these "
-                  f"are not here, and `.factory/answers.yml` still records {old}:", ""]
+                  "are not here; `_workflows_from` in `.factory/answers.yml` records the factory commit they are "
+                  "still at:", ""]
         lines += [f"- {code(p)}" for p in workflows]
-        lines += ["", f"Run `/factory-update` locally (after merging this, if it is a pull request): it applies them "
-                  f"and records {to}.", ""]
+        lines += ["", "Run `/factory-update` locally (after merging this, if it is a pull request): it merges them from "
+                  "that commit and removes `_workflows_from`. Until then, this job keeps one issue open for them.", ""]
     if notes:
         lines += ["### Release notes", ""] + [f"- {code(n)}" for n in notes] + [""]
     return "\n".join(lines)
@@ -142,7 +143,9 @@ def prepare(project, workdir, factory_url=None):
         factory_url or f"https://github.com/{src}.git", str(factory), env=no_token_env())
     base_branch = git(project, "rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
     report_file = workdir / "update.json"
-    fu.update(project, factory, report=report_file)   # 0 or 1 (conflicts); a refusal raises Usage
+    # keep_workflows: the workflow files stay as they are, and _workflows_from records the commit they are at, so
+    # merging this pull request does not make the next run merge the same release again
+    fu.update(project, factory, report=report_file, keep_workflows=True)   # 0 or 1 (conflicts); refusal: Usage
     report = json.loads(report_file.read_text(encoding="utf-8"))
     to = report["to"]
     if not REF_RE.match(to):   # it names a branch: a release tag, never anything git could read as an option
@@ -151,9 +154,12 @@ def prepare(project, workdir, factory_url=None):
         notice(f"the project is already at or past software-factory {to}: nothing to update")
         state.write_text(json.dumps({"action": "none", "to": to}), encoding="utf-8")
         return 0
-    workflows = [p for p in report["changed"] if p.startswith(WORKFLOWS)]
-    for rel in workflows + ([fu.ANSWERS] if workflows else []):
-        restore(project, rel)   # the version is recorded only once the workflow changes are in too
+    workflows = report.get("workflows", [])
+    others = [p for p in report["changed"] if p != fu.ANSWERS]
+    if report["status"] == "workflows-pending" or (workflows and not others):
+        # Nothing to propose but workflow files, which the token cannot push: the issue says so, nothing is committed
+        # (and the answers file is left as it was, so a local /factory-update does it all)
+        restore(project, fu.ANSWERS)
     branch = BRANCH_PREFIX + to
     changes = bool(git(project, "status", "--porcelain", "--untracked-files=all").stdout.strip())
     notes = headlines(factory, report["base_commit"], report["commit"])
@@ -278,8 +284,8 @@ def publish(project, workdir, gh=None):
             gh.comment("issue", issue["number"], f"Superseded by pull request #{number} (software-factory {to}).")
             gh.close("issue", issue["number"])
         return 0
-    reason = ("Only workflow files change, and `GITHUB_TOKEN` cannot push those: run `/factory-update` locally to "
-              "bring them in.")
+    reason = ("Only workflow files are left to update, and `GITHUB_TOKEN` cannot push those: run `/factory-update` "
+              "locally to bring them in.")
     return keep_issue(gh, issue, title, workdir, reason, details_md)
 
 

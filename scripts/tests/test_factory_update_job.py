@@ -5,6 +5,7 @@ Run: python3 -m unittest discover -s scripts/tests
 """
 import json
 import os
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -116,7 +117,9 @@ class Prepare(Base):
         self.assertEqual("factory-update/v1.1.0", git(self.project, "branch", "--show-current").strip())
         self.assertIn("guard v2", self.head_file("scripts/check_content.py"))
         self.assertNotIn("# v2", self.head_file(".github/workflows/ci.yml"))   # left out
-        self.assertIn("version: v1.0.0", self.head_file(fu.ANSWERS))   # recorded only with the workflows
+        recorded = fu.parse_answers(self.head_file(fu.ANSWERS))
+        self.assertEqual(("v1.1.0", git(self.factory, "rev-parse", "v1.0.0").strip()),
+                         (recorded["version"], recorded["_workflows_from"]))   # the workflow files' own base
         self.assertEqual("", git(self.project, "status", "--porcelain"))
         self.assertEqual(f"{job.BOT_NAME}\n", git(self.project, "log", "-1", "--format=%an"))
         self.assertIn("- fix: a better guard", git(self.project, "log", "-1", "--format=%B"))
@@ -161,8 +164,77 @@ class OnlyWorkflows(Base):
         self.assertEqual(0, job.publish(self.project, self.work, gh))
         (call,) = gh.calls
         self.assertEqual(("save_issue", None, "chore: update from software-factory v1.1.0"), call[:3])
-        self.assertIn("Only workflow files change", call[3])
+        self.assertIn("Only workflow files are left to update", call[3])
+        self.assertNotIn("_workflows_from", (self.project / fu.ANSWERS).read_text(encoding="utf-8"))
         self.assertEqual("", git(self.origin, "branch", "--list", "factory-update/*"))   # nothing pushed
+
+
+class WorkflowsPending(Base):
+    """A release that changes a managed file and a workflow file: the merged pull request records _workflows_from, so
+    the next run does not merge the same release again (review of #32)."""
+
+    def merge_the_pull_request(self):
+        self.prepare()
+        git(self.project, "checkout", "-q", "main")
+        git(self.project, "merge", "-q", "--ff-only", "factory-update/v1.1.0")
+        self.work = self.tmp / "work-2"
+
+    def local_update(self):
+        done = subprocess.run([sys.executable, str(support.SCRIPTS / "factory_update.py"), "update", "--project",
+                               str(self.project), "--factory", str(self.factory)], capture_output=True, text=True,
+                              encoding="utf-8", errors="replace", env=support.environment(), check=False)
+        self.assertEqual(0, done.returncode, done.stdout + done.stderr)
+        return done
+
+    def answers(self):
+        return fu.parse_answers((self.project / fu.ANSWERS).read_text(encoding="utf-8"))
+
+    def test_next_run_keeps_an_issue_and_merges_nothing_again(self):
+        self.merge_the_pull_request()
+        mine = "#!/usr/bin/env python3\nprint('a local override')\n"
+        write(self.project, {"scripts/check_content.py": mine})
+        commit(self.project, "local override after the merge")
+        head = git(self.project, "rev-parse", "HEAD").strip()
+        state = self.prepare()
+        self.assertEqual(("issue", "v1.1.0", [".github/workflows/ci.yml"]),
+                         (state["action"], state["to"], state["workflows"]))
+        self.assertEqual(mine, (self.project / "scripts/check_content.py").read_text(encoding="utf-8"))
+        self.assertEqual("", git(self.project, "status", "--porcelain"))
+        self.assertEqual(head, git(self.project, "rev-parse", "HEAD").strip())   # no commit
+        gh = FakeGh()
+        job.publish(self.project, self.work, gh)
+        self.assertEqual(["save_issue"], gh.names())
+        self.assertIn("`.github/workflows/ci.yml`", gh.calls[0][3])
+        self.assertEqual("", git(self.origin, "branch", "--list", "factory-update/*"))   # nothing pushed
+
+    def test_check_passes_while_workflows_are_pending(self):
+        self.merge_the_pull_request()
+        self.assertIn("_workflows_from", self.answers())
+        self.assertEqual(0, fu.check(self.project, self.factory, out=lambda text: None))
+
+    def test_local_update_merges_the_workflows_and_removes_the_key(self):
+        self.merge_the_pull_request()
+        write(self.project, {"scripts/check_content.py": "#!/usr/bin/env python3\nprint('a local override')\n"})
+        commit(self.project, "local override")
+        self.local_update()
+        self.assertIn("# v2", (self.project / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
+        self.assertNotIn("_workflows_from", self.answers())
+        self.assertEqual("v1.1.0", self.answers()["version"])
+        self.assertIn("a local override", (self.project / "scripts/check_content.py").read_text(encoding="utf-8"))
+
+    def test_a_newer_release_merges_workflows_from_their_own_base(self):
+        self.merge_the_pull_request()
+        write(self.factory, {"templates/_shared/.github/workflows/ci.yml":
+                             CHANGES["templates/_shared/.github/workflows/ci.yml"] + "# v3\n"})
+        commit(self.factory, "fix: workflow v3")
+        git(self.factory, "tag", "v1.2.0")
+        self.local_update()
+        ci = (self.project / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        # from _commit (v1.1.0) the merge would read "# v2" as removed here and drop it silently
+        self.assertIn("# v2\n# v3\n", ci)
+        self.assertNotIn("<<<<<<<", ci)
+        self.assertEqual("v1.2.0", self.answers()["version"])
+        self.assertNotIn("_workflows_from", self.answers())
 
 
 class Conflicts(Base):

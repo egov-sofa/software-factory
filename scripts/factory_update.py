@@ -54,8 +54,12 @@ ANSWERS_COMMENT = '# Written by software-factory; /factory-update reads it. Edit
 MARK_START = "<!-- software-factory:standards:start -->"
 MARK_END = "<!-- software-factory:standards:end -->"
 # The answers in the order new-project.sh writes them; _src_path and _commit are Copier's names, to keep that door open.
-ANSWER_KEYS = ("_src_path", "_commit", "version", "template", "project_name", "package_name", "github_owner", "year",
-               "onboarded", "skip")
+ANSWER_KEYS = ("_src_path", "_commit", "version", "_workflows_from", "template", "project_name", "package_name",
+               "github_owner", "year", "onboarded", "skip")
+# Optional: the factory commit the workflow files are still at, after the weekly job updated everything else (its
+# token cannot push .github/workflows/). A local update merges them from there and removes the key.
+WORKFLOWS_FROM = "_workflows_from"
+WORKFLOWS = ".github/workflows/"
 STRING_KEYS = ("_src_path", "_commit", "version", "template", "project_name", "package_name", "github_owner", "year")
 PLACEHOLDERS = (("{{PROJECT_NAME}}", "project_name"), ("{{PACKAGE_NAME}}", "package_name"),
                 ("{{GITHUB_OWNER}}", "github_owner"), ("{{FACTORY_REPO}}", "_src_path"), ("{{YEAR}}", "year"))
@@ -187,6 +191,8 @@ def check_answers(answers, name=ANSWERS):
             raise Usage(f"{name}: missing '{key}'")
         if not isinstance(answers[key], str):
             raise Usage(f"{name}: '{key}' must be a string (quote it)")
+    if not isinstance(answers.get(WORKFLOWS_FROM, ""), str):
+        raise Usage(f"{name}: '{WORKFLOWS_FROM}' must be a commit")
     if not isinstance(answers.get("skip", []), list):
         raise Usage(f"{name}: 'skip' must be a list of paths")
     if not isinstance(answers.get("onboarded", False), bool):
@@ -659,11 +665,39 @@ def write_report(path, report):
         Path(path).write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
 
 
-def update(project, factory, to=None, out=print, report=None):
+def is_workflow(rel):
+    return rel.startswith(WORKFLOWS)
+
+
+def workflows_base(factory, answers):
+    """The factory commit the workflow files are still at, when the weekly job updated everything else (it cannot
+    push workflow files); None when they are at _commit like every other file."""
+    value = answers.get(WORKFLOWS_FROM)
+    if not value:
+        return None
+    found = commit_of(factory, value)
+    if not found:
+        raise Usage(f"{ANSWERS}: {WORKFLOWS_FROM} {value[:12]} is not in the factory's history (git fetch in the "
+                    "factory?)")
+    return found
+
+
+def pending_workflows(writes, deletes, summary):
+    """The workflow files an update would change or asks a decision about."""
+    found = {rel for rel in [*writes, *deletes] if is_workflow(rel)}
+    found |= {item.split(":", 1)[0] for item in summary.items["decide"] if is_workflow(item)}
+    return sorted(found)
+
+
+def update(project, factory, to=None, out=print, report=None, keep_workflows=False):
+    """Update the project to `to`. keep_workflows (the weekly job, whose token cannot push workflow files): leave
+    .github/workflows/ alone and record in _workflows_from the commit they are still at, so a later local update
+    merges them from there while every other file goes on from _commit."""
     answers = read_answers(project)
     clean_tree(project)
     warnings = []
     base_commit = base_ref(factory, answers, warnings.append)
+    wf_commit = workflows_base(factory, answers)
     explicit = to is not None
     if to is None:
         major = major_of(answers.get("version"))
@@ -679,36 +713,64 @@ def update(project, factory, to=None, out=print, report=None):
         print(f"warning: {warning}", file=sys.stderr)
     old = answers.get("version", UNKNOWN)
     current = {"status": "current", "from": old, "to": to, "base_commit": base_commit, "commit": target_commit,
-               "conflicts": 0, "items": {}, "changed": []}
-    if target_commit == base_commit:
-        out(f"Already at {to}: nothing to update.")
-        write_report(report, current)
-        return 0
+               "conflicts": 0, "items": {}, "changed": [], "workflows": []}
     # A project made from an untagged factory commit records the release before it (git describe), so the newest
     # release can be older than the project: rendering it would replace newer managed files with older ones and merge
     # the newer changes out, silently. Never move a project back.
-    if at_or_past(factory, target_commit, base_commit):
-        if not explicit:
-            out(f"Already at or past {to} (the project was made from factory commit {base_commit[:12]}): nothing "
+    if target_commit != base_commit and at_or_past(factory, target_commit, base_commit) and explicit:
+        raise Usage(f"--to {to} would move the project back from {base_commit[:12]} ({old}) to {to}, an older "
+                    "factory commit. Nothing was changed.")
+    only_workflows = at_or_past(factory, target_commit, base_commit)
+    if only_workflows:
+        if wf_commit is None:
+            out(f"Already at {to}: nothing to update." if target_commit == base_commit else
+                f"Already at or past {to} (the project was made from factory commit {base_commit[:12]}): nothing "
                 "to update.")
             write_report(report, current)
             return 0
-        raise Usage(f"--to {to} would move the project back from {base_commit[:12]} ({old}) to {to}, an older "
-                    "factory commit. Nothing was changed.")
+        # Every file but the workflow files is current: bring those from _workflows_from to the recorded commit.
+        target_commit, to = base_commit, base_commit
     rules = rules_at(factory, target_commit)
     if rules is None:
         raise Usage(f"{to} has no {KINDS_FILE}: it is older than updates and cannot be updated to")
-    base, _, _ = render(factory, base_commit, answers)
     target, commit, version = render(factory, to, answers)
+    if only_workflows:
+        version = old
+        target = {rel: data for rel, data in target.items() if is_workflow(rel)}
+        base = {}
+    else:
+        base, _, _ = render(factory, base_commit, answers)
+    if wf_commit is not None:   # the workflow files merge from the commit they are really at
+        wf_base, _, _ = render(factory, wf_commit, answers)
+        base = {**{r: d for r, d in base.items() if not is_workflow(r)},
+                **{r: d for r, d in wf_base.items() if is_workflow(r)}}
     writes, deletes, summary = plan_update(project, base, target, rules,
                                            ("project", f"factory {old}", f"factory {version}"))
-    writes[ANSWERS] = dump_answers({**answers, "_commit": commit, "version": version}).encode("utf-8")
+    pending = pending_workflows(writes, deletes, summary)
+    new_answers = {k: v for k, v in answers.items() if k != WORKFLOWS_FROM}
+    new_answers.update({"_commit": commit, "version": version})
+    if keep_workflows:
+        writes = {r: d for r, d in writes.items() if not is_workflow(r)}
+        deletes = [r for r in deletes if not is_workflow(r)]
+        for key in summary.items:
+            summary.items[key] = [i for i in summary.items[key] if not is_workflow(i)]
+        if only_workflows:
+            out(f"Only workflow files are behind ({', '.join(pending) or 'none any more'}): run /factory-update "
+                "locally to bring them in.")
+            write_report(report, {**current, "status": "workflows-pending" if pending else "current", "to": old,
+                                  "commit": base_commit, "workflows": pending})
+            return 0
+        if pending or wf_commit:
+            new_answers[WORKFLOWS_FROM] = wf_commit or base_commit   # the older one: where the files really are
+    writes[ANSWERS] = dump_answers(new_answers).encode("utf-8")
     apply(project, writes, deletes, rules)
     summary.print(f"software-factory update {old} -> {version}")
+    if keep_workflows and pending:
+        print("Workflow files left as they are (run /factory-update locally): " + ", ".join(pending))
     write_report(report, {"status": "updated", "from": old, "to": version, "base_commit": base_commit,
                           "commit": commit, "conflicts": len(summary.items["conflicts"]),
                           "items": {key: summary.items[key] for key, _ in Summary.TITLES if summary.items[key]},
-                          "changed": sorted([*writes, *deletes])})
+                          "changed": sorted([*writes, *deletes]), "workflows": pending if keep_workflows else []})
     return 1 if summary.items["conflicts"] else 0
 
 
@@ -719,6 +781,12 @@ def check(project, factory, out=print):
     for warning in warnings:
         print(f"warning: {warning}", file=sys.stderr)
     rendered, _, version = render(factory, commit, answers)
+    wf_commit = workflows_base(factory, answers)
+    if wf_commit is not None:   # each file against the commit it is really at
+        wf_rendered, _, _ = render(factory, wf_commit, answers)
+        rendered = {**{r: d for r, d in rendered.items() if not is_workflow(r)},
+                    **{r: d for r, d in wf_rendered.items() if is_workflow(r)}}
+        out(f"Workflow files are still at factory commit {wf_commit[:12]}: run /factory-update to bring them in.")
     rules = rules_at(factory, commit) or []
     changed = []
     for rel, data in sorted(rendered.items()):

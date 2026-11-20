@@ -114,7 +114,7 @@ which brings three limits:
 
 | Limit of `GITHUB_TOKEN` | What the job does |
 |---|---|
-| It cannot create or change files under `.github/workflows/` | Leaves those changes out, lists them in the body with "run `/factory-update` locally", and keeps the old version in `.factory/answers.yml` so the local run still brings them in. When only workflow files change, it opens an issue instead |
+| It cannot create or change files under `.github/workflows/` | Leaves those changes out and lists them in the body with "run `/factory-update` locally". The pull request records the new version as usual, plus `_workflows_from` in `.factory/answers.yml`: the factory commit the workflow files are still at. Updates merge the workflow files from that commit and every other file from `_commit`, so a merged update pull request is never proposed again; a local `/factory-update` brings the workflow files in and removes the key. While only workflow files are pending, the job keeps one issue open instead of a pull request |
 | A pull request it opens starts no workflows | The body says CI has not run and how to start it: close and reopen the pull request, or push a commit to it |
 | It may open pull requests only when the repository (or organization) setting **Settings → Actions → General → Workflow permissions → "Allow GitHub Actions to create and approve pull requests"** is on; it is off by default | Falls back to one issue labelled `factory-update` with the same summary, naming the setting; the branch is pushed, so a person can open the pull request from it |
 
