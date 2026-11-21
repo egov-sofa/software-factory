@@ -14,9 +14,9 @@
 # This costs money: every run calls the Claude API as you. The script sets no credential: it inherits the environment,
 # so ANTHROPIC_CUSTOM_HEADERS (the workspace header some keys need, evals/README.md) reaches every run.
 # Cases the machine's sandbox cannot run are left out, with a note: on Windows, or on Linux without bubblewrap and
-# socat, the `shell` and `shell-commands` cases and the Bash grants; where the sandbox cannot nest a user namespace
-# (GitHub's Ubuntu runners), the `shell-commands` cases. macOS sandboxes with Seatbelt and runs them all.
-# EVALS_SANDBOX and EVALS_NESTED_SANDBOX (yes|no) skip the checks.
+# socat, the `shell` and `shell-commands` cases and the Bash grants. On Linux the `shell-commands` cases run only with
+# EVALS_NESTED_SANDBOX=yes (see below). macOS sandboxes with Seatbelt and runs them all. EVALS_SANDBOX=yes|no skips
+# the bubblewrap check.
 #
 # Exit code: the CLI's (0 every case at or above the threshold, 1 a case below it, 2 the cost ceiling was hit);
 # 2 also for a usage error or a missing or too old claude.
@@ -62,20 +62,15 @@ PY=python3; "$PY" -c "" 2>/dev/null || PY=python
 
 # Every case is tagged portable, shell (it is granted Bash) or shell-commands (its shell commands must really run),
 # and --tag keeps a case that has any of the tags given: the probe (tagged probe) is never run from here.
-# Claude Code runs each Bash command in a sandbox: on Linux bubblewrap (with socat), inside which its helper makes a
-# second, nested user namespace. GitHub's Ubuntu runners refuse that nesting (it needs CAP_SYS_ADMIN there), so a
-# command fails although the run starts. EVALS_SANDBOX=yes|no and EVALS_NESTED_SANDBOX=yes|no skip the checks.
+# Claude Code runs each Bash command in a sandbox, on Linux bubblewrap (with socat), and plugin eval runs each run in
+# bubblewrap too, so the Bash sandbox is nested. On GitHub's Ubuntu runners every command then fails ("apply-seccomp:
+# … nested userns is capability-restricted"); in WSL it works. No cheap check tells the two apart (a hand-made nested
+# namespace fails in both), so the shell-commands cases are opt-in on Linux: EVALS_NESTED_SANDBOX=yes.
 has_sandbox() {
   case "${EVALS_SANDBOX:-}" in yes) return 0 ;; no) return 1 ;; esac
   command -v bwrap >/dev/null 2>&1 && command -v socat >/dev/null 2>&1 || return 1
   # installed is not enough: in a container, or with user namespaces off, bubblewrap cannot start at all
   bwrap --ro-bind / / --unshare-user --unshare-pid true >/dev/null 2>&1
-}
-nested_sandbox() {
-  case "${EVALS_NESTED_SANDBOX:-}" in yes) return 0 ;; no) return 1 ;; esac
-  command -v unshare >/dev/null 2>&1 || return 1
-  bwrap --ro-bind / / --dev /dev --proc /proc --unshare-user --unshare-pid -- \
-    unshare --user sh -c 'echo deny > /proc/self/setgroups' >/dev/null 2>&1
 }
 tags=(portable)
 grants=(Agent Edit Write)
@@ -90,7 +85,7 @@ case "$(uname -s)" in
   MINGW*|MSYS*) no_shell Windows ;;
   Darwin)   # Seatbelt: no bubblewrap, no user namespaces to nest
     tags+=(shell shell-commands)
-    grants+=("${shell_grants[@]}")
+    grants+=("${shell_grants[@]}" Bash)
     ;;
   *)
     if ! has_sandbox; then
@@ -98,11 +93,14 @@ case "$(uname -s)" in
     else
       tags+=(shell)
       grants+=("${shell_grants[@]}")
-      if nested_sandbox; then
+      if [ "${EVALS_NESTED_SANDBOX:-}" = yes ]; then
         tags+=(shell-commands)
+        # a shell-commands case grants itself plain Bash: its skill chains commands and sets variables, which no
+        # Bash(prefix:*) rule approves; every command still runs in the sandbox
+        grants+=(Bash)
       else
-        echo "note: the sandbox cannot nest a user namespace here (GitHub's Ubuntu runners), so shell commands"
-        echo "      fail: the cases tagged shell-commands are left out. Run them where it can (WSL, Linux, macOS)."
+        echo "note: the cases tagged shell-commands are left out: their commands fail where Claude Code's sandbox"
+        echo "      cannot nest (GitHub's runners). Where it can (WSL), set EVALS_NESTED_SANDBOX=yes."
       fi
     fi
     ;;
