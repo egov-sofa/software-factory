@@ -114,8 +114,10 @@ run (every message and tool call) is in the CI artifact, or kept locally with `-
    most two `llm` graders. Match the factory's fixed formats (report headers, `[BLOCKER] path:line`, the guard's
    refusal `hook error: <agent> may only edit`), never the agent's prose: an agent can write "my edit was refused"
    while the edit went through.
-4. Never commit something the content guard flags (`python3 scripts/check_content.py --all`): assemble a planted
-   secret in `scaffold.sh` from parts, as `security-finds-key-and-sqli` does.
+4. Never commit something the content guard flags (`python3 scripts/check_content.py --all`), and never a
+   key-shaped value, whole or split into parts: make a planted secret random in `scaffold.sh` when it runs, as
+   `security-finds-key-and-sqli` does (`random_chars`). The factory's pull request review treats a stored key under
+   `evals/` as a blocker.
 5. Add the case to `SCAFFOLDS` in `scripts/tests/test_evals_suite.py` (branch, planted line, review folder) and run
    `python3 -m unittest discover -s scripts/tests`.
 6. Run it once: `bash scripts/run-evals.sh --smoke --case <case-name>`.
