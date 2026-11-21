@@ -47,6 +47,17 @@ class RealBuild(unittest.TestCase):
         reviewer = (self.plugin / "agents" / "reviewer.md").read_text(encoding="utf-8")
         self.assertIn(f"{self.plugin.as_posix()}/standards/DEFINITION-OF-DONE.md", reviewer)
 
+    def test_every_path_the_agents_and_pipeline_skills_name_is_built(self):
+        """factory-review runs scripts/factory_state.py; a path left out breaks a skill only when it runs (case 8).
+        factory-new, -onboard and -update need a factory checkout with its history, which a build is not (I7)."""
+        pattern = re.compile(re.escape(self.plugin.as_posix()) + r"/([A-Za-z0-9_./-]+)")
+        files = list((self.plugin / "agents").glob("*.md")) + [
+            self.plugin / "skills" / name / "SKILL.md" for name in ("factory-build", "factory-review", "factory-ship")]
+        for path in files:
+            for rel in pattern.findall(path.read_text(encoding="utf-8")):
+                with self.subTest(file=path.name, rel=rel):
+                    self.assertTrue((self.plugin / rel.rstrip(".")).exists())
+
     def test_plugin_level_guard(self):
         """The fallback the probe made necessary: one PreToolUse hook for every tool call, on the agents' matcher."""
         raw = (self.plugin / "hooks" / "hooks.json").read_bytes()

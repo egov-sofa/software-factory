@@ -89,6 +89,11 @@ def build(out, root=ROOT):
     copy_tree(root / "claude" / "hooks", plugin / "claude" / "hooks",
               ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
     copy_tree(root / "standards", plugin / "standards")
+    # the pipeline skills (factory-build, -review, -ship) record their state with it; standard library only
+    state = root / "scripts" / "factory_state.py"
+    if state.is_file():
+        (plugin / "scripts").mkdir()
+        shutil.copy2(state, plugin / "scripts" / "factory_state.py")
     copy_tree(root / "evals", plugin / "evals", ignore=shutil.ignore_patterns("results", "__pycache__"))
     # forward slashes: the path goes into bash commands and Markdown, on Windows too
     render(plugin, plugin.as_posix())
