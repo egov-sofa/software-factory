@@ -339,7 +339,7 @@ class RunEvals(unittest.TestCase):
         self.assertEqual(0, done.returncode, done.stderr)
         self.assertEqual(["portable"], self.option(args, "--tag"))
         self.assertEqual(["Agent", "Edit", "Write"], self.option(args, "--allow-tools"))
-        self.assertIn("note: no bubblewrap or socat", done.stdout)
+        self.assertIn("note: no working bubblewrap and socat", done.stdout)
 
     def test_smoke_on_windows(self):
         done, args = self.run_evals("--smoke", "--case", "reviewer-*", FAKE_UNAME="MINGW64_NT-10.0-26300")

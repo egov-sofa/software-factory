@@ -67,7 +67,9 @@ PY=python3; "$PY" -c "" 2>/dev/null || PY=python
 # command fails although the run starts. EVALS_SANDBOX=yes|no and EVALS_NESTED_SANDBOX=yes|no skip the checks.
 has_sandbox() {
   case "${EVALS_SANDBOX:-}" in yes) return 0 ;; no) return 1 ;; esac
-  command -v bwrap >/dev/null 2>&1 && command -v socat >/dev/null 2>&1
+  command -v bwrap >/dev/null 2>&1 && command -v socat >/dev/null 2>&1 || return 1
+  # installed is not enough: in a container, or with user namespaces off, bubblewrap cannot start at all
+  bwrap --ro-bind / / --unshare-user --unshare-pid true >/dev/null 2>&1
 }
 nested_sandbox() {
   case "${EVALS_NESTED_SANDBOX:-}" in yes) return 0 ;; no) return 1 ;; esac
@@ -92,7 +94,7 @@ case "$(uname -s)" in
     ;;
   *)
     if ! has_sandbox; then
-      no_shell "no bubblewrap or socat"
+      no_shell "no working bubblewrap and socat"
     else
       tags+=(shell)
       grants+=("${shell_grants[@]}")
