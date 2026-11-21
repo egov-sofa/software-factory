@@ -160,7 +160,8 @@ class Frontmatter(unittest.TestCase):
         import ast
         for script, siblings in ((SCRIPT, {"factory_state", "factory_update"}),
                                  (SCRIPT.parent / "factory_state.py", set()),
-                                 (SCRIPT.parent / "factory_update.py", set())):
+                                 (SCRIPT.parent / "factory_update.py", set()),
+                                 (SCRIPT.parent / "factory_update_job.py", {"factory_update"})):
             tree = ast.parse(script.read_text(encoding="utf-8"))
             modules = set()
             for node in ast.walk(tree):

@@ -1,0 +1,28 @@
+# Factory update: every Monday, proposes the newest software-factory release of this project's major version as a
+# pull request (docs/SHARED-SERVICES.md in the software factory, "Updates"). It does nothing until a new release
+# exists, and nothing while a pull request for it is open.
+#   - The content guard, its hooks and .factory/standards/ are replaced; workflows and config files are merged with
+#     this project's edits (conflicts make the pull request a draft); the project's own files are left alone.
+#   - Changes to .github/workflows/ are listed but not included: GITHUB_TOKEN cannot push them. Run /factory-update
+#     in Claude Code to bring them in.
+#   - Opening pull requests needs the repository setting Settings > Actions > General > "Allow GitHub Actions to create
+#     and approve pull requests". Without it, the job keeps one issue labelled factory-update instead.
+#   - CI does not start on a pull request opened by GITHUB_TOKEN: close and reopen it, or push a commit to it.
+name: Factory update
+
+on:
+  schedule:
+    - cron: "41 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: example/software-factory/.github/actions/factory-update@v1

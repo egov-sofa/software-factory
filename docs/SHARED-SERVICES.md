@@ -72,7 +72,7 @@ existing project, copy the caller files from [`templates/_shared/`](../templates
 | Content guard | composite action: `.github/actions/content-guard` | Blocks secrets, public IP addresses, internal host names and denylisted terms in a pull request | `.github/workflows/content-guard.yml` |
 | Local hooks | managed files in the project, kept current by `/factory-update` | Run the same guard before each commit | `scripts/hooks/`, `scripts/check_content.py` |
 | Standards | managed files in the project, kept current by `/factory-update` | The factory's standards, read by every AI tool (through the `AGENTS.md` block), the agents and the Claude review (from the base branch) | `.factory/standards/*.md` |
-| Updates | script: `scripts/factory_update.py`, run by `/factory-update` | Brings a project to a newer factory release: managed files replaced, merged files merged 3-way, seeded files left alone (see below) | `.factory/answers.yml` |
+| Updates | script: `scripts/factory_update.py`, run by `/factory-update`; composite action: `.github/actions/factory-update` (weekly) | Brings a project to a newer factory release: managed files replaced, merged files merged 3-way, seeded files left alone (see below). Every Monday the action proposes the newest release as a pull request | `.factory/answers.yml`, `.github/workflows/factory-update.yml` |
 | Docs drift | composite action: `.github/actions/docs-drift` | A kind of Dependabot for documentation: reports documents whose sources changed after them, on pull requests and as a weekly issue. Does nothing until the project adds `.factory/docs.yml`. Setup and the private dashboard of all projects: [DOCS-DRIFT.md](DOCS-DRIFT.md) | `.github/workflows/docs-drift.yml` |
 
 ![Shared services: five thin callers in the project call the factory at v1, docs drift among them; the content guard reads the pull request, an untrusted zone, only as data; the two Claude workflows get a short-lived token for the Claude API](diagrams/shared-services.png)
@@ -96,6 +96,38 @@ file is never deleted. A file listed under `skip:` in the answers file is never 
 project's major version unless `--to` names another. `factory_update.py check` exits 1 when a managed file was
 edited and 3 when a newer release exists. Projects made before this have no answers file: `/factory-update` infers
 one (`adopt`) and asks the user to confirm it; `/factory-onboard` writes it for the projects it onboards.
+
+#### The weekly update pull request
+
+New projects get `.github/workflows/factory-update.yml`, which calls the `factory-update` action every Monday (and on
+demand). The action ([`scripts/factory_update_job.py`](../scripts/factory_update_job.py)) clones the factory named in
+`.factory/answers.yml` without a token, runs its own copy of `factory_update.py` on the checkout, and:
+
+- does nothing when the project has no answers file (a notice), or when an open pull request already proposes that
+  release;
+- skips a release you declined: its update pull request closed without merging, or its `factory-update` issue closed
+  as **not planned** (the job closes its own issues as completed, so only "not planned" counts). The next release is
+  proposed as usual;
+- when the project is at or past the newest release of its major version (a local `/factory-update`, a merged
+  update), closes any open update pull request and the `factory-update` issue with "The project is at <version> now";
+- otherwise pushes `factory-update/<version>` and opens a pull request with the summary, the conflicts (the pull
+  request is then a draft; where drafts are not available, as in private repositories on GitHub Free, a normal one
+  titled `[conflicts] …`), the decisions needed and the release notes' headlines, and closes any older update pull
+  request and the `factory-update` issue with a comment pointing at the new one. An open issue does not stop this:
+  every run tries the pull request again, so it opens once the repository setting below is turned on.
+
+The caller has `contents: write`, `pull-requests: write` and `issues: write`, and no secret: only `GITHUB_TOKEN`,
+which brings three limits:
+
+| Limit of `GITHUB_TOKEN` | What the job does |
+|---|---|
+| It cannot create or change files under `.github/workflows/` | Leaves those changes out and lists them in the body with "run `/factory-update` locally". The pull request records the new version as usual, plus `_workflows_from` in `.factory/answers.yml`: the factory commit the workflow files are still at. Updates merge the workflow files from that commit and every other file from `_commit`, so a merged update pull request is never proposed again; a local `/factory-update` brings the workflow files in and removes the key. While only workflow files are pending, the job keeps one issue open instead of a pull request |
+| A pull request it opens starts no workflows | The body says CI has not run and how to start it: close and reopen the pull request, or push a commit to it |
+| It may open pull requests only when the repository (or organization) setting **Settings → Actions → General → Workflow permissions → "Allow GitHub Actions to create and approve pull requests"** is on; it is off by default | Falls back to one issue labelled `factory-update` with the same summary, naming the setting; the branch is pushed, so a person can open the pull request from it. A later run never overwrites a branch already on GitHub, so commits pushed to it (conflict resolutions) are kept |
+
+Nothing from the project runs: the scripts come from the action at its tag and run with `python3 -I`, every git
+command runs with `core.hooksPath=/dev/null` (and `--no-verify` for the commit), the checkout keeps no credentials,
+and the token is given only to the step that pushes and calls `gh`.
 
 ### Why the content guard is an action, not a reusable workflow
 
