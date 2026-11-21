@@ -4,8 +4,8 @@
     python3 scripts/build_plugin.py --out DIR
 
 writes DIR/software-factory/ with .claude-plugin/plugin.json, hooks/hooks.json, agents/, skills/, claude/hooks/,
-standards/ and evals/ (without evals/results/). Every {{FACTORY_HOME}} is replaced by the built folder's absolute path, as install.sh does,
-so the agents find the standards and their guard hook; a placeholder left anywhere is an error.
+standards/ and evals/ (without evals/results/). Every {{FACTORY_HOME}} is replaced by the built folder's absolute
+path, as install.sh does, so the agents find the standards; a placeholder left anywhere is an error.
 
 A built copy, not a manifest at the repository root: an eval run sees only the plugin folder, and the placeholders must
 be filled in. The smallest form of I7's build step; I7 decides how the distributed plugin fills the paths.

@@ -53,7 +53,7 @@ command -v claude >/dev/null 2>&1 || fail "claude is not installed; install Clau
 have="$(claude --version 2>/dev/null | awk '{print $1}')"
 [ -n "$have" ] || fail "could not read the version of claude"
 oldest="$(printf '%s\n%s\n' "$CLAUDE_VERSION" "$have" | sort -V | head -n 1)"
-[ "$oldest" = "$CLAUDE_VERSION" ] || fail "claude $have is older than $CLAUDE_VERSION, which has the eval schema the cases use"
+[ "$oldest" = "$CLAUDE_VERSION" ] || fail "claude $have is older than $CLAUDE_VERSION (the eval schema the cases use)"
 
 PY=python3; "$PY" -c "" 2>/dev/null || PY=python
 

@@ -98,9 +98,9 @@ def summary(result):
             f"{delta:+.2f}" if delta is not None else "–",
             f"{agg.get('passRate', 0):.0%}", money(case_cost(case)),
             cell(", ".join(failed_graders(case))) or "–", cell("; ".join(notes(case))) or "–"]) + " |")
-    lines += ["", "Score: the weighted share of graders passed, averaged over the runs. Δ: score with the plugin minus "
-              "without, what the factory adds (its agents also bring their own model). Graders marked with-only "
-              "show whether the plugin fired and are not scored.", ""]
+    lines += ["", "Score: the weighted share of graders passed, averaged over the runs. Δ: score with the plugin "
+              "minus without, what the factory adds (its agents also bring their own model). Graders marked "
+              "with-only show whether the plugin fired and are not scored.", ""]
     return "\n".join(lines)
 
 

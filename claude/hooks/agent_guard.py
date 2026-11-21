@@ -310,7 +310,8 @@ def main(argv):
         reason = decide(agent, call)
     except Exception as ex:   # noqa: BLE001 - a crash would let the call through (Claude Code ignores exit 1)
         who = "an agent" if agent == FROM_INPUT else agent
-        reason = f"the factory's guard for {who} could not check this tool call ({type(ex).__name__}), so it is refused."
+        reason = (f"the factory's guard for {who} could not check this tool call ({type(ex).__name__}), "
+                  "so it is refused.")
     if reason:
         deny(reason)
     return 0
