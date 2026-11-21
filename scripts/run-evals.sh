@@ -13,7 +13,9 @@
 #
 # This costs money: every run calls the Claude API as you. The script sets no credential: it inherits the environment,
 # so ANTHROPIC_CUSTOM_HEADERS (the workspace header some keys need, evals/README.md) reaches every run.
-# On Windows a run cannot be granted a shell, so there the cases tagged `shell` and the Bash grants are left out.
+# Cases the machine's sandbox cannot run are left out, with a note: on Windows, or on Linux without bubblewrap and
+# socat, the `shell` and `shell-commands` cases and the Bash grants; where the sandbox cannot nest a user namespace
+# (GitHub's Ubuntu runners), the `shell-commands` cases. EVALS_SANDBOX and EVALS_NESTED_SANDBOX (yes|no) skip the checks.
 #
 # Exit code: the CLI's (0 every case at or above the threshold, 1 a case below it, 2 the cost ceiling was hit);
 # 2 also for a usage error or a missing or too old claude.
