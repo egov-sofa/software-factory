@@ -19,12 +19,12 @@ visible (drift), and every change is reviewed like code.
 
 | # | Decision | Options | Recommendation |
 |---|---|---|---|
-| D1 | Where the platform repository lives | a new repository in `pentagone-digital` (Team plan) / a public one in `egov-sofa` / a private one on a Free organization | **`pentagone-digital`**, private: the only organization whose plan lets a private repository protect `main` and require reviews; the platform repository can change every organization, so its `main` must be protected. Public works too but publishes the organizations' configuration |
+| D1 | Where the platform repository lives | a new repository in `egov-infra` (Team plan) / a public one in `egov-sofa` / a private one on a Free organization | **`egov-infra`**, private: the only organization whose plan lets a private repository protect `main` and require reviews; the platform repository can change every organization, so its `main` must be protected. Public works too but publishes the organizations' configuration |
 | D2 | Anthropic provider | `ippontech/anthropic` / `mozilla/anthropic` | **mozilla for phase 2**, pinned, and ippontech run once more on a Linux CI runner before phase 4. Why: mozilla passed the spike (7 objects, `0 to change`) and manages workspaces with the one keyless `org:admin` token, while ippontech needs a long-lived Admin API key for workspaces until its issue #524 lands and could not be run here. The cost: mozilla is four weeks old with one maintainer, so pin the version and keep `claude_federation.py` as the fallback (R2) |
 | D3 | State backend | HCP Terraform / a cloud bucket you already run (S3, Azure Blob, GCS) with OIDC from Actions | whichever cloud the team already uses; **no secrets in state** (D5) makes the choice less critical |
 | D4 | Rules per repository or one per organization | per repository (today) / one per organization with a wildcard subject and `job_workflow_ref` pinned to `reusable-claude-review.yml@refs/tags/v1` | **per repository** for now: with Terraform a rule per repository costs nothing more to write, and keeps cost and audit per project |
 | D5 | Secrets | manage secret values in Terraform / keep them out | **out**: state would hold them. Terraform manages variables (IDs, not secrets) and settings only |
-| D6 | First scope | the five repositories that have a Claude review rule today (software-factory, claude-skills and three in egov-tech) and their organizations | yes, so no live rule stays outside Terraform; struts-modernization and the other organizations (egov-sandbox, pentagone-digital, egov-legacy) follow in phase 3 |
+| D6 | First scope | the five repositories that have a Claude review rule today (software-factory, claude-skills and three in egov-tech) and their organizations | yes, so no live rule stays outside Terraform; struts-modernization and the other organizations (egov-sandbox, egov-infra, egov-legacy) follow in phase 3 |
 
 ## Facts this plan relies on (checked 2026-11-19)
 
@@ -49,7 +49,7 @@ visible (drift), and every change is reviewed like code.
   blocked the backend baseline of egov-legacy/struts-modernization), `github_repository_ruleset`,
   `github_organization_ruleset`, `github_actions_repository_oidc_subject_claim_customization_template`.
 - **GitHub Free:** private repositories get no rulesets or required reviews; Terraform cannot change that. Only
-  `pentagone-digital` is on the Team plan.
+  `egov-infra` is on the Team plan.
 
 ## Spike (phase 1) results
 

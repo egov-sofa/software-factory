@@ -182,7 +182,7 @@ These need an answer before E1 starts:
    it does not have to be internal. Today and the private case are drawn in
    [SHARED-SERVICES.md](SHARED-SERVICES.md#who-can-call-the-factory); the enterprise option:
 
-   ![Option, one GitHub Enterprise: an internal software-factory in egov-sofa serves claude-skills in egov-ai and a project in pentagone-digital](diagrams/cross-org-access-3.png)
+   ![Option, one GitHub Enterprise: an internal software-factory in egov-sofa serves claude-skills in egov-ai and a project in egov-infra](diagrams/cross-org-access-3.png)
 2. **Spec format.** Confirm the Spec Kit-compatible layout, or choose another option from section 4.
 3. **Default profile.** Should new projects start as `personal` or `team`? Who may raise a project to `enterprise`?
 4. **Architecture repository.** One shared repo for principles, ADRs and the technology radar, or a folder in each

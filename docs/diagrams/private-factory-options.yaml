@@ -38,7 +38,7 @@ pages:
                   - {node: skills, kind: component, name: claude-skills, qualifier: private}
               - container: pd
                 kind: subscription
-                name: Org pentagone-digital
+                name: Org egov-infra
                 items:
                   - {node: app, kind: component, name: a private project}
                   - {node: oss, kind: component, name: a public project, qualifier: cannot call a private factory}
@@ -67,7 +67,7 @@ pages:
             layout: column
             items:
               - {node: skills, kind: component, name: claude-skills, qualifier: "moved from egov-ai", lifecycle: planned}
-              - {node: app, kind: component, name: client project, qualifier: "moved from pentagone-digital", lifecycle: planned}
+              - {node: app, kind: component, name: client project, qualifier: "moved from egov-infra", lifecycle: planned}
     edges:
       - {from: skills, to: factory, kind: sync, label: "uses @v1", primary: true}
       - {from: app, to: factory, kind: sync, label: "uses @v1"}
@@ -123,7 +123,7 @@ pages:
           - {node: skills, kind: component, name: claude-skills}
       - container: pd
         kind: tenant
-        name: Org pentagone-digital
+        name: Org egov-infra
         layout: column
         items:
           - {node: mpd, kind: component, name: software-factory copy, qualifier: "private, read-only", lifecycle: planned}

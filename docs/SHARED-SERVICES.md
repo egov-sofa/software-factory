@@ -230,7 +230,7 @@ setup on the factory side. Two things follow:
   all actions and reusable workflows", or the "select" option with `egov-sofa/software-factory/*` added. This matters
   for `egov-ai/claude-skills`, which lives in another organization.
 
-![Today, a public factory: claude-skills in egov-ai and a project in pentagone-digital call software-factory in egov-sofa at v1](diagrams/cross-org-access-1.png)
+![Today, a public factory: claude-skills in egov-ai and a project in egov-infra call software-factory in egov-sofa at v1](diagrams/cross-org-access-1.png)
 
 If the factory is ever made private, it can only serve repositories of the same owner: private workflows cannot be
 shared across organizations. See [CUSTOMIZING.md](CUSTOMIZING.md#why-the-factory-repo-is-public).

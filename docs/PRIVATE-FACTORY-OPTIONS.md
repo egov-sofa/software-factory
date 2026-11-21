@@ -4,7 +4,7 @@
 [ENTERPRISE-VISION.md](ENTERPRISE-VISION.md#7-open-questions-for-the-next-analysis) and roadmap item E1.6.
 
 **Question:** can the factory become private while projects in the other organizations (`egov-ai`,
-`pentagone-digital`, …) keep using it? The same person owns every one of these organizations.
+`egov-infra`, …) keep using it? The same person owns every one of these organizations.
 
 **Short answer:** not as things are wired today. GitHub decides by the **owner of the repository**, not by the person
 who owns the organizations: a private repository shares its workflows and actions with its own organization only,
@@ -35,8 +35,32 @@ Two rules of the enterprise case matter here:
   the factory private and calls it directly.
 
 **Price.** GitHub's pricing page (2026-11-21): Enterprise **$21 per user / month**, Team $4. It includes an
-"Enterprise Account to centrally manage multiple organizations". The page does not say how a person who belongs to
-several organizations of one enterprise is counted; check GitHub's billing documentation before deciding.
+"Enterprise Account to centrally manage multiple organizations".
+
+**How people are counted** (GitHub's billing documentation, read 2026-11-21 from `github/docs`:
+`content/billing/reference/github-license-users.md`, `data/reusables/enterprise-licensing/unique-user-licensing-model.md`,
+`data/reusables/billing/metered-license-measures.md`):
+
+- **Once per person, across the whole enterprise.** "Each user only consumes one license, no matter how many [GitHub
+  Enterprise Server] instances the user uses, or how many organizations the user is a member of." You alone, owner of
+  `egov-sofa`, `egov-ai`, `egov-infra` and the others, are **one license: $21 a month, $252 a year**, not one per
+  organization. Each other person who is a member of any organization adds one.
+- **Who is billed:** organization members and owners; enterprise owners who are a member of at least one of its
+  organizations; outside collaborators on private or internal repositories (each counted once, however many
+  repositories); dormant members.
+- **Who is not:** enterprise owners who belong to no organization, billing managers, outside collaborators on public
+  repositories, people added to the enterprise but to none of its organizations. GitHub Apps (the docs-drift and update
+  jobs' tokens) are not user accounts, so they take no license; a "machine user" account would.
+- **Usage-based billing:** each month you pay for the distinct people who held a license at some point that month,
+  pro rata from the day they started. Pending invitations take no license.
+- **The Team plan goes away** for an organization that joins: it is billed through the enterprise, so `egov-infra`
+  would not pay $4 and $21 for the same person.
+
+**Trial.** A 30-day trial needs no payment method and gives up to 50 licenses. Existing organizations can be
+transferred into it, and their own billing is paused during the trial. Two limits: an organization with a GitHub
+Marketplace app installed (free or paid) cannot be transferred, and organizations created during the trial cannot
+leave the enterprise until it is bought. A trial is enough to test option A with real projects before paying
+(`content/admin/overview/setting-up-a-trial-of-github-enterprise-cloud.md`).
 
 ### True of every private option
 
@@ -57,15 +81,16 @@ several organizations of one enterprise is counted; check GitHub's billing docum
 
 ### A. One GitHub Enterprise account
 
-![A. One GitHub Enterprise account: a private software-factory in egov-sofa serves claude-skills in egov-ai and a private project in pentagone-digital; a public project can no longer call it](diagrams/private-factory-options-1.png)
+![A. One GitHub Enterprise account: a private software-factory in egov-sofa serves claude-skills in egov-ai and a private project in egov-infra; a public project can no longer call it](diagrams/private-factory-options-1.png)
 
 Create an enterprise account, invite the organizations into it, set the factory's access to the enterprise. Calls stay
 `egov-sofa/software-factory/…@v1`: **no change in any project**.
 
 - **For:** the native answer; nothing to build or keep in sync. The enterprise also brings what E1 needs anyway:
   rulesets and policies for every organization, the audit log, single sign-on.
-- **Against:** $21 per user per month. Public repositories can no longer call the factory; a public project would keep
-  its own copy of the workflows (option E for that project only).
+- **Against:** $21 per person per month, counted once across all organizations (you alone: $252 a year). Public
+  repositories can no longer call the factory; a public project would keep its own copy of the workflows (option E for
+  that project only).
 - **Effort:** S. Settings plus the update job's App token.
 
 ### B. Every repository in one organization
@@ -97,7 +122,7 @@ the weekly update pull request, which reads the private factory with the App tok
 
 ### D. A private copy in each organization
 
-![D. A private copy in each organization: the factory's Release workflow pushes the tag into a read-only software-factory copy in egov-ai and in pentagone-digital; each project calls its own organization's copy](diagrams/private-factory-options-4.png)
+![D. A private copy in each organization: the factory's Release workflow pushes the tag into a read-only software-factory copy in egov-ai and in egov-infra; each project calls its own organization's copy](diagrams/private-factory-options-4.png)
 
 On each release, the factory's Release workflow (with a GitHub App installed in every organization) pushes the new
 tags into a private, read-only `software-factory` in each organization. A project calls its own organization's copy,
@@ -135,7 +160,7 @@ actions into each project.
 | Public projects can use it | **no** | **no** | yes | **no** | yes |
 | Change in projects | none | transfer | one `uses:` change | repo name | workflows become files |
 | New machinery | App token | none | App token, second repo | App, copies, sync | App token, guard change |
-| Cost | $21/user/month | free | free | free | free |
+| Cost | $21/person/month, once across all orgs | free | free | free | free |
 | Effort | S | S per repo | M | M | M–L |
 
 ## Recommendation
@@ -154,6 +179,8 @@ It depends on **what has to be private**:
 
 1. What must not be public: the whole factory, or its standards, agents and plans only?
 2. Do any public repositories need the factory's workflows?
-3. Is GitHub Enterprise ($21 per user per month) acceptable, given that E1 needs most of what it brings?
+3. Is GitHub Enterprise acceptable: $21 per person per month, each person counted once whatever the number of
+   organizations ($252 a year for you alone), given that E1 needs most of what it brings? A 30-day trial can test it
+   first.
 4. Which GitHub App do the update job (and later the release workflow) use: the docs-drift App, or a new one with
    only `contents: read` on the factory?
