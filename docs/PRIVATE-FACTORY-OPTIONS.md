@@ -242,6 +242,10 @@ gh api repos/egov-sofa/software-factory/actions/permissions/access --jq .access_
 It prints `none`, `user`, `organization` or `enterprise`. Option A needs `enterprise`. The same setting is in
 **Settings → Actions → General → Access**; it only appears on a private or internal repository.
 
+**On a public repository** the command fails with `Access policy only applies to internal and private repositories.
+(HTTP 422)`. That is not an error to fix: it confirms the repository is still public, which is the expected answer for
+the factory until step 7.
+
 ### Step 1. Before you start (10 minutes)
 
 1. **Find the repositories that call the factory, and their visibility.** In each organization:
@@ -259,7 +263,8 @@ It prints `none`, `user`, `organization` or `enterprise`. Option A needs `enterp
    trial and buy Enterprise directly.
 3. **Choose the factory's future visibility** (see [option A](#a-one-github-enterprise-account)): **internal** if any
    caller is or may become internal; **private** only if every caller stays private.
-4. **Note the factory's current state**, to compare later: `gh repo view egov-sofa/software-factory --json visibility`.
+4. **Note the factory's current state**, to compare later: `gh repo view egov-sofa/software-factory --json visibility`
+   prints `PUBLIC`, and the `access_level` command above answers HTTP 422 because the factory is public.
 
 ### Step 2. Create the enterprise account (trial)
 
