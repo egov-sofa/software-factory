@@ -94,7 +94,10 @@ class Summary(unittest.TestCase):
         self.assertIn("error in 1 run(s): API Error: 529 overloaded \\| retry later", row[8])
         # the first Actions run: every run errored, yet a case whose graders need nothing to happen scored 1.00
         result["cases"][0]["aggregates"]["score"] = 1.0
-        self.assertEqual("**error**", table_row(eval_summary.summary(result), "_probe")[1])
+        result["aggregates"]["casesPassed"] = 1   # what the CLI counts
+        text = eval_summary.summary(result)
+        self.assertEqual("**error**", table_row(text, "_probe")[1])
+        self.assertIn("Cases passed: 0 of 1;", text)   # review of #37: the header agrees with the rows
 
     def test_a_baseline_error_leaves_the_verdict_to_the_with_arm(self):
         """Review of #37: an errored run without the plugin makes Δ unreliable, not the factory's result."""

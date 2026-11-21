@@ -69,37 +69,42 @@ def notes(case):
     return found
 
 
+def verdict(case, threshold):
+    """A run that ended on an error was not graded: a case can "pass" on graders that need nothing to happen (the first
+    Actions run showed one at 1.00 with both runs errored), so an error of the with-plugin arm wins over the score. A
+    baseline error only shows in Notes: it makes the difference unreliable, not the factory's result. (The job still
+    fails on any errored run: the CLI then exits non-zero whatever the scores.)"""
+    if any(run.get("error") for run in (case.get("arms") or {}).get("with") or []):
+        return "**error**"
+    return "pass" if (case.get("aggregates") or {}).get("score", 0) >= threshold else "**below threshold**"
+
+
 def summary(result):
     suite = result.get("suite") or {}
     threshold = suite.get("threshold", 0)
     two_arms = suite.get("ablation") == "with-without"
     totals = result.get("aggregates") or {}
+    cases = result.get("cases") or []
+    passed = sum(verdict(case, threshold) == "pass" for case in cases)   # the rows' verdicts, not the CLI's count
     plugins = ", ".join(f"{p.get('name')} {p.get('version', '')}".strip() for p in suite.get("plugins") or [])
     lines = ["## Evals", ""]
     if result.get("partial"):
         lines += [PARTIAL.get(result.get("partialReason"), "**Partial result:** not every case ran."), ""]
     lines += [f"Claude Code {result.get('claudeVersion', '?')}, plugin {plugins or '?'}, model "
               f"{suite.get('modelOverride') or 'default'}, {'with and without the plugin' if two_arms else 'one arm'}"
-              f", threshold {threshold}. Cases passed: {totals.get('casesPassed', 0)} of "
-              f"{totals.get('casesTotal', 0)}; overall score {totals.get('overallScore', 0):.2f}"
+              f", threshold {threshold}. Cases passed: {passed} of "
+              f"{len(cases)}; overall score {totals.get('overallScore', 0):.2f}"
               + (f", mean difference {totals['meanDelta']:+.2f}" if totals.get("meanDelta") is not None else "")
               + f". Cost {money(result.get('costUsd') or 0)}, {result.get('durationSeconds', 0)} s.", ""]
     lines += ["| Case | Result | Score with | Score without | Δ | Pass rate | Cost | Failed graders (with) | Notes |",
               "|---|---|---|---|---|---|---|---|---|"]
-    for case in result.get("cases") or []:
+    for case in cases:
         agg = case.get("aggregates") or {}
         score = agg.get("score", 0)
         without = agg.get("scoreWithout")
         delta = agg.get("delta")
-        # a run that ended on an error was not graded: a case can "pass" on graders that need nothing to happen
-        # (the first Actions run showed one at 1.00 with both runs errored), so an error of the with-plugin arm wins
-        # over the score. A baseline error only shows in Notes: it makes Δ unreliable, not the factory's result.
-        if any(run.get("error") for run in (case.get("arms") or {}).get("with") or []):
-            verdict = "**error**"
-        else:
-            verdict = "pass" if score >= threshold else "**below threshold**"
         lines.append("| " + " | ".join([
-            cell(case.get("name", "?")), verdict, f"{score:.2f}",
+            cell(case.get("name", "?")), verdict(case, threshold), f"{score:.2f}",
             f"{without:.2f}" if without is not None else "–",
             f"{delta:+.2f}" if delta is not None else "–",
             f"{agg.get('passRate', 0):.0%}", money(case_cost(case)),
