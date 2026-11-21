@@ -177,6 +177,81 @@ class ClaudeCosts(unittest.TestCase):
                 self.assertIn("timeout-minutes: ${{ inputs.timeout-minutes }}", text)
 
 
+class Evals(unittest.TestCase):
+    """The manual Evals job (roadmap I1): it costs money, so it runs only by hand, on main, one at a time, under a
+    ceiling, with a federation rule of its own and no stored key."""
+
+    def setUp(self):
+        self.text = (GITHUB / "workflows" / "evals.yml").read_text(encoding="utf-8")
+        self.steps = re.split(r"\n      - (?=uses:|name:)", self.text)
+
+    def step(self, start):
+        (step,) = [s for s in self.steps if s.startswith(start)]
+        return step
+
+    def test_by_hand_only_with_its_inputs(self):
+        on = self.text.split("\non:\n", 1)[1].split("\n\n", 1)[0]
+        self.assertEqual(["workflow_dispatch:"], [line.strip() for line in on.splitlines() if re.match(r"^  \S", line)])
+        for name, kind in (("smoke", "boolean"), ("case", "string"), ("max-cost-usd", "number")):
+            self.assertRegex(on, rf"\n      {name}:\n(?:        .*\n)*?        type: {kind}\n")
+
+    def test_permissions_timeout_and_concurrency(self):
+        self.assertIn("\npermissions:\n  contents: read\n", self.text)
+        self.assertIn("    permissions:\n      contents: read\n      id-token: write", self.text)
+        self.assertIn("    timeout-minutes: 90\n", self.text)
+        self.assertIn("\nconcurrency:\n  group: evals\n  cancel-in-progress: false\n", self.text)
+        self.assertNotIn("secrets.", self.text)   # no API key: federation only
+
+    def test_main_and_the_rule_are_checked_before_any_spend(self):
+        guard = self.step("name: Only on main, with the evals rule set")
+        self.assertIn('if [ "$REF" != refs/heads/main ]; then', guard)
+        self.assertIn("RULE: ${{ vars.ANTHROPIC_EVALS_FEDERATION_RULE_ID }}", guard)
+        self.assertIn("docs/CLAUDE-SERVICES-AUTH.md", guard)
+        self.assertIs(self.steps[1], guard)   # the first step, before the checkout and the install
+
+    def test_federation_with_a_refreshed_token(self):
+        run = self.step("name: Run the evals")
+        self.assertIn("ANTHROPIC_FEDERATION_RULE_ID: ${{ vars.ANTHROPIC_EVALS_FEDERATION_RULE_ID }}", run)
+        for var in ("ANTHROPIC_ORGANIZATION_ID", "ANTHROPIC_SERVICE_ACCOUNT_ID"):
+            self.assertIn(f"{var}: ${{{{ vars.{var} }}}}", run)
+        self.assertIn("audience=https://api.anthropic.com", run)
+        self.assertIn("while sleep 240; do fetch_token", run)   # tokens live about ten minutes
+        self.assertIn('export ANTHROPIC_IDENTITY_TOKEN_FILE="$token_file"', run)
+        self.assertNotIn("ANTHROPIC_API_KEY", self.text)
+
+    def test_runs_the_script_with_the_ceiling_and_never_publishes(self):
+        run = self.step("name: Run the evals")
+        self.assertIn('bash scripts/run-evals.sh "${args[@]}"', run)
+        self.assertIn('args+=(--max-cost-usd "$MAX_COST")', run)
+        script = (GITHUB.parent / "scripts" / "run-evals.sh").read_text(encoding="utf-8")
+        for flag in ("--no-publish", '--max-cost-usd "$max_cost"', "--scaffold", "--trust-plugin"):
+            self.assertIn(flag, script)
+
+    def test_inputs_reach_scripts_through_env_only(self):
+        for line in self.text.splitlines():
+            if "${{ inputs." in line:
+                self.assertRegex(line, r"^\s+[A-Z_]+: \$\{\{ inputs\.[\w-]+ \}\}$")
+
+    def test_cli_is_pinned_to_the_version_the_script_needs(self):
+        version = re.search(r'CLAUDE_CODE_VERSION: "([\d.]+)"', self.text).group(1)
+        script = (GITHUB.parent / "scripts" / "run-evals.sh").read_text(encoding="utf-8")
+        self.assertIn(f'CLAUDE_VERSION="{version}"', script)
+        self.assertIn('npm install -g "@anthropic-ai/claude-code@$CLAUDE_CODE_VERSION"', self.text)
+
+    def test_summary_and_results_are_kept(self):
+        self.assertIn('python scripts/eval_summary.py "$RUNNER_TEMP/evals/result.json" >> "$GITHUB_STEP_SUMMARY"',
+                      self.step("name: Summary"))
+        upload = self.step("uses: actions/upload-artifact@")
+        self.assertIn("if: always()", upload)
+        self.assertIn("retention-days: 30", upload)
+        for path in ("result.json", "report.html", "traces/"):
+            self.assertIn(f"${{{{ runner.temp }}}}/evals/{path}", upload)
+
+    def test_not_a_release_gate(self):
+        release = (GITHUB / "workflows" / "release.yml").read_text(encoding="utf-8")
+        self.assertNotIn("evals", release.lower())
+
+
 class GenericCI(unittest.TestCase):
     def test_working_directory_is_an_input_that_defaults_to_the_root(self):
         """Added for the self-test's fixture and for projects in a subfolder; existing callers are unchanged."""

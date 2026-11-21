@@ -5,6 +5,8 @@ API without a stored key. See docs/CLAUDE-SERVICES-AUTH.md.
 It creates, through the Anthropic Admin API (beta), one federation rule per workflow on your existing GitHub issuer:
   <name>-pr-review    pull request runs of the repository           -> variable ANTHROPIC_FEDERATION_RULE_ID
   <name>-pr-mention   issue_comment runs on main (with --mention)   -> variable ANTHROPIC_MENTION_FEDERATION_RULE_ID
+  <name>-evals        manual runs of evals.yml on main (with --evals) -> variable ANTHROPIC_EVALS_FEDERATION_RULE_ID
+                      (the factory's own evals of its agents and skills, roadmap I1)
 and gives the repository the IDs (identifiers, not secrets) as variables: it prints the `gh variable set` commands,
 or with --set-variables runs them itself, so one command sets a repository up.
 
@@ -13,7 +15,7 @@ and a rule that already exists with the same name on the issuer is reused, so it
 
 Usage:
   python3 scripts/claude_federation.py --repo OWNER/NAME --service-account svac_... --workspace wrkspc_... \\
-      [--mention] [--mention-workflow-ref REF] [--review-workflow-ref REF] [--sub-prefix PREFIX] \\
+      [--mention] [--mention-workflow-ref REF] [--evals] [--review-workflow-ref REF] [--sub-prefix PREFIX] \\
       [--owner-id ID] [--default-branch BRANCH] [--rule-prefix NAME] \\
       [--issuer-url URL] [--create-issuer] [--token-lifetime 600] [--apply [--set-variables]]
 
@@ -31,6 +33,9 @@ Usage:
   --mention-workflow-ref
                  also require this job_workflow_ref claim on the mention rule (hardening; copy the exact value from a
                  refused exchange in the Console if unsure)
+  --evals        also create the rule of the factory's own Evals workflow (.github/workflows/evals.yml, run by hand
+                 on main): subject on refs/heads/main, event_name workflow_dispatch and that workflow's
+                 job_workflow_ref. For the factory repository only
   --review-workflow-ref
                  the same for the review rule. Recommended for projects: without it, anyone with write access can
                  open a pull request that edits the workflow and get tokens
@@ -74,6 +79,8 @@ def parse_args(argv):
                    help="wrkspc_... the tokens act in (and are billed to); default: $FACTORY_CLAUDE_WORKSPACE")
     p.add_argument("--mention", action="store_true", help="also create the @claude mention rule")
     p.add_argument("--mention-workflow-ref", default="", help="extra job_workflow_ref claim for the mention rule")
+    p.add_argument("--evals", action="store_true",
+                   help="also create the rule for the factory's Evals workflow (evals.yml, run by hand on main)")
     p.add_argument("--review-workflow-ref", default="", help="extra job_workflow_ref claim for the review rule")
     p.add_argument("--sub-prefix", default="", help="OIDC subject prefix; default: read it with gh")
     p.add_argument("--owner-id", default="", help="numeric ID of the owner; default: read it with gh")
@@ -189,6 +196,21 @@ def build_rules(args, sub_prefix, owner_id):
                 "match": {"subject_prefix": f"{sub_prefix}:ref:refs/heads/{args.default_branch or 'main'}",
                           "audience": AUDIENCE,
                           "claims": claims},
+                **common,
+            },
+        })
+    if args.evals:
+        # its own rule, not the review's: that one matches pull request runs only, and a rule pinned to evals.yml on
+        # main lets a spend limit or a revocation apply to the evals alone
+        rules.append({
+            "variable": "ANTHROPIC_EVALS_FEDERATION_RULE_ID",
+            "payload": {
+                "name": f"{base}-evals",
+                "description": f"Evals of the agents and skills in {args.repo}, run by hand (software factory)",
+                "match": {"subject_prefix": f"{sub_prefix}:ref:refs/heads/main", "audience": AUDIENCE,
+                          "claims": {"repository_owner": owner, "repository_owner_id": owner_id,
+                                     "event_name": "workflow_dispatch",
+                                     "job_workflow_ref": f"{args.repo}/.github/workflows/evals.yml@refs/heads/main"}},
                 **common,
             },
         })

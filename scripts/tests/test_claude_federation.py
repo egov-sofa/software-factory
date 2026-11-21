@@ -72,6 +72,24 @@ class Rules(unittest.TestCase):
                           "job_workflow_ref": "x/y/.github/workflows/z.yml@refs/heads/main"}, p["match"]["claims"])
         self.assertNotEqual(review["payload"]["name"], p["name"])
 
+    def test_evals_rule_is_pinned_to_the_evals_workflow_on_main(self):
+        review, evals = fed.build_rules(fed.parse_args(ARGS + ["--evals"]), PREFIX, OWNER_ID)
+        self.assertEqual("ANTHROPIC_EVALS_FEDERATION_RULE_ID", evals["variable"])
+        p = evals["payload"]
+        self.assertEqual("software-factory-evals", p["name"])
+        self.assertEqual(PREFIX + ":ref:refs/heads/main", p["match"]["subject_prefix"])
+        self.assertEqual("https://api.anthropic.com", p["match"]["audience"])
+        self.assertEqual({"repository_owner": "egov-sofa", "repository_owner_id": OWNER_ID,
+                          "event_name": "workflow_dispatch",
+                          "job_workflow_ref": "egov-sofa/software-factory/.github/workflows/evals.yml@refs/heads/main"},
+                         p["match"]["claims"])
+        self.assertEqual(review["payload"]["target"], p["target"])
+        self.assertEqual("ANTHROPIC_FEDERATION_RULE_ID", review["variable"])
+
+    def test_evals_rule_only_when_asked(self):
+        names = [r["payload"]["name"] for r in fed.build_rules(fed.parse_args(ARGS + ["--mention"]), PREFIX, OWNER_ID)]
+        self.assertNotIn("software-factory-evals", names)
+
     def test_review_rule_can_be_pinned_to_the_reusable_workflow(self):
         ref = "egov-sofa/software-factory/.github/workflows/reusable-claude-review.yml@refs/tags/v1"
         (rule,) = fed.build_rules(fed.parse_args(ARGS + ["--review-workflow-ref", ref]), PREFIX, OWNER_ID)
@@ -389,6 +407,14 @@ class Apply(unittest.TestCase):
         self.assertEqual({"ANTHROPIC_FEDERATION_RULE_ID": "fdrl_old"}, ids)
         self.assertEqual([], client.created)
 
+    def test_existing_evals_rule_is_reused(self):
+        old = SimpleNamespace(id="fdrl_evals", name="software-factory-evals", issuer_id="fdis_1", archived_at=None)
+        client = FakeAdmin(issuers=[GH_ISSUER], rules=[old])
+        ids, _ = self.run_apply(client, ["--evals"])
+        self.assertEqual({"ANTHROPIC_FEDERATION_RULE_ID": "fdrl_1", "ANTHROPIC_EVALS_FEDERATION_RULE_ID": "fdrl_evals"},
+                         ids)
+        self.assertEqual(["software-factory-pr-review"], [c["name"] for c in client.created])
+
     def test_missing_issuer_is_an_error_unless_asked_to_create(self):
         with self.assertRaisesRegex(fed.SetupError, "--create-issuer"):
             self.run_apply(FakeAdmin())
@@ -421,6 +447,19 @@ class CommandLine(unittest.TestCase):
         self.assertIn("gh variable set CLAUDE_REVIEW_ENABLED --repo egov-sofa/software-factory --body true",
                       done.stdout)
         json.loads(done.stdout.split("\n\n", 1)[1].split("\n}\n")[0] + "\n}")   # the first payload is valid JSON
+
+    def test_evals_preview_shows_the_rule_and_its_variable(self):
+        env = {k: v for k, v in os.environ.items() if not k.startswith("ANTHROPIC_")}
+        done = subprocess.run([sys.executable, "-I", str(SCRIPT), *ARGS, "--sub-prefix", PREFIX, "--owner-id", "42",
+                               "--evals"], capture_output=True, text=True, env=env, check=False)
+        self.assertEqual(0, done.returncode, done.stderr)
+        self.assertIn('"name": "software-factory-evals"', done.stdout)
+        self.assertIn(f'"subject_prefix": "{PREFIX}:ref:refs/heads/main"', done.stdout)
+        self.assertIn('"event_name": "workflow_dispatch"', done.stdout)
+        self.assertIn('"job_workflow_ref": "egov-sofa/software-factory/.github/workflows/evals.yml@refs/heads/main"',
+                      done.stdout)
+        self.assertIn("gh variable set ANTHROPIC_EVALS_FEDERATION_RULE_ID --repo egov-sofa/software-factory --body "
+                      "fdrl_...", done.stdout)
 
 
 if __name__ == "__main__":

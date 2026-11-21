@@ -1,0 +1,128 @@
+# Evals of the factory's agents and skills (roadmap I1, docs/plans/2026-11-19-evals-for-agents-and-skills.md): runs
+# scripts/run-evals.sh, each case with and without the plugin under a hard cost ceiling, writes a table to the job
+# summary and keeps the results 30 days. It costs money, so it runs only by hand, only on main, one at a time; a
+# failing eval fails the job but gates nothing (not a release gate yet). How to read it: evals/README.md.
+#
+# Authentication by workload identity federation, no stored key: an org:admin creates the evals rule once with
+#   python3 scripts/claude_federation.py --repo OWNER/software-factory --evals --apply --set-variables
+# (docs/CLAUDE-SERVICES-AUTH.md). Until ANTHROPIC_EVALS_FEDERATION_RULE_ID is set the job fails at once, before any
+# spend.
+name: Evals
+
+on:
+  workflow_dispatch:
+    inputs:
+      smoke:
+        description: One run per case instead of three (about $3-6 instead of $10-18)
+        type: boolean
+        default: true
+      case:
+        description: Only the cases whose name matches this glob, for example reviewer-* (empty for all)
+        type: string
+        default: ""
+      max-cost-usd:
+        description: Hard cost ceiling in US dollars; 0 for the default ($6 with smoke, $20 without)
+        type: number
+        default: 0
+
+# never two at once: they would share the cost and the rate limit
+concurrency:
+  group: evals
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  CLAUDE_CODE_VERSION: "2.1.310"   # the eval case schema was read from this version; scripts/run-evals.sh needs it
+
+jobs:
+  evals:
+    name: Evals
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      id-token: write   # for workload identity federation
+    steps:
+      # the evals run author-written scaffolds with --trust-plugin: only the factory's own cases, from main
+      - name: Only on main, with the evals rule set
+        env:
+          REF: ${{ github.ref }}
+          RULE: ${{ vars.ANTHROPIC_EVALS_FEDERATION_RULE_ID }}
+          ORG: ${{ vars.ANTHROPIC_ORGANIZATION_ID }}
+          ACCOUNT: ${{ vars.ANTHROPIC_SERVICE_ACCOUNT_ID }}
+        run: |
+          if [ "$REF" != refs/heads/main ]; then
+            echo "::error::the evals run on main only, not $REF"
+            exit 1
+          fi
+          if [ -z "$RULE" ] || [ -z "$ORG" ] || [ -z "$ACCOUNT" ]; then
+            echo "::error::ANTHROPIC_EVALS_FEDERATION_RULE_ID, ANTHROPIC_ORGANIZATION_ID and ANTHROPIC_SERVICE_ACCOUNT_ID must be set: see docs/CLAUDE-SERVICES-AUTH.md (claude_federation.py --evals)"
+            exit 1
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false   # the runs can read files; keep the token out of .git/config
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+
+      # a CI tool, not a project dependency; pinned because plugin eval is new and its case schema may change
+      - name: Install Claude Code
+        run: npm install -g "@anthropic-ai/claude-code@$CLAUDE_CODE_VERSION"
+
+      - name: Run the evals
+        id: evals
+        env:
+          ANTHROPIC_FEDERATION_RULE_ID: ${{ vars.ANTHROPIC_EVALS_FEDERATION_RULE_ID }}
+          ANTHROPIC_ORGANIZATION_ID: ${{ vars.ANTHROPIC_ORGANIZATION_ID }}
+          ANTHROPIC_SERVICE_ACCOUNT_ID: ${{ vars.ANTHROPIC_SERVICE_ACCOUNT_ID }}
+          ANTHROPIC_WORKSPACE_ID: ${{ vars.ANTHROPIC_WORKSPACE_ID }}
+          SMOKE: ${{ inputs.smoke }}
+          CASE: ${{ inputs.case }}
+          MAX_COST: ${{ inputs.max-cost-usd }}
+        run: |
+          umask 077
+          token_file="$RUNNER_TEMP/oidc-token"
+          fetch_token() {
+            curl -sSf -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+              "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https://api.anthropic.com" | jq -r .value > "$token_file.new"
+            mv "$token_file.new" "$token_file"
+          }
+          fetch_token
+          # a GitHub OIDC token and the Claude token it buys each live about ten minutes, and a full run takes longer
+          ( while sleep 240; do fetch_token || echo "::warning::could not refresh the OIDC token"; done ) &
+          refresher=$!
+          export ANTHROPIC_IDENTITY_TOKEN_FILE="$token_file"
+          args=(--out "$RUNNER_TEMP/evals" --keep-traces)
+          if [ "$SMOKE" = true ]; then args+=(--smoke); fi
+          if [ -n "$CASE" ]; then args+=(--case "$CASE"); fi
+          if [ "$MAX_COST" != 0 ]; then args+=(--max-cost-usd "$MAX_COST"); fi
+          status=0
+          bash scripts/run-evals.sh "${args[@]}" || status=$?
+          kill "$refresher" 2>/dev/null || true
+          rm -f "$token_file"
+          exit "$status"
+
+      - name: Summary
+        if: always() && steps.evals.outcome != 'skipped'
+        run: python scripts/eval_summary.py "$RUNNER_TEMP/evals/result.json" >> "$GITHUB_STEP_SUMMARY"
+
+      # result.json, the HTML report (never published to claude.ai: run-evals.sh passes --no-publish) and the traces
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always() && steps.evals.outcome != 'skipped'
+        with:
+          name: evals-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/evals/result.json
+            ${{ runner.temp }}/evals/report.html
+            ${{ runner.temp }}/evals/traces/
+          retention-days: 30
+          if-no-files-found: warn
