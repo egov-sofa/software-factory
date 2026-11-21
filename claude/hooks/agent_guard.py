@@ -5,6 +5,12 @@ Each factory agent that may edit files or run commands declares this hook in its
 that agent runs (docs/plans/2026-11-19-enforce-agent-limits-with-hooks.md):
 
     python3 agent_guard.py <agent>      reads the tool call as JSON on stdin
+    python3 agent_guard.py --agent-from-input
+
+The second form is for a plugin-level hook (hooks/hooks.json of the built plugin): Claude Code does not run the
+`hooks:` of a plugin's agents, so one hook sees every tool call and takes the agent from the input's `agent_type`
+(`software-factory:tester`). Calls from the main conversation (no `agent_type`) and from agents the guard does not
+know are allowed (docs/plans/2026-11-19-evals-for-agents-and-skills.md, Probe results).
 
 - Edit, Write and NotebookEdit: the file must match the agent's paths (none for the implementer, which edits freely).
 - Bash: git commands that change history or the branch are refused; the conductor does all git work.
@@ -286,18 +292,43 @@ def check_bash(agent, command):
     return None
 
 
+FROM_INPUT = "--agent-from-input"
+PLUGIN_PREFIX = "software-factory:"
+
+
 def main(argv):
-    if len(argv) != 1 or argv[0] not in PATHS:
-        print(f"usage: agent_guard.py <{'|'.join(PATHS)}>", file=sys.stderr)
+    if len(argv) != 1 or (argv[0] not in PATHS and argv[0] != FROM_INPUT):
+        print(f"usage: agent_guard.py <{'|'.join(PATHS)}> | {FROM_INPUT}", file=sys.stderr)
         return 2
     agent = argv[0]
     try:
-        reason = decide(agent, json.loads(sys.stdin.read() or "{}"))
+        call = json.loads(sys.stdin.read() or "{}")
+        if agent == FROM_INPUT:
+            agent = agent_from_input(call)
+            if agent is None:
+                return 0
+        reason = decide(agent, call)
     except Exception as ex:   # noqa: BLE001 - a crash would let the call through (Claude Code ignores exit 1)
-        reason = f"the factory's guard for {agent} could not check this tool call ({type(ex).__name__}), so it is refused."
+        who = "an agent" if agent == FROM_INPUT else agent
+        reason = f"the factory's guard for {who} could not check this tool call ({type(ex).__name__}), so it is refused."
     if reason:
         deny(reason)
     return 0
+
+
+def agent_from_input(call):
+    """The guarded agent that makes this call, from the hook input's agent_type, or None when no guard applies: the
+    main conversation has no agent_type, and an agent the guard does not know keeps its own rules. A bare name is
+    guarded too (the agents install.sh installs have no prefix); a guard twice over refuses nothing more."""
+    if not isinstance(call, dict):
+        raise ValueError("the tool call is not a JSON object")
+    name = call.get("agent_type")
+    if name is None or name == "":
+        return None
+    if not isinstance(name, str):
+        raise ValueError("agent_type is not a string")
+    name = name[len(PLUGIN_PREFIX):] if name.startswith(PLUGIN_PREFIX) else name
+    return name if name in PATHS else None
 
 
 def decide(agent, call):

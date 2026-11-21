@@ -3,8 +3,8 @@
 
     python3 scripts/build_plugin.py --out DIR
 
-writes DIR/software-factory/ with .claude-plugin/plugin.json, agents/, skills/, claude/hooks/, standards/ and evals/
-(without evals/results/). Every {{FACTORY_HOME}} is replaced by the built folder's absolute path, as install.sh does,
+writes DIR/software-factory/ with .claude-plugin/plugin.json, hooks/hooks.json, agents/, skills/, claude/hooks/,
+standards/ and evals/ (without evals/results/). Every {{FACTORY_HOME}} is replaced by the built folder's absolute path, as install.sh does,
 so the agents find the standards and their guard hook; a placeholder left anywhere is an error.
 
 A built copy, not a manifest at the repository root: an eval run sees only the plugin folder, and the placeholders must
@@ -20,6 +20,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 NAME = "software-factory"
 PLACEHOLDER = "{{FACTORY_HOME}}"
+# Claude Code does not run the hooks: of a plugin's agents (evals plan, Probe results), so the plugin declares the guard
+# once for every tool call; agent_guard.py takes the agent from the input. Same matcher and python fallback as the
+# agents' frontmatter.
+GUARD_MATCHER = "Edit|Write|NotebookEdit|Bash"
+GUARD_COMMAND = ('PY=python3; "$PY" -c "" 2>/dev/null || PY=python; '
+                 '"$PY" "${CLAUDE_PLUGIN_ROOT}/claude/hooks/agent_guard.py" --agent-from-input')
 TEXT = {".md", ".py", ".sh", ".yaml", ".yml", ".txt", ".json", ".toml", ".cfg", ".ini", ""}
 
 
@@ -67,6 +73,11 @@ def leftovers(folder):
     return found
 
 
+def write_json(path, data):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes((json.dumps(data, indent=2) + "\n").encode("utf-8"))   # LF on Windows too
+
+
 def build(out, root=ROOT):
     out = Path(out).resolve()
     plugin = out / NAME
@@ -85,11 +96,12 @@ def build(out, root=ROOT):
                 "description": "Software factory agents and skills (built for evals)",
                 "author": {"name": "software-factory"},   # validate --strict warns without one
                 "experimental": {"evals": "evals"}}
-    (plugin / ".claude-plugin").mkdir()
-    (plugin / ".claude-plugin" / "plugin.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    write_json(plugin / ".claude-plugin" / "plugin.json", manifest)
+    write_json(plugin / "hooks" / "hooks.json", {"hooks": {"PreToolUse": [
+        {"matcher": GUARD_MATCHER, "hooks": [{"type": "command", "command": GUARD_COMMAND}]}]}})
     left = leftovers(plugin)
     if left:
-        raise BuildError(f"{PLACEHOLDER} left in: " + ", ".join(str(p.relative_to(plugin)) for p in left))
+        raise BuildError(f"{PLACEHOLDER} left in: " + ", ".join(p.relative_to(plugin).as_posix() for p in left))
     return plugin
 
 
