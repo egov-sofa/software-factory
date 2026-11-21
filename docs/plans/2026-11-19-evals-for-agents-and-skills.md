@@ -146,7 +146,7 @@ Step 1 ran four times (`evals/_probe`, `--runs 1 --ablation none`). What it esta
 - **The main conversation model is pinned** (`--model sonnet`) so the two arms differ only by the plugin. The agents
   keep their own models (`opus` for planner, reviewer and security-auditor), so "what the factory adds" includes
   its model choice; the report says so.
-- **The planted secret is assembled by the scaffold script** at run time (two halves joined with `printf`), so the
+- **The planted secret is made by the scaffold script** at run time (random characters; review of #35), so the
   repository never holds a string the content guard matches, and no `content-ok` marker hints at it to the auditor.
 - **Step 1 is a probe:** one cheap case (under $1) that confirms the facts marked "verified in step 1" before the
   other cases are written. Where the probe disproves a fact, the fallback named in Design applies.
@@ -344,7 +344,7 @@ All free, run by the self-test:
   (`check_content.py` over `evals/`).
 - **scaffolds:** each `scaffold.sh` run in a temporary folder gives a repository on `feat/<case>` with two commits,
   the planted line present, and for review cases a review folder whose `changes.diff` contains the planted line;
-  case 3's working tree contains the assembled key.
+  case 3's working tree contains a key made at run time, different on each build.
 - **eval_summary:** a recorded `result.json` (saved from the probe run) gives the expected table; a partial result
   (ceiling hit), a case with an `error` run and a single-arm case (no `delta`) are each shown, not crashing.
 - **validate.py:** a side-effect skill without `disable-model-invocation: true` is reported.

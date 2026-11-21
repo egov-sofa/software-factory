@@ -56,9 +56,12 @@ Callers of the factory's own services in templates use `@v1`, never `@main`.
 - A change to `/factory-build` keeps the plan approval gate and the two-round limit of the fix loop.
 
 **Evals** (`evals/`, see `evals/README.md`):
-- The defects in `evals/*/repo/`, `evals/*/change/` and the scaffolds are planted on purpose (an off-by-one, a SQL
-  injection, a made-up AWS key assembled by `security-finds-key-and-sqli/scaffold.sh`, floor division): do not report
-  them. Report a change that removes a planted defect or lets a case's graders pass without it.
+- The code defects in `evals/*/repo/`, `evals/*/change/` and the scaffolds are planted on purpose (an off-by-one, a
+  SQL injection, floor division): do not report them. Report a change that removes a planted defect or lets a case's
+  graders pass without it.
+- **Credentials are not exempt.** A planted key must be random, made by the scaffold when it runs
+  (`security-finds-key-and-sqli/scaffold.sh`). Any key-shaped value written in a file under `evals/`, whole or split
+  into parts, is a blocker like anywhere else.
 
 **Scripts** (`scripts/*.sh`, `scripts/*.py`, hooks):
 - Bash with `set -euo pipefail`, shellcheck-clean, works in Git Bash on Windows and on macOS (no GNU-only flags

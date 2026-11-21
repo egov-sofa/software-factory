@@ -5,8 +5,11 @@ Run: python3 -m unittest discover -s scripts/tests
 """
 import re
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+
+import support
 
 GITHUB = Path(__file__).resolve().parents[2] / ".github"
 USES_RE = re.compile(r"^\s*-?\s*uses:\s*(\S+)(.*)$", re.M)
@@ -218,6 +221,26 @@ class Evals(unittest.TestCase):
         self.assertIn("while sleep 240; do fetch_token", run)   # tokens live about ten minutes
         self.assertIn('export ANTHROPIC_IDENTITY_TOKEN_FILE="$token_file"', run)
         self.assertNotIn("ANTHROPIC_API_KEY", self.text)
+
+    @support.needs_bash
+    def test_a_failed_refresh_keeps_the_token(self):
+        """Review of #35: a failed curl went on to replace a good token with an empty file. The workflow's own
+        fetch_token runs here with stand-ins for curl and jq."""
+        body = re.search(r"\n( *)fetch_token\(\) \{\n.*?\n\1\}\n", self.step("name: Run the evals"), re.S)
+        function = "\n".join(line[len(body.group(1)):] for line in body.group(0).strip("\n").splitlines())
+        stand_ins = ('curl() { [ "$FAKE" = fail ] && return 22; [ "$FAKE" = empty ] && { echo "{}"; return 0; }; '
+                     'echo \'{"value":"tok-new"}\'; }\n'
+                     "jq() { sed -n 's/.*\"value\":\"\\([^\"]*\\)\".*/\\1/p' | grep .; }\n")
+        with tempfile.TemporaryDirectory() as tmp:
+            token = Path(tmp) / "oidc-token"
+            script = Path(tmp) / "t.sh"
+            script.write_bytes((stand_ins + function + '\ntoken_file="$1"\nfetch_token\n').encode("utf-8"))
+            for fake, code, after in (("fail", 1, "tok-old"), ("empty", 1, "tok-old"), ("ok", 0, "tok-new")):
+                with self.subTest(fake=fake):
+                    token.write_bytes(b"tok-old")
+                    done = support.run(script, support.posix(token), env={"FAKE": fake})
+                    self.assertEqual(code, done.returncode, done.stderr)
+                    self.assertEqual(after, token.read_text(encoding="utf-8"))
 
     def test_runs_the_script_with_the_ceiling_and_never_publishes(self):
         run = self.step("name: Run the evals")

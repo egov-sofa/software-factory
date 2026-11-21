@@ -3,7 +3,7 @@
 - every case.yaml has the shape Claude Code 2.1.310's strict schema accepts, and a free grader that decides it;
 - every scaffold.sh builds its repository as an eval run would (a reduced environment, no network), with the planted
   defect in place and the review folder as /factory-review writes it;
-- no fixture file holds what the content guard flags (the planted key is assembled at run time);
+- no fixture file holds what the content guard flags (the planted key is random, made at run time);
 - run-evals.sh passes the right options to claude, here a fake one, on Linux and on Windows.
 
 Run: python3 -m unittest discover -s scripts/tests
@@ -222,13 +222,22 @@ class Scaffolds(unittest.TestCase):
                     ran = re.search(r"Ran (\d+) tests?", done.stderr).group(1)
                     self.assertIn(f"Ran {ran} tests", (folder / "checks.txt").read_text(encoding="utf-8"))
 
-    def test_the_key_is_assembled_in_the_working_tree(self):
-        work = self.build("security-finds-key-and-sqli")
-        lines = (work / "accounts" / "settings.py").read_text(encoding="utf-8").splitlines()
-        kinds = [f for line in lines for f in check_content.findings(line, [])]
-        self.assertEqual(["possible secret (AWS access key ID)", "possible secret (AWS secret access key)"], kinds)
-        self.assertIn("accounts/settings.py", (work / ".git" / "factory-review" / "changes.diff").read_text(
-            encoding="utf-8"))
+    def test_the_key_is_random_and_made_at_run_time(self):
+        """Review of #35: no key-shaped value may be stored in the repository, whole or in parts. Two builds give two
+        different keys, each one the content guard flags as a key."""
+        settings = []
+        for n in range(2):
+            work = Path(self.tmp.name) / f"key-{n}"
+            work.mkdir()
+            done = scaffold(EVALS / "security-finds-key-and-sqli", work)
+            self.assertEqual(0, done.returncode, done.stderr)
+            text = (work / "accounts" / "settings.py").read_text(encoding="utf-8")
+            kinds = [f for line in text.splitlines() for f in check_content.findings(line, [])]
+            self.assertEqual(["possible secret (AWS access key ID)", "possible secret (AWS secret access key)"], kinds)
+            self.assertIn("accounts/settings.py", (work / ".git" / "factory-review" / "changes.diff").read_text(
+                encoding="utf-8"))
+            settings.append(text)
+        self.assertNotEqual(settings[0], settings[1])
 
     def test_the_probe_scaffold(self):
         work = self.build("_probe")

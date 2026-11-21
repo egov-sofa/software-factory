@@ -91,12 +91,15 @@ jobs:
         run: |
           umask 077
           token_file="$RUNNER_TEMP/oidc-token"
+          # A failed fetch keeps the token there is: -e is off inside `fetch_token || ...`, so each step checks itself
           fetch_token() {
-            curl -sSf -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-              "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https://api.anthropic.com" | jq -r .value > "$token_file.new"
-            mv "$token_file.new" "$token_file"
+            local raw token
+            raw="$(curl -sSf -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+              "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https://api.anthropic.com")" || return 1
+            token="$(jq -er .value <<< "$raw")" || return 1
+            printf '%s' "$token" > "$token_file.new" && mv "$token_file.new" "$token_file"
           }
-          fetch_token
+          fetch_token || { echo "::error::could not get a GitHub OIDC token (is id-token: write set?)"; exit 1; }
           # a GitHub OIDC token and the Claude token it buys each live about ten minutes, and a full run takes longer
           ( while sleep 240; do fetch_token || echo "::warning::could not refresh the OIDC token"; done ) &
           refresher=$!
