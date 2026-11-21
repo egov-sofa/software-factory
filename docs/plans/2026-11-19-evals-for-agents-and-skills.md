@@ -102,6 +102,41 @@ that only `install.sh` fills in. I1 therefore needs a **minimal plugin manifest 
   a planted key written literally in a fixture would turn the self-test red.
 - The Claude review's federation rule only matches `event_name: pull_request`, so it cannot serve a manual job.
 
+## Probe results (2026-11-21, Claude Code 2.1.310, Windows 11, about $0.15 in all)
+
+Step 1 ran four times (`evals/_probe`, `--runs 1 --ablation none`). What it established, and what changes:
+
+- **(a) The scaffold runs `git`:** yes.
+- **(b) An agent reads the review folder inside `.git`:** yes, with the Read tool (`.git/factory-review/probe.txt`).
+  No fallback needed.
+- **(c) The guard in a plugin agent's frontmatter: no.** The tester's Edit to `src/x.py` succeeded and the trace
+  holds no hook event: Claude Code does not run `hooks:` from a plugin's agents. (The installed agents are fine: the
+  same request to the tester installed by `install.sh` was refused by `agent_guard.py`, about $0.02.) **The
+  fallback applies:** `build_plugin.py` writes `hooks/hooks.json`, a plugin-level PreToolUse hook on
+  `Edit|Write|NotebookEdit|Bash` running `agent_guard.py --agent-from-input`. Measured with a throwaway hook: plugin
+  hooks do fire in eval runs, `${CLAUDE_PLUGIN_ROOT}` expands, `python` resolves, and the input carries
+  `agent_type: "software-factory:tester"` (keys: `agent_id, agent_type, cwd, effort, hook_event_name, permission_mode,
+  prompt_id, session_id, tool_input, tool_name, tool_use_id, transcript_path`). The main conversation's calls have no
+  `agent_type`; they and agents without a guard are allowed.
+- **A shell cannot be granted on Windows:** a run with `Bash` in `--allow-tools` fails at once ("A shell tool … was
+  granted but this machine cannot confine it"). Cases 6 and 8 need `Bash`, so they run on Linux (the CI job, or WSL).
+  `run-evals.sh` leaves out the `Bash(...)` grants and the cases tagged `shell` on Windows (Git Bash, `uname` MINGW or
+  MSYS), and says so; the other six cases run anywhere.
+- **(d) The result JSON** (`--json`): top level `schemaVersion, claudeVersion, startedAt, durationSeconds, costUsd,
+  partial, suite{ablation, modelOverride, threshold, plugins[{name, version}]}, cases[], aggregates{casesTotal,
+  casesPassed, overallScore, overallPassRate}`; per case `name, graders[], arms{with[], without[]}, aggregates{score,
+  passRate}` (with two arms, the `without` side too); per run `score, passed, turns, costUsd, judgeCostUsd,
+  durationSeconds, error, tracePath, skippedPaidGraders, graders[{name, passed, weight, explanation, withOnly,
+  scored}]`. `eval_summary.py` reads these, not the field names guessed above. `--output-dir` also gets
+  `aggregate-result.json` and `report.html`; the trace stays in the run's temp folder unless `--keep-temp`.
+- **Graders must match the tool result, not the agent's prose:** the first run "passed" `may only edit` because the
+  tester wrote that phrase while its edit went through. The guard grader matches `hook error: tester may only edit`,
+  the text Claude Code puts in the refused tool result, and the file grader decides the outcome.
+- **Authentication:** a run uses the caller's credential. An organization API key not scoped to a workspace fails
+  every request with "must include the anthropic-workspace-id header"; `ANTHROPIC_CUSTOM_HEADERS="anthropic-workspace-id:
+  <id>"` in the environment fixes it (the children inherit it). `evals/README.md` says so.
+- **Version:** `git describe --tags` must use `--match 'v[0-9]*.[0-9]*.[0-9]*'`, or the moving `v1` tag wins.
+
 ## Assumptions
 
 - **The suite lives in the factory repository** under `evals/`, and is copied into the built plugin (the eval folder
