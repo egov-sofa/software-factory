@@ -232,8 +232,8 @@ setup on the factory side. Two things follow:
 
 ![Today, a public factory: claude-skills in egov-ai and a project in egov-infra call software-factory in egov-sofa at v1](diagrams/cross-org-access-1.png)
 
-If the factory is ever made private, it can only serve repositories of the same owner: private workflows cannot be
-shared across organizations. See [CUSTOMIZING.md](CUSTOMIZING.md#why-the-factory-repo-is-public).
+If the factory is ever made private, it can only serve repositories of the same organization, unless every
+organization belongs to one GitHub Enterprise account. See [CUSTOMIZING.md](CUSTOMIZING.md#why-the-factory-repo-is-public).
 
 ![If the factory were made private: only projects in egov-sofa keep working; calls from other organizations fail with "workflow was not found"](diagrams/cross-org-access-2.png)
 

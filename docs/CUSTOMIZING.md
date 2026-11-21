@@ -95,7 +95,7 @@ until you **release** it:
 
 ## Why the factory repo is public
 
-The factory lives in the `egov-sofa` org, but projects live in many orgs (`egov-ai`, `egov-infra`, …). GitHub only lets a **private** repo share its workflows with repos in the **same** org, so the factory is **public**. That way every project, in any org, can call its CI and shared services.
+The factory lives in the `egov-sofa` org, but projects live in many orgs (`egov-ai`, `egov-infra`, …). GitHub only lets a **private** repo share its workflows with repos in the **same** org (or, in a GitHub Enterprise account, with the enterprise's organizations; see [PRIVATE-FACTORY-OPTIONS.md](PRIVATE-FACTORY-OPTIONS.md)), so the factory is **public**. That way every project, in any org, can call its CI and shared services.
 
 Public means anyone can *read* it, so **never put secrets, tokens, internal URLs or client data in this repo.** Projects keep their secrets in their own GitHub Secrets. The content guard checks pull requests for such details.
 
