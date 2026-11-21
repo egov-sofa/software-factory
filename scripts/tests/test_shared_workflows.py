@@ -105,6 +105,13 @@ class FactoryUpdate(unittest.TestCase):
         self.assertIn("workflow_dispatch:", self.caller)
         self.assertRegex(self.caller, r'cron: "\d+ \d+ \* \* 1"')   # Mondays
 
+    def test_caller_runs_one_at_a_time(self):
+        """Seen on a real repository: a run seconds after another did not see the issue it had just opened (GitHub
+        lists new items late) and opened a second one. Queued runs are a minute apart, long enough."""
+        block = re.search(r"\nconcurrency:\n((?:  .*\n)+)", self.caller).group(1)
+        self.assertIn("  group: factory-update\n", block)
+        self.assertIn("  cancel-in-progress: false\n", block)
+
     def test_caller_is_a_merged_file(self):
         sys.path.insert(0, str(GITHUB.parent / "scripts"))
         import factory_update   # noqa: E402

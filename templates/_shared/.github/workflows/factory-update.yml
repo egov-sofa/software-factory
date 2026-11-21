@@ -20,6 +20,11 @@ permissions:
   pull-requests: write
   issues: write
 
+concurrency:
+  # one run at a time: GitHub lists a new issue or pull request only seconds later, so two runs at once would both open one
+  group: factory-update
+  cancel-in-progress: false
+
 jobs:
   update:
     runs-on: ubuntu-latest
