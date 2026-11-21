@@ -19,6 +19,7 @@ graders:
     name: factory-build-not-invoked
     tool: Skill
     input_match: factory-build
+    min: 0   # min defaults to 1, which no run with max 0 can meet (smoke run 1)
     max: 0
     arm: both
   - type: regex

@@ -8,7 +8,8 @@ context:
   scaffold_script: scaffold.sh
 execution:
   prompt: |
-    Use the planner subagent: add a --limit option to the list command. Today is 2026-11-19.
+    Use the planner subagent: add a --limit option to the list command. Today is 2026-11-19. Have it write the plan to
+    docs/plans/list-limit.md.
   max_turns: 30
   timeout_seconds: 600
   allowed_tools: [Agent, Read, Grep, Glob, Write]
@@ -17,11 +18,11 @@ graders:
   # the plan format of claude/agents/planner.md
   - type: regex
     name: has-acceptance-criteria
-    target: files
+    target: {source: file, path: docs/plans/list-limit.md}
     pattern: '## Acceptance criteria'
   - type: regex
     name: three-checkbox-criteria
-    target: files
+    target: {source: file, path: docs/plans/list-limit.md}
     pattern: '(- \[ \][^\n]*\r?\n(?:[ \t]+[^\n]*\r?\n)*){3,}'
   - type: regex
     name: code-untouched
@@ -35,7 +36,7 @@ graders:
     arm: with-only
   - type: llm
     name: criteria-are-testable
-    focus: files
+    focus: {source: file, path: docs/plans/list-limit.md}   # `files` did not see the planner's plan (smoke run 1)
     criteria: >-
       The plan's acceptance criteria are each observable and testable (a command and its expected output or error),
       at least one covers an edge or error case of --limit (0, a negative number, not a number, or more than the

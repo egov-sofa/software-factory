@@ -95,7 +95,8 @@ run (every message and tool call) is in the CI artifact, or kept locally with `-
 | Run | Cost | Date |
 |---|---|---|
 | The probe, four runs of `_probe` (`--runs 1 --ablation none`) | about $0.15 in all | 2026-11-21 |
-| `--smoke` on Windows (six portable cases, both arms) | to be filled in after the first run (estimate $3–6) | |
+| `--smoke` on Windows (six portable cases, both arms), 357 s | $1.03 | 2026-11-21 |
+| Re-run of the two cases fixed after it (planner, factory-build) | $0.39 | 2026-11-21 |
 | Full run (all eight cases, both arms, three runs) | to be filled in (estimate $10–18) | |
 
 ## Add a case
