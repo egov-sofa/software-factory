@@ -297,7 +297,8 @@ class RunEvals(unittest.TestCase):
             i += 1
         return values
 
-    def test_full_run_on_linux(self):
+    def test_full_run_on_linux_where_the_sandbox_nests(self):
+        """EVALS_NESTED_SANDBOX=yes, as in WSL: every case, and plain Bash for the shell-commands case."""
         done, args = self.run_evals(EVALS_SANDBOX="yes", EVALS_NESTED_SANDBOX="yes")
         self.assertEqual(0, done.returncode, done.stderr)
         self.assertEqual(["plugin", "eval"], args[:2])
@@ -314,23 +315,30 @@ class RunEvals(unittest.TestCase):
         grants = self.option(args, "--allow-tools")
         self.assertIn("Bash(git:*)", grants)
         self.assertIn("Bash(python -m unittest:*)", grants)
+        self.assertIn("Bash", grants)
         self.assertNotIn("--runs", args)
         self.assertNotIn("note:", done.stdout)
 
-    def test_linux_where_the_sandbox_cannot_nest(self):
-        """GitHub's Ubuntu runners: the run starts, but every shell command fails (smoke run of 2026-11-21)."""
-        done, args = self.run_evals(EVALS_SANDBOX="yes", EVALS_NESTED_SANDBOX="no")
-        self.assertEqual(0, done.returncode, done.stderr)
-        self.assertEqual(["portable", "shell"], self.option(args, "--tag"))
-        self.assertIn("Bash(git:*)", self.option(args, "--allow-tools"))
-        self.assertIn("the cases tagged shell-commands are left out", done.stdout)
+    def test_linux_leaves_out_shell_commands_unless_asked(self):
+        """GitHub's Ubuntu runners: the run starts, but every shell command fails (smoke run of 2026-11-21). No
+        check tells them from WSL, where it works, so the shell-commands cases are opt-in on Linux."""
+        for nested in (None, "no", "maybe"):
+            with self.subTest(EVALS_NESTED_SANDBOX=nested):
+                env = {"EVALS_SANDBOX": "yes", **({"EVALS_NESTED_SANDBOX": nested} if nested else {})}
+                done, args = self.run_evals(**env)
+                self.assertEqual(0, done.returncode, done.stderr)
+                self.assertEqual(["portable", "shell"], self.option(args, "--tag"))
+                grants = self.option(args, "--allow-tools")
+                self.assertIn("Bash(git:*)", grants)
+                self.assertNotIn("Bash", grants)   # plain Bash only for the shell-commands case
+                self.assertIn("set EVALS_NESTED_SANDBOX=yes", done.stdout)
 
     def test_macos_runs_every_case(self):
         """Review of #38: Claude Code sandboxes with Seatbelt on macOS, so the bubblewrap checks do not apply."""
         done, args = self.run_evals(FAKE_UNAME="Darwin", EVALS_SANDBOX="no", EVALS_NESTED_SANDBOX="no")
         self.assertEqual(0, done.returncode, done.stderr)
         self.assertEqual(["portable", "shell", "shell-commands"], self.option(args, "--tag"))
-        self.assertIn("Bash(git:*)", self.option(args, "--allow-tools"))
+        self.assertIn("Bash", self.option(args, "--allow-tools"))
         self.assertNotIn("note:", done.stdout)
 
     def test_linux_without_bubblewrap(self):

@@ -13,8 +13,7 @@ execution:
     Can you review my changes on this branch before I open a pull request?
   max_turns: 40
   timeout_seconds: 900
-  allowed_tools: [Agent, Read, Grep, Glob, Skill, Write, "Bash(git:*)", "Bash(mkdir:*)", "Bash(sort:*)",
-                  "Bash(echo:*)", "Bash(python -m unittest:*)", "Bash(python3 -m unittest:*)"]
+  allowed_tools: [Agent, Read, Grep, Glob, Skill, Write, Bash]
 runs: 3
 graders:
   # with-only by default: an indicator that the plugin's skill fired, not part of the score

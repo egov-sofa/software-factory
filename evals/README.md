@@ -67,13 +67,24 @@ and says so; the other six run normally.
 
 ### On Linux
 
-Claude Code sandboxes each Bash command with bubblewrap and socat; without them `run-evals.sh` behaves as on Windows
-(a Bash grant would fail every run). Inside bubblewrap, Claude Code's helper makes a second, nested user namespace,
-which GitHub's Ubuntu runners refuse (it needs `CAP_SYS_ADMIN` there; neither the AppArmor sysctls nor removing the
-bwrap AppArmor profile changes that). The script checks for it and, where nesting fails, leaves out the
-`shell-commands` case with a note. `EVALS_SANDBOX=yes|no` and `EVALS_NESTED_SANDBOX=yes|no` skip the checks. To run
-every case, use a Linux machine or WSL with bubblewrap and socat installed, or macOS (Claude Code sandboxes with
-Seatbelt there, so these checks do not apply).
+Claude Code sandboxes each Bash command with bubblewrap and socat; without a working bubblewrap `run-evals.sh`
+behaves as on Windows (a Bash grant would fail every run). `plugin eval` runs each run in bubblewrap too, so the Bash
+sandbox is nested. On GitHub's Ubuntu runners every command then fails (`apply-seccomp: … nested userns is
+capability-restricted`; neither the AppArmor sysctls nor removing the bwrap AppArmor profile changes that). In WSL
+(Ubuntu 26.04) it works. No cheap check tells the two apart, so the `shell-commands` case is **opt-in on Linux**:
+
+```bash
+EVALS_NESTED_SANDBOX=yes bash scripts/run-evals.sh --smoke --case factory-review-starts-from-request
+```
+
+It then gets a plain `Bash` grant: `/factory-review` chains commands and sets variables, which no `Bash(prefix:*)`
+rule approves, and every command still runs inside the sandbox. `EVALS_SANDBOX=yes|no` skips the bubblewrap check.
+macOS runs every case (Claude Code sandboxes with Seatbelt there).
+
+**Known failure (2026-11-21):** in WSL the commands run, but `/factory-review` cannot write its review folder:
+`.git` is read-only inside Claude Code's sandbox. The fix is planned in
+[docs/plans/2026-11-21-review-folder-outside-git.md](../docs/plans/2026-11-21-review-folder-outside-git.md); until
+then this case fails.
 
 ### In GitHub Actions
 
@@ -111,6 +122,8 @@ run (every message and tool call) is in the CI artifact, or kept locally with `-
 | The probe, four runs of `_probe` (`--runs 1 --ablation none`) | about $0.15 in all | 2026-11-21 |
 | `--smoke` on Windows (six portable cases, both arms), 357 s | $1.03 | 2026-11-21 |
 | Re-run of the two cases fixed after it (planner, factory-build) | $0.39 | 2026-11-21 |
+| Evals workflow `--smoke` (eight cases, both arms; shell commands failed in the nested sandbox), 384 s | $1.49 | 2026-11-21 |
+| WSL, `factory-review-starts-from-request` three times while finding its grants | $0.44 | 2026-11-21 |
 | Full run (all eight cases, both arms, three runs) | to be filled in (estimate $10–18) | |
 
 ## Add a case
