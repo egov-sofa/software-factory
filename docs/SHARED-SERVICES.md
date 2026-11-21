@@ -116,6 +116,9 @@ demand). The action ([`scripts/factory_update_job.py`](../scripts/factory_update
   request and the `factory-update` issue with a comment pointing at the new one. An open issue does not stop this:
   every run tries the pull request again, so it opens once the repository setting below is turned on.
 
+Runs are queued one at a time (`concurrency: factory-update`): GitHub lists a new issue or pull request only seconds
+after it is opened, so a manual run during the scheduled one would otherwise open a second one.
+
 The caller has `contents: write`, `pull-requests: write` and `issues: write`, and no secret: only `GITHUB_TOKEN`,
 which brings three limits:
 
