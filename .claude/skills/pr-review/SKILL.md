@@ -55,6 +55,11 @@ Callers of the factory's own services in templates use `@v1`, never `@main`.
 - `{{FACTORY_HOME}}` is used for paths into the factory; `install.sh` fills it in.
 - A change to `/factory-build` keeps the plan approval gate and the two-round limit of the fix loop.
 
+**Evals** (`evals/`, see `evals/README.md`):
+- The defects in `evals/*/repo/`, `evals/*/change/` and the scaffolds are planted on purpose (an off-by-one, a SQL
+  injection, a made-up AWS key assembled by `security-finds-key-and-sqli/scaffold.sh`, floor division): do not report
+  them. Report a change that removes a planted defect or lets a case's graders pass without it.
+
 **Scripts** (`scripts/*.sh`, `scripts/*.py`, hooks):
 - Bash with `set -euo pipefail`, shellcheck-clean, works in Git Bash on Windows and on macOS (no GNU-only flags
   without a fallback, except where the script already documents it).
