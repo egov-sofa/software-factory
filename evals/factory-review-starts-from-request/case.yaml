@@ -4,7 +4,7 @@ description: >-
   "Review my changes" should start /factory-review (it changes no project file, so it may start by itself), which
   prepares the review folder and runs the reviewer and the security auditor. The branch holds the off-by-one of
   reviewer-finds-off-by-one. Needs a shell (git, the tests), so it runs on Linux only.
-tags: [skill, trigger, shell]
+tags: [skill, trigger, shell-commands]
 context:
   scaffold_script: scaffold.sh
 execution:

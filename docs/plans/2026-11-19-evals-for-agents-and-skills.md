@@ -298,7 +298,7 @@ plugin ≈ $0.20–0.60 (Opus agent plus Sonnet conductor), without ≈ $0.05–
 Full suite: 8 cases × 2 arms × 3 runs ≈ 48 runs ≈ **$10–18**; `--smoke` ≈ **$3–6**. Hence the default ceilings of
 $20 and $6; the first real run records the actual figures in `evals/README.md`.
 
-**Threshold:** `--threshold 0.67` (a case passes when the average run scores at least two thirds), because the default
+**Threshold:** `--threshold 0.66` (0.67 in the first draft: two thirds is 0.666…, which 0.67 failed in the first Actions run) (a case passes when the average run scores at least two thirds), because the default
 1.0 fails on a single unlucky run of three. The job summary shows the score, not only pass or fail.
 
 **CI job (`evals.yml`):** checkout (`persist-credentials: false`), setup-python, setup-node, `npm install -g

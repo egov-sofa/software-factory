@@ -135,8 +135,9 @@ class Cases(unittest.TestCase):
 
     @needs_yaml
     def test_shell_cases_are_tagged(self):
-        """run-evals.sh leaves out the shell-tagged cases on Windows, where a run cannot be granted a shell, and
-        selects the others by the portable tag: every case but the probe has exactly one of the two."""
+        """run-evals.sh selects cases by tag: portable everywhere; shell where a run can be granted a shell (not on
+        Windows); shell-commands where shell commands also run (a nested sandbox: not on GitHub's runners). Every case
+        but the probe has exactly one of the three, and a case granted Bash is shell or shell-commands."""
         for case_dir in CASES:
             with self.subTest(case=case_dir.name):
                 case = load(case_dir)
@@ -145,8 +146,12 @@ class Cases(unittest.TestCase):
                     self.assertEqual({"probe"}, tags)   # never selected by run-evals.sh
                     continue
                 shell = any(t.startswith("Bash") for t in case["execution"].get("allowed_tools") or [])
-                self.assertEqual({"shell"} if shell else {"portable"}, tags & {"shell", "portable"})
+                kind = tags & {"shell", "shell-commands", "portable"}
+                self.assertEqual(1, len(kind), tags)
+                self.assertEqual(shell, kind != {"portable"})
                 self.assertTrue(tags & {"core", "control", "trigger"})
+        # factory-review prepares the review folder with git: its commands must really run
+        self.assertIn("shell-commands", load(EVALS / "factory-review-starts-from-request")["tags"])
 
     @needs_yaml
     def test_guard_grader_matches_the_refused_tool_result(self):
@@ -293,7 +298,7 @@ class RunEvals(unittest.TestCase):
         return values
 
     def test_full_run_on_linux(self):
-        done, args = self.run_evals()
+        done, args = self.run_evals(EVALS_SANDBOX="yes", EVALS_NESTED_SANDBOX="yes")
         self.assertEqual(0, done.returncode, done.stderr)
         self.assertEqual(["plugin", "eval"], args[:2])
         self.assertTrue(args[2].endswith("/software-factory"))   # the built plugin, before the variadic options
@@ -301,16 +306,32 @@ class RunEvals(unittest.TestCase):
             self.assertIn(flag, args)
         self.assertEqual(["sonnet"], self.option(args, "--model"))
         self.assertEqual(["with-without"], self.option(args, "--ablation"))
-        self.assertEqual(["0.67"], self.option(args, "--threshold"))
+        self.assertEqual(["0.66"], self.option(args, "--threshold"))   # two of three passes (0.666…)
         self.assertEqual(["20"], self.option(args, "--max-cost-usd"))
         (json_path,) = self.option(args, "--json")   # Git Bash shows the temp folder as /tmp
         self.assertTrue(json_path.endswith("/out/result.json"), json_path)
-        self.assertEqual(["portable", "shell"], self.option(args, "--tag"))
+        self.assertEqual(["portable", "shell", "shell-commands"], self.option(args, "--tag"))
         grants = self.option(args, "--allow-tools")
         self.assertIn("Bash(git:*)", grants)
         self.assertIn("Bash(python -m unittest:*)", grants)
         self.assertNotIn("--runs", args)
-        self.assertNotIn("note: Windows", done.stdout)
+        self.assertNotIn("note:", done.stdout)
+
+    def test_linux_where_the_sandbox_cannot_nest(self):
+        """GitHub's Ubuntu runners: the run starts, but every shell command fails (smoke run of 2026-11-21)."""
+        done, args = self.run_evals(EVALS_SANDBOX="yes", EVALS_NESTED_SANDBOX="no")
+        self.assertEqual(0, done.returncode, done.stderr)
+        self.assertEqual(["portable", "shell"], self.option(args, "--tag"))
+        self.assertIn("Bash(git:*)", self.option(args, "--allow-tools"))
+        self.assertIn("the cases tagged shell-commands are left out", done.stdout)
+
+    def test_linux_without_bubblewrap(self):
+        """A Bash grant without a sandbox fails every run, portable ones too (the first Actions run)."""
+        done, args = self.run_evals(EVALS_SANDBOX="no")
+        self.assertEqual(0, done.returncode, done.stderr)
+        self.assertEqual(["portable"], self.option(args, "--tag"))
+        self.assertEqual(["Agent", "Edit", "Write"], self.option(args, "--allow-tools"))
+        self.assertIn("note: no bubblewrap or socat", done.stdout)
 
     def test_smoke_on_windows(self):
         done, args = self.run_evals("--smoke", "--case", "reviewer-*", FAKE_UNAME="MINGW64_NT-10.0-26300")
@@ -320,7 +341,7 @@ class RunEvals(unittest.TestCase):
         self.assertEqual(["reviewer-*"], self.option(args, "--case"))
         self.assertEqual(["portable"], self.option(args, "--tag"))
         self.assertEqual(["Agent", "Edit", "Write"], self.option(args, "--allow-tools"))
-        self.assertIn("the cases tagged shell are left out", done.stdout)
+        self.assertIn("note: Windows: the cases tagged shell or shell-commands are left out", done.stdout)
 
     def test_ceiling_and_exit_code_of_the_cli(self):
         done, args = self.run_evals("--max-cost-usd", "2.5", FAKE_EXIT="2")
