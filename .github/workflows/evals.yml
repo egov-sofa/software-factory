@@ -78,6 +78,15 @@ jobs:
       - name: Install Claude Code
         run: npm install -g "@anthropic-ai/claude-code@$CLAUDE_CODE_VERSION"
 
+      # plugin eval runs Bash only inside Claude Code's sandbox, which on Linux is bubblewrap (with socat); Ubuntu 24.04
+      # blocks the unprivileged user namespaces bubblewrap needs, so this runner (thrown away after the job) allows them
+      - name: Sandbox for the shell cases
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq bubblewrap socat
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+          bwrap --ro-bind / / --unshare-user --unshare-pid true
+
       - name: Run the evals
         id: evals
         env:

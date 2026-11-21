@@ -90,8 +90,22 @@ class Summary(unittest.TestCase):
     def test_error_run_is_shown(self):
         result = two_arms()
         result["cases"][0]["arms"]["with"][0]["error"] = "API Error: 529 overloaded |\nretry later"
-        notes = table_row(eval_summary.summary(result), "_probe")[8]
-        self.assertIn("error in 1 run(s): API Error: 529 overloaded \\| retry later", notes)
+        row = table_row(eval_summary.summary(result), "_probe")
+        self.assertIn("error in 1 run(s): API Error: 529 overloaded \\| retry later", row[8])
+        # the first Actions run: every run errored, yet a case whose graders need nothing to happen scored 1.00
+        result["cases"][0]["aggregates"]["score"] = 1.0
+        result["aggregates"]["casesPassed"] = 1   # what the CLI counts
+        text = eval_summary.summary(result)
+        self.assertEqual("**error**", table_row(text, "_probe")[1])
+        self.assertIn("Cases passed: 0 of 1;", text)   # review of #37: the header agrees with the rows
+
+    def test_a_baseline_error_leaves_the_verdict_to_the_with_arm(self):
+        """Review of #37: an errored run without the plugin makes Δ unreliable, not the factory's result."""
+        result = two_arms()
+        result["cases"][0]["arms"]["without"][0]["error"] = "API Error: 529 overloaded"
+        row = table_row(eval_summary.summary(result), "_probe")
+        self.assertEqual("pass", row[1])
+        self.assertIn("error in 1 run(s): API Error: 529 overloaded", row[8])
 
     def test_unscored_graders_are_not_failures(self):
         result = probe()

@@ -85,7 +85,9 @@ The job summary (or `python3 scripts/eval_summary.py evals/results/<time>/result
 | Failed graders (with) | which graders failed in the runs with the factory, and how often: start here |
 | Notes | runs that ended in an error (an API error, a timeout), and paid graders skipped at the ceiling: a low score from these says nothing about the agent |
 
-A case passes at a score of 0.67 (two runs of three). `factory-build-not-started-by-request` scores 1.0 in both arms
+A case passes at a score of 0.67 (two runs of three). It shows **error** instead when a run with the plugin ended
+on an error: that run was not graded, and graders that need nothing to happen would score it 1.0. An error in a run
+without the plugin only shows in Notes (Δ is then unreliable). `factory-build-not-started-by-request` scores 1.0 in both arms
 by design; a drop in the with-plugin arm is the regression it guards against. Three runs still vary: re-run a case
 near the threshold before acting on it. `report.html` shows every run with its graders' explanations; the trace of a
 run (every message and tool call) is in the CI artifact, or kept locally with `--keep-traces`.

@@ -261,6 +261,16 @@ class Evals(unittest.TestCase):
         self.assertIn(f'CLAUDE_VERSION="{version}"', script)
         self.assertIn('npm install -g "@anthropic-ai/claude-code@$CLAUDE_CODE_VERSION"', self.text)
 
+    def test_the_shell_cases_get_a_sandbox_before_the_run(self):
+        """The first Actions run: every run failed with "a shell tool was granted but this machine cannot confine
+        it". Claude Code sandboxes Bash on Linux with bubblewrap and socat, and the check fails before any spend."""
+        sandbox = self.step("name: Sandbox for the shell cases")
+        self.assertIn("apt-get install -y -qq bubblewrap socat", sandbox)
+        self.assertIn("kernel.apparmor_restrict_unprivileged_userns=0", sandbox)
+        self.assertIn("bwrap ", sandbox)
+        names = [s.split("\n", 1)[0] for s in self.steps]
+        self.assertLess(names.index("name: Sandbox for the shell cases"), names.index("name: Run the evals"))
+
     def test_summary_and_results_are_kept(self):
         self.assertIn('python scripts/eval_summary.py "$RUNNER_TEMP/evals/result.json" >> "$GITHUB_STEP_SUMMARY"',
                       self.step("name: Summary"))
