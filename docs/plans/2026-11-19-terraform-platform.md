@@ -177,9 +177,21 @@ done.
    three other repositories with a review rule were not re-run (a re-run posts a comment on someone's pull request);
    their next pull request confirms them.
 
-**Still open:** the `job_workflow_ref` pin on the review rules (I19 in the roadmap), so that even a
-`workspace:developer` token can only be obtained through the factory's reviewed workflow. With the scopes reduced, a
-pull request that edits the workflow can now spend model calls from that workspace, not change the organization.
+**The workflow pin (I19), 2026-11-20.** A pin on `job_workflow_ref` only protects a repository whose review runs the
+factory's workflow at a tag: a pull request runs its own copy of a workflow that lives in the repository, so a pin on
+that file's name would accept the edited copy too.
+
+- **The three egov-tech repositories with a review rule:** their review workflow became a short caller of
+  `egov-sofa/software-factory/.github/workflows/reusable-claude-review.yml@v1` (merged in each repository), and their
+  rules now also require `job_workflow_ref = egov-sofa/software-factory/.github/workflows/reusable-claude-review.yml@refs/tags/v1`.
+  Proven: a real review in two of them obtained a token through the pinned rule and posted its review; the third is
+  identical and is confirmed by its next pull request. The setup script in egov-tech/ehealth-platform now prints the
+  pin for every new rule.
+- **software-factory and claude-skills keep their own review workflows by design** (the factory develops the reusable
+  one; claude-skills has its own gating), so a pin cannot help them. With the reduced scopes, a pull request there
+  that edits the workflow can only spend model calls from that repository's workspace. Bound that with a monthly
+  spend limit on each workspace in the Console (the Admin API's spend-limit endpoints are not available to this
+  organization type).
 
 ## Target architecture
 
