@@ -19,7 +19,7 @@ pages:
         layout: column
         items:
           - {node: proj-a, kind: component, name: Project A, qualifier: egov-ai}
-          - {node: proj-b, kind: component, name: Project B, qualifier: pentagone-digital}
+          - {node: proj-b, kind: component, name: Project B, qualifier: egov-infra}
       - container: factory
         kind: system-boundary
         name: Factory, egov-sofa/software-factory

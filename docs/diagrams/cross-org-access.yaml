@@ -31,7 +31,7 @@ pages:
               - {node: skills, kind: component, name: claude-skills, qualifier: private}
           - container: pd
             kind: tenant
-            name: Org pentagone-digital
+            name: Org egov-infra
             items:
               - {node: app, kind: component, name: a project, qualifier: private}
     edges:
@@ -61,7 +61,7 @@ pages:
           - {node: risk, kind: note, risk: true, name: "Other orgs: workflow was not found"}
           - container: pd
             kind: tenant
-            name: Org pentagone-digital
+            name: Org egov-infra
             items:
               - {node: app, kind: component, name: a project}
     edges:
@@ -95,7 +95,7 @@ pages:
                   - {node: skills, kind: component, name: claude-skills, qualifier: private}
               - container: pd
                 kind: subscription
-                name: Org pentagone-digital
+                name: Org egov-infra
                 items:
                   - {node: app, kind: component, name: a project, qualifier: private}
     edges:
