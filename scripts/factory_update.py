@@ -760,7 +760,7 @@ def update(project, factory, to=None, out=print, report=None, keep_workflows=Fal
             write_report(report, {**current, "status": "workflows-pending" if pending else "current", "to": old,
                                   "commit": base_commit, "workflows": pending})
             return 0
-        if pending or wf_commit:
+        if pending:   # none pending: the workflow files are already current, so no older commit to remember
             new_answers[WORKFLOWS_FROM] = wf_commit or base_commit   # the older one: where the files really are
     writes[ANSWERS] = dump_answers(new_answers).encode("utf-8")
     apply(project, writes, deletes, rules)
@@ -782,11 +782,16 @@ def check(project, factory, out=print):
         print(f"warning: {warning}", file=sys.stderr)
     rendered, _, version = render(factory, commit, answers)
     wf_commit = workflows_base(factory, answers)
-    if wf_commit is not None:   # each file against the commit it is really at
+    if wf_commit is not None:
+        # A workflow file may be at either commit: still at _workflows_from, or brought up to date by hand (the job
+        # never removes the key, having no commit to propose). Compare each with the one it matches, if any.
         wf_rendered, _, _ = render(factory, wf_commit, answers)
-        rendered = {**{r: d for r, d in rendered.items() if not is_workflow(r)},
-                    **{r: d for r, d in wf_rendered.items() if is_workflow(r)}}
-        out(f"Workflow files are still at factory commit {wf_commit[:12]}: run /factory-update to bring them in.")
+        current = {r: d for r, d in rendered.items()
+                   if is_workflow(r) and lf(read(project, r) or b"") == lf(d)}
+        workflows = {**{r: d for r, d in wf_rendered.items() if is_workflow(r)}, **current}
+        rendered = {**{r: d for r, d in rendered.items() if not is_workflow(r)}, **workflows}
+        if any(r not in current for r in workflows):
+            out(f"Workflow files are still at factory commit {wf_commit[:12]}: run /factory-update to bring them in.")
     rules = rules_at(factory, commit) or []
     changed = []
     for rel, data in sorted(rendered.items()):

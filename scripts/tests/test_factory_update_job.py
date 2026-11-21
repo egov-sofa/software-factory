@@ -236,6 +236,26 @@ class WorkflowsPending(Base):
         self.assertIn("_workflows_from", self.answers())
         self.assertEqual(0, fu.check(self.project, self.factory, out=lambda text: None))
 
+    def test_check_passes_once_the_workflows_are_brought_in_by_hand(self):
+        """Review of #32: the job never removes the key, so check must accept workflow files that are current."""
+        self.merge_the_pull_request()
+        write(self.project, {".github/workflows/ci.yml": CHANGES["templates/_shared/.github/workflows/ci.yml"]})
+        commit(self.project, "ci: the new workflow, by hand")
+        said = []
+        self.assertEqual(0, fu.check(self.project, self.factory, out=said.append))
+        self.assertFalse([line for line in said if "still at" in line], said)
+
+    def test_a_newer_release_drops_the_key_once_nothing_is_pending(self):
+        self.merge_the_pull_request()
+        write(self.project, {".github/workflows/ci.yml": CHANGES["templates/_shared/.github/workflows/ci.yml"]})
+        commit(self.project, "ci: the new workflow, by hand")
+        write(self.factory, {"scripts/check_content.py": "#!/usr/bin/env python3\nprint('guard v3')\n"})
+        commit(self.factory, "fix: guard v3")
+        git(self.factory, "tag", "v1.2.0")
+        state = self.prepare()
+        self.assertEqual(("pr", "v1.2.0", []), (state["action"], state["to"], state["workflows"]))
+        self.assertNotIn("_workflows_from", self.head_file(fu.ANSWERS))
+
     def test_local_update_merges_the_workflows_and_removes_the_key(self):
         self.merge_the_pull_request()
         write(self.project, {"scripts/check_content.py": "#!/usr/bin/env python3\nprint('a local override')\n"})
@@ -394,6 +414,20 @@ class Publish(Base):
         self.assertEqual(0, job.publish(self.project, self.work, gh))
         self.assertEqual([], gh.calls)
         self.assertEqual("", git(self.origin, "branch", "--list", "factory-update/*"))
+
+    def test_a_branch_already_on_github_is_kept(self):
+        """Review of #32: people may push conflict resolutions to the branch; a later run must not force over them."""
+        self.prepare()
+        git(self.project, "push", "-q", "origin", "HEAD:refs/heads/factory-update/v1.1.0")
+        write(self.project, {"NOTES.md": "resolved by hand\n"})
+        commit(self.project, "fix: resolve the conflicts")
+        git(self.project, "push", "-q", "origin", "HEAD:refs/heads/factory-update/v1.1.0")
+        theirs = git(self.project, "rev-parse", "HEAD").strip()
+        git(self.project, "reset", "-q", "--hard", "HEAD~1")
+        gh = FakeGh()
+        self.assertEqual(0, job.publish(self.project, self.work, gh))
+        self.assertEqual(["create_pr"], gh.names())
+        self.assertEqual(theirs, git(self.origin, "rev-parse", "refs/heads/factory-update/v1.1.0").strip())
 
     def test_the_pull_request_opens_once_the_setting_is_on(self):
         """Review of #32: the fallback issue says to turn the setting on and run again; that run must open the pull

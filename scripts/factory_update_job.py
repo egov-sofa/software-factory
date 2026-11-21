@@ -244,8 +244,9 @@ class Gh:
 
 
 def push(project, branch):
-    """Push the branch with the job's token, given to git through the environment for this one command (the checkout
-    keeps none). --force: the factory-update/ branches belong to this job, and an earlier run may have left one."""
+    """Push the branch with the job's token, given to git through the environment for these commands (the checkout
+    keeps none). A branch already on GitHub is kept as it is, never forced: an earlier run left it, and people may
+    have pushed conflict resolutions to it (the fallback issue asks them to open the pull request from it)."""
     env = dict(os.environ)
     token = os.environ.get("GH_TOKEN")
     if token:
@@ -253,7 +254,10 @@ def push(project, branch):
         basic = base64.b64encode(f"x-access-token:{token}".encode("utf-8")).decode("ascii")
         env.update(GIT_CONFIG_COUNT="1", GIT_CONFIG_KEY_0=f"http.{server}/.extraheader",
                    GIT_CONFIG_VALUE_0=f"AUTHORIZATION: basic {basic}")
-    git(project, "push", "--quiet", "--force", "origin", f"HEAD:refs/heads/{branch}", env=env)
+    if git(project, "ls-remote", "--heads", "origin", f"refs/heads/{branch}", env=env).stdout.strip():
+        notice(f"branch {branch} is already on GitHub: kept as it is")
+        return
+    git(project, "push", "--quiet", "origin", f"HEAD:refs/heads/{branch}", env=env)
 
 
 CI_NOTE = ("### CI has not run on this pull request\n\nA pull request opened with `GITHUB_TOKEN` starts no workflows. "
