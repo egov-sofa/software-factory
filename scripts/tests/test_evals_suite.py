@@ -325,6 +325,14 @@ class RunEvals(unittest.TestCase):
         self.assertIn("Bash(git:*)", self.option(args, "--allow-tools"))
         self.assertIn("the cases tagged shell-commands are left out", done.stdout)
 
+    def test_macos_runs_every_case(self):
+        """Review of #38: Claude Code sandboxes with Seatbelt on macOS, so the bubblewrap checks do not apply."""
+        done, args = self.run_evals(FAKE_UNAME="Darwin", EVALS_SANDBOX="no", EVALS_NESTED_SANDBOX="no")
+        self.assertEqual(0, done.returncode, done.stderr)
+        self.assertEqual(["portable", "shell", "shell-commands"], self.option(args, "--tag"))
+        self.assertIn("Bash(git:*)", self.option(args, "--allow-tools"))
+        self.assertNotIn("note:", done.stdout)
+
     def test_linux_without_bubblewrap(self):
         """A Bash grant without a sandbox fails every run, portable ones too (the first Actions run)."""
         done, args = self.run_evals(EVALS_SANDBOX="no")

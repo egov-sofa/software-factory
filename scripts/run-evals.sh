@@ -15,7 +15,8 @@
 # so ANTHROPIC_CUSTOM_HEADERS (the workspace header some keys need, evals/README.md) reaches every run.
 # Cases the machine's sandbox cannot run are left out, with a note: on Windows, or on Linux without bubblewrap and
 # socat, the `shell` and `shell-commands` cases and the Bash grants; where the sandbox cannot nest a user namespace
-# (GitHub's Ubuntu runners), the `shell-commands` cases. EVALS_SANDBOX and EVALS_NESTED_SANDBOX (yes|no) skip the checks.
+# (GitHub's Ubuntu runners), the `shell-commands` cases. macOS sandboxes with Seatbelt and runs them all.
+# EVALS_SANDBOX and EVALS_NESTED_SANDBOX (yes|no) skip the checks.
 #
 # Exit code: the CLI's (0 every case at or above the threshold, 1 a case below it, 2 the cost ceiling was hit);
 # 2 also for a usage error or a missing or too old claude.
@@ -78,22 +79,28 @@ tags=(portable)
 grants=(Agent Edit Write)
 no_shell() {
   echo "note: $1: the cases tagged shell or shell-commands are left out, and so are the Bash grants (a run cannot"
-  echo "      confine a shell here, and a Bash grant would fail every run). Run them on Linux with bubblewrap and socat."
+  echo "      confine a shell here, and a Bash grant would fail every run). Run them on Linux with bubblewrap and"
+  echo "      socat, or on macOS."
 }
+shell_grants=("Bash(python -m unittest:*)" "Bash(python3 -m unittest:*)" "Bash(git:*)" "Bash(mkdir:*)"
+              "Bash(sort:*)" "Bash(echo:*)")
 case "$(uname -s)" in
   MINGW*|MSYS*) no_shell Windows ;;
+  Darwin)   # Seatbelt: no bubblewrap, no user namespaces to nest
+    tags+=(shell shell-commands)
+    grants+=("${shell_grants[@]}")
+    ;;
   *)
     if ! has_sandbox; then
       no_shell "no bubblewrap or socat"
     else
       tags+=(shell)
-      grants+=("Bash(python -m unittest:*)" "Bash(python3 -m unittest:*)" "Bash(git:*)" "Bash(mkdir:*)"
-               "Bash(sort:*)" "Bash(echo:*)")
+      grants+=("${shell_grants[@]}")
       if nested_sandbox; then
         tags+=(shell-commands)
       else
-        echo "note: the sandbox cannot nest a user namespace here (GitHub's Ubuntu runners), so shell commands fail:"
-        echo "      the cases tagged shell-commands are left out. Run them on Linux where it can (WSL, a Linux machine)."
+        echo "note: the sandbox cannot nest a user namespace here (GitHub's Ubuntu runners), so shell commands"
+        echo "      fail: the cases tagged shell-commands are left out. Run them where it can (WSL, Linux, macOS)."
       fi
     fi
     ;;

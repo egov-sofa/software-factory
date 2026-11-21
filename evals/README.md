@@ -72,7 +72,8 @@ Claude Code sandboxes each Bash command with bubblewrap and socat; without them 
 which GitHub's Ubuntu runners refuse (it needs `CAP_SYS_ADMIN` there; neither the AppArmor sysctls nor removing the
 bwrap AppArmor profile changes that). The script checks for it and, where nesting fails, leaves out the
 `shell-commands` case with a note. `EVALS_SANDBOX=yes|no` and `EVALS_NESTED_SANDBOX=yes|no` skip the checks. To run
-every case, use a Linux machine or WSL with bubblewrap and socat installed.
+every case, use a Linux machine or WSL with bubblewrap and socat installed, or macOS (Claude Code sandboxes with
+Seatbelt there, so these checks do not apply).
 
 ### In GitHub Actions
 
