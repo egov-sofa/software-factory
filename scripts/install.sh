@@ -6,7 +6,15 @@
 set -euo pipefail
 
 DRY_RUN=false
-[[ "${1:-}" == "--dry-run" ]] && DRY_RUN=true
+for arg in "$@"; do
+  case "$arg" in
+    --dry-run) DRY_RUN=true ;;
+    # an unknown option (a typo such as --dryrun) must not fall through to a real install
+    *) printf '❌ Unknown option: %s
+Usage: bash scripts/install.sh [--dry-run]
+' "$arg" >&2; exit 2 ;;
+  esac
+done
 
 # Absolute path of the factory repo. `pwd -W` gives a Windows-style path (C:/...) in Git Bash,
 # which works both in bash and in Claude's file tools.

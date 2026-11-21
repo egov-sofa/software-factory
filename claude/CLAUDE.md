@@ -1,14 +1,15 @@
 # Global Working Rules (installed by software-factory)
 
-These rules apply to every project. A project's own `CLAUDE.md` overrides them where they conflict.
-Full standards: `{{FACTORY_HOME}}/standards/`
+These rules apply to every project. A project's own `AGENTS.md` or `CLAUDE.md` overrides them where they conflict.
+Full standards: the project's `.factory/standards/` when it has one (shipped by the factory, kept current by
+`/factory-update`), else `{{FACTORY_HOME}}/standards/`
 
 ## About me
 - I'm building my skills: when you make a non-obvious decision, explain **why** in one or two plain sentences.
 - My projects use mixed stacks (TypeScript, Python, others). Detect the stack from the project files; don't assume.
 
 ## How to work
-- Read the project's `CLAUDE.md` and existing code before changing anything. Match existing style.
+- Read the project's `AGENTS.md` (or `CLAUDE.md`) and existing code before changing anything. Match existing style.
 - Work on a branch, never directly on `main`. Branch names: `feat/…`, `fix/…`, `chore/…`, `docs/…`.
 - Commits follow Conventional Commits: `feat: …`, `fix: …`, `docs: …`, `test: …`, `refactor: …`, `chore: …`.
 - Every behavior change comes with tests. Run the test suite before saying something works.
@@ -17,7 +18,8 @@ Full standards: `{{FACTORY_HOME}}/standards/`
 
 ## Factory pipeline
 For anything bigger than a small fix, suggest `/factory-build <feature>` (plan → build → test → review → docs).
-Plans live in `docs/plans/`. Other commands: `/factory-new`, `/factory-review`, `/factory-ship`, `/factory-onboard`.
+Plans live in `docs/plans/`. Other commands: `/factory-new`, `/factory-review`, `/factory-ship`, `/factory-onboard`,
+`/factory-update` (bring a factory project up to a newer factory release).
 
 ## Never
 - Commit secrets, `.env` files, or credentials.

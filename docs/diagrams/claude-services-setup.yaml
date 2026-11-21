@@ -1,0 +1,68 @@
+# Source of claude-services-setup.drawio and .png (docs/CLAUDE-SERVICES-AUTH.md, Set up a repository from Claude Code).
+# Regenerate: bash docs/diagrams/build.sh claude-services-setup
+diagram:
+  title: Setting a repository up for the Claude review
+  statement: Claude Code prepares and previews; a person with the org:admin login runs one command; the script turns the review on last, and never while a stored key would win over federation.
+  notation: bpmn
+  viewpoint: process
+  status: approved
+  version: "1"
+  author: software-factory
+  date: 2026-11-19
+pages:
+  - name: Setup
+    flow: left-to-right
+    items:
+      - container: setup
+        kind: pool
+        name: Repository setup
+        items:
+          - container: claude
+            kind: lane
+            name: Claude Code
+            layout: row
+            align: middle
+            items:
+              - {node: start, kind: start-event, name: Repo created or onboarded, step: 1}
+              - {node: preview, kind: task, name: Preview the rules, step: 2}
+              - {node: handover, kind: task, name: Hand over one command, step: 3}
+          - container: admin
+            kind: lane
+            name: Organization admin
+            layout: row
+            align: middle
+            items:
+              - {node: login, kind: task, name: "Log in, org:admin", step: 4}
+              - {node: run, kind: task, name: "Run it with !", step: 5}
+              - {node: delete, kind: task, name: Delete the secret, step: 8}
+          - container: script
+            kind: lane
+            name: claude_federation.py
+            layout: row
+            align: middle
+            items:
+              - {node: rules, kind: task, name: Create or reuse rules, step: 6}
+              - {node: secret, kind: gateway, name: "API key secret?", step: 7}
+              - {node: ids, kind: task, name: Set the ID variables, step: 9}
+              - {node: enable, kind: task, name: Turn the review on, step: 10}
+          - container: github
+            kind: lane
+            name: GitHub
+            layout: row
+            align: middle
+            items:
+              - {node: review, kind: task, name: Next pull request reviewed, step: 11}
+              - {node: done, kind: end-event, name: Review running, step: 12}
+    edges:
+      - {from: start, to: preview, kind: sequence}
+      - {from: preview, to: handover, kind: sequence}
+      - {from: handover, to: login, kind: sequence}
+      - {from: login, to: run, kind: sequence}
+      - {from: run, to: rules, kind: sequence}
+      - {from: rules, to: secret, kind: sequence}
+      - {from: secret, to: ids, kind: sequence, label: "no"}
+      - {from: secret, to: delete, kind: sequence, label: "yes: nothing set"}
+      - {from: delete, to: run, kind: sequence, label: run again}
+      - {from: ids, to: enable, kind: sequence}
+      - {from: enable, to: review, kind: sequence}
+      - {from: review, to: done, kind: sequence}

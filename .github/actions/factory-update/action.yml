@@ -1,0 +1,53 @@
+# Factory update: proposes the newest software-factory release of the project's major version as a pull request,
+# every week, so a project does not drift from the factory silently.
+# Shared service of the software factory: see docs/SHARED-SERVICES.md, "Updates". The caller is
+# templates/_shared/.github/workflows/factory-update.yml; it needs contents: write, pull-requests: write and
+# issues: write, and no secret beyond GITHUB_TOKEN.
+#
+# What it does (scripts/factory_update_job.py):
+#   - skips with a notice when the project has no .factory/answers.yml;
+#   - clones the factory named in the answers file without a token (it is public) and runs this action's own
+#     scripts/factory_update.py on the checkout; nothing from the project runs, and git runs with hooks off;
+#   - does nothing when an open pull request already proposes the newest release; when the project is at or past
+#     it, closes the open update pull requests and issue;
+#   - otherwise pushes branch factory-update/<version> and opens a pull request (a draft when it has conflicts),
+#     closing older update pull requests. Changes to .github/workflows/ are left out (GITHUB_TOKEN cannot push them)
+#     and listed, with "run /factory-update locally"; _workflows_from in the answers file records the commit they
+#     are still at, so a merged update is not proposed again;
+#   - when the repository does not let GitHub Actions open pull requests, or only workflow files change, it keeps
+#     one issue labelled factory-update up to date instead.
+# A pull request opened with GITHUB_TOKEN starts no workflows: its body says how to start CI.
+name: Factory update
+description: Propose the newest software-factory release as a pull request (or an issue when that is not allowed)
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false   # the token is given to the push and gh calls only, through the environment
+
+    - name: Look for the answers file
+      id: answers
+      shell: bash
+      run: |
+        if [ -f .factory/answers.yml ]; then
+          echo "found=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "::notice::no .factory/answers.yml: this project does not record its factory version; run /factory-update locally once (it writes the file), then this job keeps it current"
+          echo "found=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    # No token in this step: it clones a public repository and changes files in the checkout only. python3 -I keeps
+    # the checkout off the import path; the scripts are this action's own, at the pinned tag.
+    - name: Prepare the update
+      if: ${{ steps.answers.outputs.found == 'true' }}
+      shell: bash
+      run: python3 -I "$GITHUB_ACTION_PATH/../../../scripts/factory_update_job.py" prepare --workdir "$RUNNER_TEMP/factory-update"
+
+    - name: Open or refresh the pull request
+      if: ${{ steps.answers.outputs.found == 'true' }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        GH_REPO: ${{ github.repository }}
+      run: python3 -I "$GITHUB_ACTION_PATH/../../../scripts/factory_update_job.py" publish --workdir "$RUNNER_TEMP/factory-update"

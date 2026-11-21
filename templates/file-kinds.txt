@@ -1,0 +1,28 @@
+# Who owns each file of a scaffolded project, so /factory-update knows what to do with it
+# (docs/plans/2026-11-19-project-updates-and-shipped-standards.md). Read by scripts/new-project.sh (managed headers)
+# and scripts/factory_update.py (updates), always from the version being written.
+#
+# One rule per line: <kind> <glob>, matched against the file's path in the project; the first matching rule wins and
+# a file no rule names is seeded. In a glob, * and ? match any characters, / included; [...] matches one of a set.
+#
+#   managed  the factory owns it: every update replaces it whole, and it carries a header saying so. Only Markdown
+#            files and files with # comments can be managed (the header is a comment).
+#   merged   the factory provides it and the project may edit it: an update merges both (3-way, git merge-file).
+#   seeded   written once at scaffold; the project owns it. Updates never touch it, except the factory's
+#            standards marker block inside it (AGENTS.md, the pr-review checklist).
+#
+# Adding a template file: docs/CUSTOMIZING.md says how to choose its kind.
+
+managed scripts/check_content.py
+managed scripts/hooks/*
+managed .factory/standards/*.md
+
+merged .github/workflows/*.yml
+merged .github/dependabot.yml
+merged .github/pull_request_template.md
+merged .editorconfig
+merged .gitattributes
+merged .gitignore
+merged CLAUDE.md
+merged eslint.config.js
+merged tsconfig*.json

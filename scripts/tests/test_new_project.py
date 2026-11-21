@@ -7,6 +7,7 @@ Run: python3 -m unittest discover -s scripts/tests
 import os
 import re
 import shutil
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -17,14 +18,19 @@ import support
 # A factory placeholder; the $ lookbehind keeps GitHub expressions such as ${{ secrets.X }} out of it.
 PLACEHOLDER_RE = re.compile(r"(?<!\$)\{\{\s*[A-Z_]+\s*\}\}")
 GITHUB_EXPR_RE = re.compile(r"\$\{\{.*?\}\}")
-TEMPLATES = ("typescript", "python", "generic")
+sys.path.insert(0, str(FACTORY / "scripts"))
+import stacks  # noqa: E402  (after the sys.path line above)
+import factory_update  # noqa: E402
+
+TEMPLATES = tuple(stacks.load())   # every stack of templates/stacks.toml
 NAME = "selftest-app"
 
 
 def fake_factory(tmp, remote):
-    """A copy of the factory's scripts and templates at <tmp>/ws/test-org/software-factory; remote None = no remote."""
+    """A copy of the factory's scripts, templates and standards at <tmp>/ws/test-org/software-factory, a git
+    repository without commits; remote None = no remote."""
     home = Path(tmp) / "ws" / "test-org" / "software-factory"
-    for part in ("scripts", "templates"):
+    for part in ("scripts", "templates", "standards"):
         shutil.copytree(FACTORY / part, home / part, ignore=shutil.ignore_patterns("__pycache__"))
     support.git(home, "init", "-q")
     if remote:
@@ -50,6 +56,20 @@ class Base(unittest.TestCase):
         cls.tmp = tempfile.TemporaryDirectory()
         cls.home = fake_factory(cls.tmp.name, cls.remote)
         cls.ws = cls.home.parent.parent
+        cls.tools_log = Path(cls.tmp.name) / "tools.log"
+        cls.tools = cls.fake_tools(Path(cls.tmp.name) / "bin", ok=True)
+
+    @classmethod
+    def fake_tools(cls, bin_dir, ok):
+        """npm and uv first on PATH: they log how they were called and write the lockfile (or fail), so no test
+        reaches the network or depends on the tools installed on the machine."""
+        bin_dir.mkdir()
+        for tool, lockfile in (("npm", "package-lock.json"), ("uv", "uv.lock")):
+            body = f'echo "{tool} $*" >> "{posix(cls.tools_log)}"\n' + ("echo '{}' > " + lockfile if ok else "exit 1")
+            script = bin_dir / tool
+            script.write_bytes(f"#!/bin/sh\n{body}\n".encode("utf-8"))
+            script.chmod(0o755)
+        return {"PATH": f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}"}
 
     @classmethod
     def tearDownClass(cls):
@@ -59,8 +79,8 @@ class Base(unittest.TestCase):
         self.out = Path(tempfile.mkdtemp(dir=self.tmp.name)) / "out"
         self.addCleanup(shutil.rmtree, self.ws / "acme", True)
 
-    def new_project(self, *args):
-        return run(self.home / "scripts" / "new-project.sh", *args)
+    def new_project(self, *args, env=None):
+        return run(self.home / "scripts" / "new-project.sh", *args, env={**self.tools, **(env or {})})
 
     def created(self, *args):
         result = self.new_project(*args)
@@ -94,6 +114,36 @@ class Options(Base):
         self.assertEqual("1", support.git(project, "rev-list", "--count", "main").strip())
         self.assertEqual("scripts/hooks", support.git(project, "config", "core.hooksPath").strip())
         self.assertTrue(support.git(project, "ls-files", "-s", "scripts/hooks/pre-commit").startswith("100755 "))
+
+    def test_agents_md_holds_the_instructions_and_claude_md_imports_it(self):
+        """Every AI coding agent reads AGENTS.md; Claude Code reads it through CLAUDE.md."""
+        for template in TEMPLATES:
+            with self.subTest(template):
+                self.created(NAME, template, "--dir", posix(self.out / template), "--no-git")
+                project = self.out / template / NAME
+                agents = (project / "AGENTS.md").read_text(encoding="utf-8")
+                self.assertTrue(agents.startswith(f"# {NAME}\n"))
+                self.assertIn("## Commands", agents)
+                claude = (project / "CLAUDE.md").read_text(encoding="utf-8").splitlines()
+                self.assertIn("@AGENTS.md", claude)
+                self.assertNotIn("## Commands", claude)   # one source: the commands live in AGENTS.md only
+
+    def test_failed_first_commit_removes_the_partial_project(self):
+        """Commit signing that fails (a common local setup): the half-built folder must not block a second run."""
+        env = {"GIT_CONFIG_PARAMETERS": "'commit.gpgsign=true' 'gpg.program=false'"}
+        result = self.new_project(NAME, "generic", "--dir", posix(self.out), env=env)
+        self.assertNotEqual(0, result.returncode, result.stdout)
+        self.assertIn("removed the partial", result.stderr)
+        self.assertFalse((self.out / NAME).exists())
+        self.created(NAME, "generic", "--dir", posix(self.out))   # the retry works
+
+    def test_generic_check_script_does_not_claim_checks_passed(self):
+        check = self.home / "templates" / "generic" / "scripts" / "check.sh"
+        result = run(check)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertNotIn("All checks passed", result.stdout)
+        self.assertIn("No checks configured yet", result.stdout)
+        self.assertIn("::warning::", run(check, env={"GITHUB_ACTIONS": "true"}).stdout)
 
     def test_rejected_arguments(self):
         out = posix(self.out)
@@ -158,6 +208,39 @@ class Options(Base):
         self.assertEqual("mine\n", (target / "keep.txt").read_text(encoding="utf-8"))
 
 
+class Lockfiles(Base):
+    """Versions are pinned by a lockfile in the first commit (standards/CODING-STANDARDS.md)."""
+
+    def setUp(self):
+        super().setUp()
+        self.tools_log.unlink(missing_ok=True)
+
+    def test_lockfile_is_in_the_first_commit(self):
+        for template, lockfile, command in (("typescript", "package-lock.json", "npm install --package-lock-only"),
+                                            ("python", "uv.lock", "uv lock")):
+            with self.subTest(template):
+                result = self.created(NAME, template, "--dir", posix(self.out / template))
+                project = self.out / template / NAME
+                self.assertIn(f"{lockfile} created", result.stdout)
+                self.assertEqual(lockfile, support.git(project, "ls-files", lockfile).strip())
+                self.assertEqual("", support.git(project, "status", "--porcelain"))
+                self.assertIn(command, self.tools_log.read_text(encoding="utf-8"))
+
+    def test_generic_template_has_no_lockfile(self):
+        self.created(NAME, "generic", "--dir", posix(self.out), "--no-git")
+        self.assertFalse(self.tools_log.exists())
+
+    def test_failing_tool_warns_and_the_project_is_still_created(self):
+        failing = self.fake_tools(Path(tempfile.mkdtemp(dir=self.tmp.name)) / "bin", ok=False)
+        for template, lockfile in (("typescript", "package-lock.json"), ("python", "uv.lock")):
+            with self.subTest(template):
+                result = self.new_project(NAME, template, "--dir", posix(self.out / template), env=failing)
+                self.assertEqual(0, result.returncode, result.stderr + result.stdout)
+                self.assertIn(f"failed (offline?): no {lockfile} yet", result.stdout)
+                self.assertFalse((self.out / template / NAME / lockfile).exists())
+                self.assertTrue((self.out / template / NAME / "CLAUDE.md").is_file())
+
+
 class FactoryRepo(Base):
     def factory_repo(self, remote):
         if remote:
@@ -181,6 +264,91 @@ class FactoryRepo(Base):
         result, ci = self.factory_repo(None)
         self.assertIn("YOUR_ORG/software-factory/.github/workflows/", ci)
         self.assertIn("has no git remote", result.stdout)
+
+
+class AnswersAndStandards(Base):
+    """The project records what /factory-update needs, ships the standards and marks the factory's files."""
+
+    KEYS = ["_src_path", "_commit", "version", "template", "project_name", "package_name", "github_owner", "year",
+            "onboarded", "skip"]
+
+    def answers(self, project):
+        return factory_update.parse_answers((project / ".factory" / "answers.yml").read_text(encoding="utf-8"))
+
+    def test_answers_standards_and_headers(self):
+        result = self.created(NAME, "python", "--owner", "acme", "--dir", posix(self.out), "--no-git")
+        project = self.out / NAME
+        answers = self.answers(project)
+        self.assertEqual(self.KEYS, list(answers))
+        self.assertEqual({"_src_path": "test-org/test-factory", "template": "python", "project_name": NAME,
+                          "package_name": "selftest_app", "github_owner": "acme", "onboarded": False, "skip": []},
+                         {k: v for k, v in answers.items() if k not in ("_commit", "version", "year")})
+        self.assertRegex(answers["year"], r"^\d{4}$")
+        # the copy of the factory has no commit: recorded as unknown, with a warning, and the project is still made
+        self.assertEqual(("unknown", "unknown"), (answers["_commit"], answers["version"]))
+        self.assertIn("no commit or no release tag", result.stdout)
+        shipped = sorted(p.name for p in (project / ".factory" / "standards").iterdir())
+        self.assertEqual(sorted(p.name for p in (FACTORY / "standards").glob("*.md")), shipped)
+        header = factory_update.MANAGED_HEADER
+        self.assertEqual(f"<!-- {header} -->",
+                         (project / ".factory" / "standards" / "SECURITY.md").read_text(encoding="utf-8").splitlines()[0])
+        for rel in ("scripts/check_content.py", "scripts/hooks/pre-commit", "scripts/hooks/commit-msg"):
+            with self.subTest(rel):
+                lines = (project / rel).read_text(encoding="utf-8").splitlines()
+                self.assertTrue(lines[0].startswith("#!"))
+                self.assertEqual(f"# {header}", lines[1])
+        for rel in ("AGENTS.md", "CLAUDE.md", "pyproject.toml"):   # seeded and merged files carry no header
+            self.assertNotIn(header, (project / rel).read_text(encoding="utf-8"))
+        agents = (project / "AGENTS.md").read_text(encoding="utf-8").splitlines()
+        self.assertEqual(1, agents.count(factory_update.MARK_START))
+
+    def test_empty_owner_is_quoted(self):
+        self.created(NAME, "generic", "--dir", posix(self.out), "--no-git")
+        text = (self.out / NAME / ".factory" / "answers.yml").read_text(encoding="utf-8")
+        self.assertIn('github_owner: ""\n', text)
+        self.assertEqual("", self.answers(self.out / NAME)["github_owner"])
+
+    def test_answers_and_standards_are_in_the_first_commit(self):
+        self.created(NAME, "generic", "--dir", posix(self.out))
+        tracked = support.git(self.out / NAME, "ls-files").splitlines()
+        self.assertIn(".factory/answers.yml", tracked)
+        self.assertIn(".factory/standards/SECURITY.md", tracked)
+
+
+@needs_bash
+class FactoryVersion(unittest.TestCase):
+    """_commit and version come from the factory clone's history: the release tag, never the moving major tag."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.home = fake_factory(tmp.name, "https://github.com/test-org/test-factory.git")
+        self.out = Path(tmp.name) / "out"
+        support.git(self.home, "add", "-A")
+        support.git(self.home, "commit", "-q", "-m", "release")
+        support.git(self.home, "tag", "v1.4.0")
+        (self.home / "README.md").write_text("later\n", encoding="utf-8")
+        support.git(self.home, "add", "-A")
+        support.git(self.home, "commit", "-q", "-m", "after the release")
+        support.git(self.home, "tag", "v1")   # the moving major tag, on the untagged commit
+
+    def scaffold(self):
+        result = run(self.home / "scripts" / "new-project.sh", NAME, "generic", "--dir", posix(self.out), "--no-git")
+        self.assertEqual(0, result.returncode, result.stderr + result.stdout)
+        text = (self.out / NAME / ".factory" / "answers.yml").read_text(encoding="utf-8")
+        return result, factory_update.parse_answers(text)
+
+    def test_untagged_commit_records_the_last_release(self):
+        result, answers = self.scaffold()
+        self.assertEqual(support.git(self.home, "rev-parse", "HEAD").strip(), answers["_commit"])
+        self.assertEqual("v1.4.0", answers["version"])
+        self.assertNotIn("uncommitted changes", result.stdout)
+
+    def test_dirty_factory_warns(self):
+        with open(self.home / "templates" / "generic" / "README.md", "a", encoding="utf-8") as f:
+            f.write("local edit\n")
+        result, _ = self.scaffold()
+        self.assertIn("uncommitted changes", result.stdout)
 
 
 class Placeholders(Base):

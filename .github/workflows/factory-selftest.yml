@@ -1,11 +1,18 @@
-# Tests the factory itself: scaffolds a project from every template and runs its checks.
-# If a change to a template or script breaks project creation, this goes red.
+# Tests the factory itself (docs/plans/2026-11-19-stack-manifest-and-real-selftest.md):
+# - its scripts and their unit tests;
+# - the real shared workflows (reusable-*.yml) on the committed fixture projects in tests/fixtures/, and the
+#   content-guard action on the pull request itself, so a broken shared service fails here, before a release moves v1;
+# - new-project.sh and each stack's commands from templates/stacks.toml: on Linux for a pull request, and on Linux,
+#   macOS and Windows on main, every week and on demand. The release only tags a commit whose push run passed.
 name: Factory self-test
 
 on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    - cron: "17 5 * * 1"   # weekly: the runner images change under us
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -23,24 +30,95 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0   # the release tags: test_factory_update.py renders the real v1.2.0
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
       - name: Agent and skill frontmatter
         run: python scripts/validate.py
+      - name: Stack manifest
+        run: python scripts/stacks.py check
       # check_content.py, validate.py, and install.sh, uninstall.sh and new-project.sh run with bash
+      - name: PyYAML for the docs drift tests (same pin as the docs-drift action)
+        run: python -I -m pip install --quiet --disable-pip-version-check "pyyaml==6.0.3"
       - name: Unit tests of the factory scripts
         run: python -m unittest discover -s scripts/tests -v
       - name: The factory itself is clean
         run: python scripts/check_content.py --all
 
-  scaffold:
-    name: Scaffold ${{ matrix.template }}
+  # The shared workflows themselves, from this commit, on a project of each stack. One job per stack: a reusable
+  # workflow is called at job level only. The inputs are the ones the stack's ci.yml passes (templates/stacks.toml).
+  ci-typescript:
+    name: Shared CI (typescript fixture)
+    uses: ./.github/workflows/reusable-node.yml
+    with:
+      node-version: "22"
+      working-directory: tests/fixtures/typescript
+
+  ci-python:
+    name: Shared CI (python fixture)
+    uses: ./.github/workflows/reusable-python.yml
+    with:
+      python-version: "3.12"
+      package-manager: uv
+      working-directory: tests/fixtures/python
+
+  ci-generic:
+    name: Shared CI (generic fixture)
+    uses: ./.github/workflows/reusable-generic.yml
+    with:
+      working-directory: tests/fixtures/generic
+
+  content-guard:
+    name: Content-guard action
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Passes on this pull request
+        uses: ./.github/actions/content-guard
+
+      # A denylist term taken from the title must make it fail: the title is checked too, and nothing is planted
+      - name: Denylist term from the title
+        id: term
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          word="$(printf '%s' "$TITLE" | grep -oE '[A-Za-z]{4,}' | head -n 1 || true)"
+          echo "word=$word" >> "$GITHUB_OUTPUT"
+          [ -n "$word" ] || echo "::notice::the title has no word of 4 or more letters: the failing run is skipped"
+
+      - name: Fails on a denylisted term
+        id: refused
+        if: steps.term.outputs.word != ''
+        continue-on-error: true
+        uses: ./.github/actions/content-guard
+        with:
+          denylist: ${{ steps.term.outputs.word }}
+
+      - name: The denylisted term was refused
+        if: steps.term.outputs.word != ''
+        env:
+          OUTCOME: ${{ steps.refused.outcome }}
+        run: |
+          if [ "$OUTCOME" != failure ]; then
+            echo "::error::the content guard passed a pull request whose title holds a denylisted term ($OUTCOME)"
+            exit 1
+          fi
+
+  scaffold:
+    name: Scaffold ${{ matrix.stack }} (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        template: [typescript, python, generic]
+        stack: [typescript, python, generic]
+        os: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || '["ubuntu-latest", "macos-latest", "windows-latest"]') }}
+    defaults:
+      run:
+        shell: bash   # Git Bash on Windows
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -52,33 +130,66 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Configure git identity
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.7"
+
+      - name: Configure git identity and paths
         run: |
           git config --global user.name "factory-selftest"
           git config --global user.email "selftest@example.com"
+          # bash-style paths (Windows' RUNNER_TEMP has backslashes); python3 may be missing on Windows
+          echo "APP=$(cd "$RUNNER_TEMP" && pwd)/selftest-app" >> "$GITHUB_ENV"
+          PY=python3; "$PY" -c "" 2>/dev/null || PY=python
+          echo "PY=$PY" >> "$GITHUB_ENV"
 
       - name: Scaffold project
-        run: bash scripts/new-project.sh selftest-app ${{ matrix.template }} --dir "$RUNNER_TEMP" --owner example
+        run: bash scripts/new-project.sh selftest-app "${{ matrix.stack }}" --dir "$(dirname "$APP")" --owner example
 
       - name: No placeholders left behind
         # factory placeholders are {{UPPER_CASE}}; GitHub expressions (${{ ... }}) in workflows are expected
         run: |
-          if grep -rnE "\{\{[A-Z_]+\}\}" "$RUNNER_TEMP/selftest-app" --exclude-dir=.git; then
+          if grep -rnE "\{\{[A-Z_]+\}\}" "$APP" --exclude-dir=.git; then
             echo "::error::Unreplaced placeholders found"; exit 1
           fi
 
       - name: Content guard and hooks are in place
-        working-directory: ${{ runner.temp }}/selftest-app
         run: |
+          cd "$APP"
           test "$(git config core.hooksPath)" = scripts/hooks
           test -x scripts/hooks/pre-commit && test -x scripts/hooks/commit-msg
-          python3 scripts/check_content.py --all
+          "$PY" scripts/check_content.py --all
 
-      - name: Run project checks
-        working-directory: ${{ runner.temp }}/selftest-app
+      # The project ships the standards, and its managed files are exactly what factory_update.py renders for the
+      # recorded version: the bash scaffold and the Python renderer agree on this system too. Exit 3 only says a
+      # newer release exists.
+      - name: Standards shipped and managed files match the recorded version
         run: |
-          case "${{ matrix.template }}" in
-            typescript) npm install && npm run lint && npm run build && npm test ;;
-            python)     pip install -e ".[dev]" && ruff check . && ruff format --check . && pytest ;;
-            generic)    bash scripts/check.sh ;;
-          esac
+          test -f "$APP/.factory/answers.yml" && test -f "$APP/.factory/standards/SECURITY.md"
+          "$PY" scripts/factory_update.py check --project "$APP" || [ $? -eq 3 ]
+
+      - name: Lockfile is in the first commit
+        run: |
+          if lockfile="$("$PY" scripts/stacks.py get "${{ matrix.stack }}" lockfile.file 2>/dev/null)"; then
+            git -C "$APP" ls-files --error-unmatch "$lockfile"
+          else
+            echo "no lockfile for the ${{ matrix.stack }} stack"
+          fi
+
+      # the stack's commands, from templates/stacks.toml (the same ones its AGENTS.md lists)
+      - name: Run the stack's commands
+        run: |
+          "$PY" scripts/stacks.py commands "${{ matrix.stack }}" > "$APP.commands"
+          cd "$APP"
+          while IFS= read -r command; do
+            echo "+ $command"
+            bash -c "$command"
+          done < "$APP.commands"
+
+      - name: The commands changed no tracked file
+        run: |
+          cd "$APP"
+          if [ -n "$(git status --porcelain)" ]; then
+            git status --porcelain
+            echo "::error::a command changed or added files that are not ignored (a lockfile rewritten?)"; exit 1
+          fi

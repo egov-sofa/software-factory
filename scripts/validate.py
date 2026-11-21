@@ -7,12 +7,13 @@ What is checked:
   claude/skills/*/SKILL.md                 skills installed by scripts/install.sh
   .claude/skills/*/SKILL.md                the factory's own project skills (pr-review)
   templates/*/.claude/skills/*/SKILL.md    skills copied into every new project
+  templates/file-kinds.txt                 every managed rule matches a file some template renders
 
 Rules: the file starts with a frontmatter block between two '---' lines; `name` and a non-empty `description` are
 present; `name` matches the file name (agents) or the folder name (skills); `model`, if present, is one of MODELS;
 `tools` (agents) and `allowed-tools` (skills) name only known Claude Code tools, MCP tools (mcp__server__tool) or
 permission rules on a known tool (Bash(git status:*)); every key is a known one; the read-only agents declare `tools`
-and never get a tool that writes files.
+and never get a tool that writes files; the skills with side effects have `disable-model-invocation: true`.
 
 The frontmatter reader handles what the factory uses: `key: value` (quoted or not), inline lists `[a, b]` and block
 lists (`- item` lines). Anything else, such as folded `>` values, is reported instead of guessed.
@@ -26,6 +27,10 @@ import re
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from factory_state import HEADERS  # noqa: E402  (stdlib only, next to this script)
+import factory_update  # noqa: E402  (stdlib only, next to this script: the file kinds and the renderer's file list)
+
 ROOT = Path(__file__).resolve().parent.parent
 
 # The aliases the review checklist allows; a full model ID would break at the next model release.
@@ -37,11 +42,25 @@ KNOWN_TOOLS = {
 }
 # Known keys only, so `tool:` instead of `tools:` is caught. Extend these when Claude Code adds a field.
 AGENT_KEYS = {"name", "description", "tools", "disallowedTools", "model", "color", "permissionMode", "skills",
-              "mcpServers"}
+              "mcpServers", "hooks"}
+# Keys whose value is an indented YAML block (hooks); it is kept as text and checked as text.
+BLOCK_KEYS = {"hooks"}
 SKILL_KEYS = {"name", "description", "allowed-tools", "argument-hint", "model", "disable-model-invocation",
               "user-invocable", "license", "context", "agent"}
 READ_ONLY_AGENTS = {"reviewer", "security-auditor"}
 WRITE_TOOLS = {"Edit", "MultiEdit", "Write", "NotebookEdit"}
+SHELL_TOOLS = {"Bash", "PowerShell"}   # a shell can write files too, so the read-only agents have none
+# Agents that may edit or run commands, held to their limits by claude/hooks/agent_guard.py (a PreToolUse hook in their
+# frontmatter): docs/plans/2026-11-19-enforce-agent-limits-with-hooks.md
+GUARDED_AGENTS = {"planner", "tester", "docs-writer", "implementer"}
+GUARD_MATCHER = 'matcher: "Edit|Write|NotebookEdit|Bash"'
+# Each agent's report starts with header lines the conductor parses; the table lives in factory_state.py.
+REPORT_HEADERS = HEADERS
+REPORT_HEADINGS = ("## Report format", "## Report", "## Output")
+# Skills that push, open pull requests, create repositories, rewrite project files or run a long, costly pipeline:
+# they run only when the user types them.
+SIDE_EFFECT_SKILLS = {"factory-build", "factory-new", "factory-onboard", "factory-ship", "factory-update"}
+HARD_CODED_BASE_RE = re.compile(r"(?<![\w/-])(?:origin/)?(?:main|master)\.\.\.?HEAD\b|--base (?:main|master)\b")
 
 KEY_RE = re.compile(r"([A-Za-z][\w-]*):(?:\s+(.*))?$")
 ITEM_RE = re.compile(r"\s*-\s+(.*)$")
@@ -65,9 +84,13 @@ def frontmatter(text):
     end = next((i for i in range(1, len(lines)) if lines[i].strip() == "---"), None)
     if end is None:
         return None, [(1, "no frontmatter (no closing '---' line)")]
-    fields, problems, current = {}, [], None
+    fields, problems, current, block = {}, [], None, None
     for num in range(2, end + 1):   # 1-based numbers of the lines between the markers
         line = lines[num - 1]
+        if block and line[:1] in (" ", "\t"):
+            fields[block] = (fields[block][0] + line.strip() + "\n", fields[block][1])
+            continue
+        block = None
         if not line.strip() or line.lstrip().startswith("#"):
             continue
         item = ITEM_RE.match(line)
@@ -82,6 +105,10 @@ def frontmatter(text):
         key, raw = m.group(1), (m.group(2) or "").strip()
         if key in fields:
             problems.append((num, f"duplicate key '{key}'"))
+        if key in BLOCK_KEYS and raw == "":
+            fields[key] = ("", num)
+            block, current = key, None
+            continue
         if raw[:1] in (">", "|"):
             problems.append((num, f"unsupported frontmatter syntax for '{key}' (write the value on one line)"))
             value = ""
@@ -172,7 +199,47 @@ def check(text, kind, expected_name):
             for tool in tools:
                 if tool_name(tool) in WRITE_TOOLS:
                     problems.append((fields[tools_key][1], f"read-only agent has the write tool '{tool}'"))
+                elif tool_name(tool) in SHELL_TOOLS:
+                    problems.append((fields[tools_key][1], f"read-only agent has the shell '{tool}', which can write files"))
+    if kind == "agent" and expected_name in GUARDED_AGENTS:
+        hooks, num = fields.get("hooks", ("", 1))
+        guard = f'agent_guard.py" {expected_name}'
+        if not isinstance(hooks, str) or "PreToolUse:" not in hooks or GUARD_MATCHER not in hooks or guard not in hooks:
+            problems.append((num, f"agent '{expected_name}' must declare the factory guard: a PreToolUse hook with "
+                                  f"{GUARD_MATCHER} running agent_guard.py with '{expected_name}'"))
+    if kind == "agent" and expected_name in REPORT_HEADERS:
+        problems += report_problems(text, expected_name)
+    if kind == "skill" and expected_name in SIDE_EFFECT_SKILLS:
+        value, num = fields.get("disable-model-invocation", ("", 1))
+        if value != "true":
+            problems.append((num, f"skill '{expected_name}' has side effects: it needs "
+                                  "'disable-model-invocation: true', so it runs only when the user types it"))
+    problems += base_problems(text)
     return sorted(problems)
+
+
+def report_problems(text, agent):
+    """The agent's report format (the first fenced block after its report heading) must start with the header lines
+    the conductor checks with factory_state.py (docs/plans/2026-11-19-pipeline-state-and-handoffs.md)."""
+    lines = text.splitlines()
+    heading = next((n for n, line in enumerate(lines) if line.strip() in REPORT_HEADINGS), None)
+    if heading is None:
+        return [(1, f"agent '{agent}' has no report format ({' or '.join(REPORT_HEADINGS)} with a fenced block)")]
+    fence = next((n for n in range(heading + 1, len(lines)) if lines[n].strip().startswith("```")), None)
+    if fence is None:
+        return [(heading + 1, f"agent '{agent}': no fenced report format after '{lines[heading].strip()}'")]
+    for offset, (key, _) in enumerate(REPORT_HEADERS[agent]):
+        n = fence + 1 + offset
+        if n >= len(lines) or not lines[n].startswith(f"{key}: "):
+            return [(n + 1, f"agent '{agent}': its report format must start with the header line '{key}: ...' "
+                            f"(lines: {', '.join(k for k, _ in REPORT_HEADERS[agent])})")]
+    return []
+
+
+def base_problems(text):
+    """A diff or pull request against a hard-coded `main`: the base branch comes from the plan or its detection."""
+    return [(n, f"hard-coded base branch '{m.group(0)}': use the base branch the agent or skill was given")
+            for n, line in enumerate(text.splitlines(), 1) for m in HARD_CODED_BASE_RE.finditer(line)]
 
 
 def targets(root):
@@ -185,9 +252,33 @@ def targets(root):
             yield path, "skill", path.parent.name
 
 
+def kinds_problems(root):
+    """Every managed rule of templates/file-kinds.txt must match a file some template renders: a rule that matches
+    nothing (a renamed guard, a typo) would let that file go unmanaged without anyone noticing."""
+    path = root / factory_update.KINDS_FILE
+    if not path.is_file():
+        return []
+    rel = path.relative_to(root).as_posix()
+    text = path.read_text(encoding="utf-8")
+    try:
+        factory_update.parse_kinds(text)
+    except factory_update.Usage as ex:
+        return [str(ex)]
+    rendered = set()
+    for template in sorted(p.name for p in (root / "templates").iterdir() if p.is_dir() and not p.name.startswith("_")):
+        rendered |= {name.replace("{{PACKAGE_NAME}}", "package") for name in factory_update.sources(root, template)}
+    found = []
+    for num, line in enumerate(text.splitlines(), 1):
+        parts = line.split()
+        if len(parts) == 2 and parts[0] == "managed" and not any(factory_update.kind_of(name, [("managed", parts[1])])
+                                                                   == "managed" for name in rendered):
+            found.append(f"{rel}:{num}: managed rule '{parts[1]}' matches no file a template renders")
+    return found
+
+
 def validate(root):
     """(number of files checked, problems as 'path:line: message' strings)."""
-    count, found = 0, []
+    count, found = 0, kinds_problems(root)
     for path, kind, expected in targets(root):
         count += 1
         rel = path.relative_to(root).as_posix()

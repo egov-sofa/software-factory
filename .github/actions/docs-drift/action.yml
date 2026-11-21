@@ -1,0 +1,106 @@
+# Docs drift: finds documents that no longer match what they describe, a kind of Dependabot for documentation.
+# Shared service of the software factory: see docs/SHARED-SERVICES.md, "Docs drift". The project lists its documents
+# and their sources in .factory/docs.yml (format in scripts/docs_drift.py).
+#
+# Two modes:
+#   pr    on pull_request: reports documents whose sources the pull request changes while the document is untouched.
+#         Read-only. strict: true makes it fail instead of only reporting.
+#   scan  on a schedule: the state of every document. With issue: true it keeps one open issue, labelled docs-drift,
+#         up to date, and closes it when every document is fine again (needs permissions: issues: write).
+#
+# Sources in other repositories need a token that can read them (input token), for example from a GitHub App:
+# docs/DOCS-DRIFT.md. Without one they are reported as "unknown", never as fine.
+#
+# A repository without .factory/docs.yml is skipped with a notice, so the caller can sit in every project and only
+# starts working once the project lists its documents.
+#
+# The script that runs is this action's own copy at the pinned tag, outside the checkout, in isolated mode
+# (python -I): nothing from the checked-out repository runs.
+name: Docs drift
+description: Find documents whose sources changed after them, on pull requests and as a weekly issue
+inputs:
+  mode:
+    description: pr or scan
+    required: true
+  strict:
+    description: "pr mode: fail when a document is missing its update"
+    required: false
+    default: "false"
+  issue:
+    description: "scan mode: open or update one issue labelled docs-drift, close it when all is fine"
+    required: false
+    default: "false"
+  token:
+    description: Token that can read the other repositories named as sources (optional)
+    required: false
+    default: ""
+runs:
+  using: composite
+  steps:
+    - name: Check the inputs
+      shell: bash
+      env:
+        MODE: ${{ inputs.mode }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+      run: |
+        case "$MODE" in pr|scan) ;; *) echo "::error::mode must be pr or scan, not '$MODE'"; exit 1 ;; esac
+        if [ "$MODE" = pr ] && [ -z "$PR_NUMBER" ]; then
+          echo "::error::mode pr checks a pull request; run it on pull_request"; exit 1
+        fi
+
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        fetch-depth: 0   # dates come from the history
+        persist-credentials: false
+
+    - name: Look for the manifest
+      id: manifest
+      shell: bash
+      run: |
+        if [ -f .factory/docs.yml ]; then
+          echo "found=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "::notice::no .factory/docs.yml: nothing to check (docs/DOCS-DRIFT.md in the software factory)"
+          echo "found=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+      if: ${{ steps.manifest.outputs.found == 'true' }}
+      with:
+        python-version: "3.12"
+
+    - name: Install PyYAML
+      if: ${{ steps.manifest.outputs.found == 'true' }}
+      shell: bash
+      run: python -I -m pip install --quiet --disable-pip-version-check "pyyaml==6.0.3"   # -I: no module from the checkout
+
+    - name: Check the pull request
+      if: ${{ steps.manifest.outputs.found == 'true' && inputs.mode == 'pr' }}
+      shell: bash
+      env:
+        BASE_REF: ${{ github.base_ref }}
+        STRICT: ${{ inputs.strict }}
+      run: |
+        args=(pr --root "$GITHUB_WORKSPACE" --base "origin/$BASE_REF" --markdown "$GITHUB_STEP_SUMMARY")
+        if [ "$STRICT" = true ]; then args+=(--strict); fi
+        python -I "$GITHUB_ACTION_PATH/../../../scripts/docs_drift.py" "${args[@]}"
+
+    - name: Scan every document
+      if: ${{ steps.manifest.outputs.found == 'true' && inputs.mode == 'scan' }}
+      shell: bash
+      env:
+        DOCS_DRIFT_TOKEN: ${{ inputs.token }}
+      run: >-
+        python -I "$GITHUB_ACTION_PATH/../../../scripts/docs_drift.py" scan --root "$GITHUB_WORKSPACE"
+        --json "$RUNNER_TEMP/docs-drift.json" --markdown "$RUNNER_TEMP/docs-drift.md"
+        && cat "$RUNNER_TEMP/docs-drift.md" >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Keep the docs-drift issue up to date
+      if: ${{ steps.manifest.outputs.found == 'true' && inputs.mode == 'scan' && inputs.issue == 'true' }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        GH_REPO: ${{ github.repository }}
+      run: >-
+        python -I "$GITHUB_ACTION_PATH/../../../scripts/docs_drift_issue.py"
+        --report "$RUNNER_TEMP/docs-drift.json" --body "$RUNNER_TEMP/docs-drift.md"

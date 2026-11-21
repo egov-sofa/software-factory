@@ -14,7 +14,7 @@ Open `claude/agents/<name>.md`. The top section (between `---` lines) is **front
 ---
 name: reviewer
 description: When Claude should use this agent (Claude reads this to decide)
-tools: Read, Grep, Glob, Bash   # what it's allowed to do; leave out Edit/Write = read-only
+tools: Read, Grep, Glob         # what it's allowed to do; no Edit, Write or Bash = read-only
 model: opus                     # opus | sonnet | haiku | inherit
 ---
 ```
@@ -22,8 +22,10 @@ model: opus                     # opus | sonnet | haiku | inherit
 Everything below is the agent's instructions, written in plain English. Edit them like a job description.
 
 After changing the frontmatter of an agent or skill, run `python scripts/validate.py`. It catches a misspelled key,
-a `name` that does not match the file, an unknown model or tool, and a write tool given to a read-only agent; the
-self-test runs it on every pull request too.
+a `name` that does not match the file, an unknown model or tool, a write tool or a shell given to a read-only agent,
+and a planner, tester, docs-writer or implementer without its guard hook; the self-test runs it on every pull
+request too. The paths each agent may edit are the tables at the top of `claude/hooks/agent_guard.py`: change them
+there (with a test in `scripts/tests/test_agent_guard.py`) when a stack keeps its tests or docs somewhere else.
 
 ## Add a new agent
 
@@ -36,13 +38,39 @@ To include it in the pipeline, add a step to `claude/skills/factory-build/SKILL.
 
 ## Add a new template (e.g. Go, .NET, Java)
 
-1. Create `templates/<name>/` with the language-specific files.
-2. Put a `CLAUDE.md` in it (it replaces the shared one) listing the exact build, test and lint commands.
-3. Add `.github/workflows/ci.yml`. Either call an existing reusable workflow or create `reusable-<name>.yml` in `.github/workflows/`.
-4. Add the template to the matrix in `.github/workflows/factory-selftest.yml`.
-5. Test it: `bash scripts/new-project.sh test-app <name> --dir /tmp`.
+1. Create `templates/<name>/` with the language-specific files, an `AGENTS.md` listing the exact install, lint,
+   build and test commands (every AI coding agent reads it; the shared `CLAUDE.md` imports it for Claude Code), and
+   `.github/workflows/ci.yml` calling an existing reusable workflow, or a new `reusable-<name>.yml`.
+2. Add a `[stacks.<name>]` entry to [`templates/stacks.toml`](../templates/stacks.toml): what it is for, its
+   tools, its commands, its lockfile and its CI. `python scripts/stacks.py check` validates it.
+3. Generate its fixture project: `python scripts/stacks.py fixtures <name>`. The self-test runs the shared workflow on
+   it, and on every pull request a test checks it still matches a fresh scaffold.
+4. Run `python -m unittest discover -s scripts/tests` and do what the failing tests name: the README row, the
+   `new-project.sh` branches, the `ci-<name>` job and the matrix entry in `factory-selftest.yml`, the `/factory-new`
+   recommendation. Every place that names a stack is checked against the manifest, so none can be forgotten.
 
 Use `{{PROJECT_NAME}}`, `{{PACKAGE_NAME}}`, `{{GITHUB_OWNER}}`, `{{FACTORY_REPO}}` and `{{YEAR}}` anywhere in file contents.
+
+### Classify a new template file
+
+Every file a template adds has a kind, which decides what `/factory-update` does with it in existing projects. Add a
+rule to [`templates/file-kinds.txt`](../templates/file-kinds.txt) (`<kind> <glob>`, the first matching rule wins) or
+leave it seeded, the default:
+
+- **managed** when projects must never change it and every update replaces it (the content guard, its hooks, the
+  standards). Only Markdown files and files with `#` comments can be managed: scaffolding adds a header saying
+  "Managed by software-factory: /factory-update replaces this file", as an HTML comment in Markdown and after the
+  shebang line in a script. A managed file a project has edited fails `factory_update.py check`, and its edit is
+  replaced (and reported) at the next update.
+- **merged** when the factory keeps improving it but a project may adapt it (caller workflows, config files): an update
+  merges both sides, leaving conflict markers where they overlap.
+- **seeded** for everything a project makes its own (`AGENTS.md`, `README.md`, the code). Updates never touch it. If
+  the factory must keep part of a seeded file current, put that part between the `software-factory:standards` markers,
+  as `AGENTS.md` and the review checklist do.
+
+`python scripts/validate.py` fails when a managed rule matches no file a template renders. Changing the scaffold
+means changing both renderers, `new-project.sh` and `scripts/factory_update.py`; the parity test in
+`scripts/tests/test_factory_update.py` fails until they agree.
 
 ## Change the CI pipeline (or another shared service) for all projects
 

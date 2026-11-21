@@ -74,7 +74,25 @@ class Install(Base):
         self.assertNotIn("{{FACTORY_HOME}}", text)
         reviewer = (self.dir / "agents" / "reviewer.md").read_text(encoding="utf-8")
         self.assertIn(f"{FACTORY.as_posix()}/standards/".lower(), reviewer.lower())
+        self.assertTrue((self.dir / "skills" / "factory-update" / "SKILL.md").is_file())
         self.assertFalse((self.dir / "backups").exists())
+
+    def test_agents_read_the_project_standards_first(self):
+        """The standards a project ships (.factory/standards/) come first; the factory's copy is the fallback for
+        projects not updated yet and for projects the factory did not make."""
+        self.installed()
+        for agent, files in (("reviewer", ("DEFINITION-OF-DONE.md", "CODING-STANDARDS.md")),
+                             ("security-auditor", ("SECURITY.md",))):
+            text = " ".join((self.dir / "agents" / f"{agent}.md").read_text(encoding="utf-8").split())
+            for name in files:
+                with self.subTest(agent=agent, file=name):
+                    project, factory = f"`.factory/standards/{name}`", f"{FACTORY.as_posix()}/standards/{name}`"
+                    self.assertIn(project, text)
+                    self.assertIn(factory.lower(), text.lower())
+                    self.assertLess(text.index(project), text.lower().index(factory.lower()))
+        claude = self.claude_md.read_text(encoding="utf-8")
+        self.assertIn("`.factory/standards/`", claude)
+        self.assertIn("`/factory-update`", claude)
 
     def test_user_content_kept_and_backed_up(self):
         self.write_claude_md(USER_TEXT)
@@ -122,6 +140,12 @@ class Install(Base):
         self.assertIn("+ agents/reviewer.md", result.stdout)
         self.assertEqual(original, agent.read_bytes())
         self.assertIn("edited by hand\n", self.backups("agents/reviewer.md"))
+
+    def test_unknown_option_is_refused_before_anything_is_installed(self):
+        result = self.install("--dryrun")   # a typo of --dry-run
+        self.assertEqual(2, result.returncode, result.stdout)
+        self.assertIn("Unknown option: --dryrun", result.stderr)
+        self.assertFalse(self.dir.exists())
 
     def test_dry_run_writes_nothing(self):
         result = self.install("--dry-run")

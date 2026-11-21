@@ -12,7 +12,7 @@ A personal "factory" that turns ideas into working, tested, reviewed software, t
 |---|---|---|
 | **1. AI agent pipeline** | A team of AI specialists (planner, builder, tester, reviewer, security auditor, docs writer) that build a feature end to end when you type `/factory-build add a login page` | [`claude/`](claude/) → installed to `~/.claude` |
 | **2. Project scaffolding** | Creates a new project with folders, tests, linting, CI and docs already set up, in one command | [`templates/`](templates/) + [`scripts/new-project.sh`](scripts/new-project.sh) |
-| **3. CI/CD and shared services** | Versioned services every project calls at `@v1`: CI pipelines, Claude PR review, `@claude` mentions, and a content guard that blocks secrets. A fix here reaches all your projects at the next release | [`.github/workflows/`](.github/workflows/), [`.github/actions/`](.github/actions/), [docs/SHARED-SERVICES.md](docs/SHARED-SERVICES.md) |
+| **3. CI/CD and shared services** | Versioned services every project calls at `@v1`: CI pipelines, Claude PR review, `@claude` mentions, a content guard that blocks secrets, and a docs drift check that tracks out-of-date documentation. A fix here reaches all your projects at the next release | [`.github/workflows/`](.github/workflows/), [`.github/actions/`](.github/actions/), [docs/SHARED-SERVICES.md](docs/SHARED-SERVICES.md) |
 | **4. Shared standards** | Coding rules, git workflow, definition of done and security rules that both you and the AI follow | [`standards/`](standards/) |
 
 ## Quick start
@@ -37,14 +37,15 @@ cd /c/DEV/PROJECTS/gitHub/egov-rdc/egov-sofa/my-app && claude
 | `/factory-build <feature>` | Full pipeline: plan → **you approve** → build → test → review + security → fix → docs |
 | `/factory-review` | Runs only the reviewer and security auditor on your current changes |
 | `/factory-ship` | Commits, pushes, and opens a pull request with a good description |
-| `/factory-onboard` | Adds factory standards (CLAUDE.md, CI, PR template) to an **existing** project |
+| `/factory-onboard` | Adds factory standards (AGENTS.md and CLAUDE.md, CI, PR template) to an **existing** project |
+| `/factory-update` | Brings a factory project up to a newer factory release: replaces the content guard and the standards, merges the workflows with your edits, on a branch |
 
 ## Templates
 
 | Template | Use it for | Tools included |
 |---|---|---|
-| `typescript` | Web apps, APIs, CLIs in Node/TypeScript | TypeScript, Vitest (tests), ESLint (lint) |
-| `python` | APIs, scripts, data and AI work | pytest (tests), Ruff (lint + format) |
+| `typescript` | Web apps, APIs, CLIs in Node/TypeScript | TypeScript, Vitest (tests), ESLint (lint), `package-lock.json` |
+| `python` | APIs, scripts, data and AI work | uv (dependencies, `uv.lock`), pytest (tests), Ruff (lint + format), mypy (types) |
 | `generic` | Any other language (Go, Rust, C#, Java…) | A `scripts/check.sh` you fill in; CI runs it |
 
 ## Learn more
@@ -54,6 +55,7 @@ cd /c/DEV/PROJECTS/gitHub/egov-rdc/egov-sofa/my-app && claude
 - [docs/CUSTOMIZING.md](docs/CUSTOMIZING.md): add templates, change agents, tune the pipeline
 - [docs/GLOSSARY.md](docs/GLOSSARY.md): plain-English definitions of every term
 - [docs/SHARED-SERVICES.md](docs/SHARED-SERVICES.md): why and how other repositories use the factory's services
+- [docs/DOCS-DRIFT.md](docs/DOCS-DRIFT.md): a kind of Dependabot for documentation, across all your projects
 - [docs/CLAUDE-SERVICES-AUTH.md](docs/CLAUDE-SERVICES-AUTH.md): how the Claude review reaches the Claude API without a stored key, and how to set it up
 - [docs/ROADMAP.md](docs/ROADMAP.md): planned improvements, ranked by value, with their status
 - [docs/ENTERPRISE-VISION.md](docs/ENTERPRISE-VISION.md): the proposed path to an enterprise-grade factory (architect roles, levels of rigour, spec-driven development)

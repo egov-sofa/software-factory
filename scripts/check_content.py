@@ -24,7 +24,9 @@ variable CONTENT_DENYLIST (a CI secret). One term per line, case-insensitive, ma
 with # are comments. The words of a term match across any whitespace, also when a line wrap splits them.
 
 A line that holds an intended example can end with the marker  content-ok  to skip the built-in rules (never the
-denylist). A line with a denylisted term reports only that term's number: the other rules would print the value.
+denylist); a secret allowed that way is named in a note, so a reviewer sees it. A line with a denylisted term reports
+only that term's number: the other rules would print the value. With CONTENT_DENYLIST_QUIET set (CI sets it on a
+fork's pull request), denylist findings show neither the number nor the location, only that there are some.
 
 Exit code 0 if nothing is found, 1 if something is found, 2 on a usage error.
 """
@@ -56,7 +58,8 @@ PASCAL_SUFFIX_RE = re.compile(r"[A-Z][a-z]+")
 PASCAL_ID_RE = re.compile(r"[A-Z][A-Za-z]*[a-z][A-Za-z]*")
 
 
-# High-confidence formats only: each one has a fixed prefix, so ordinary code and prose do not match.
+# High-confidence formats only: a fixed prefix, or (AWS secret key, password in a URL) a fixed context next to the
+# value, so ordinary code and prose do not match.
 SECRET_RULES = [
     ("private key", re.compile(r"-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----")),
     ("AWS access key ID", re.compile(r"(?<![A-Z0-9])(?:AKIA|ASIA)[0-9A-Z]{16}(?![A-Z0-9])")),
@@ -65,7 +68,72 @@ SECRET_RULES = [
     ("Slack token", re.compile(r"(?<!\w)xox[abprs]-[A-Za-z0-9-]{10,}")),
     ("Google API key", re.compile(r"(?<!\w)AIza[0-9A-Za-z_-]{35}(?![\w-])")),
     ("Stripe live key", re.compile(r"(?<!\w)[rs]k_live_[0-9A-Za-z]{20,}")),
+    ("OpenAI API key", re.compile(r"(?<!\w)(?:sk-(?:proj|svcacct|admin)-[A-Za-z0-9_-]{20,}"
+                                  r"|sk-[A-Za-z0-9]{20}T3BlbkFJ[A-Za-z0-9]{20})")),
+    ("GitLab token", re.compile(r"(?<!\w)gl(?:pat|dt|ptt|rt)-[A-Za-z0-9_-]{20,}")),
+    ("npm token", re.compile(r"(?<!\w)npm_[A-Za-z0-9]{36}(?!\w)")),
+    ("PyPI token", re.compile(r"(?<!\w)pypi-AgEIcHlwaS5vcmc[A-Za-z0-9_-]{50,}")),
+    ("Google OAuth client secret", re.compile(r"(?<!\w)GOCSPX-[A-Za-z0-9_-]{28}(?![\w-])")),
+    ("Slack webhook", re.compile(r"hooks\.slack\.com/(?:services|workflows)/T[A-Z0-9]+/[A-Z0-9]+/[A-Za-z0-9]{16,}")),
+    ("Discord webhook", re.compile(r"discord(?:app)?\.com/api/webhooks/\d+/[A-Za-z0-9_-]{30,}")),
+    ("Azure storage key", re.compile(r"(?i)\b(?:AccountKey|SharedAccessKey)=[A-Za-z0-9+/]{40,}={0,2}")),
+    ("JSON Web Token", re.compile(r"(?<![\w-])eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}")),
+    # no fixed prefix: the key name must sit right next to the 40-character value
+    ("AWS secret access key", re.compile(r"(?i)aws_?secret_?access_?key\W{0,3}[:=]\W{0,3}[A-Za-z0-9/+]{40}(?![A-Za-z0-9/+])")),
 ]
+
+# A password written into a URL (https://user:pass@host, or redis://:pass@host with no user). Not a secret:
+# placeholders and variables (${TOKEN}, $PASSWORD, <password>, {{secret}}, %s, ***, xxx), the well-known defaults of
+# local and CI services (postgres:postgres, guest:guest, a password equal to the user name), and local hosts.
+URL_CREDENTIALS_RE = re.compile(r"\b[a-z][a-z0-9+.-]*://([^\s/:@]*):([^\s/@]+)@([^\s/@:?#]+)", re.I)
+PLACEHOLDER_PASSWORDS = {"password", "passwd", "pass", "pwd", "pw", "secret", "token", "changeme", "example",
+                         "postgres", "guest", "root", "admin", "test", "dev", "user", "mysql"}
+# The Azurite storage emulator's account and key are public (Microsoft's documentation), found in dev configs
+AZURITE_ACCOUNT = "devstoreaccount1"
+LOCAL_HOSTS = {"localhost", "127.0.0.1", "0.0.0.0", "[::1]", "host.docker.internal"}  # content-ok
+
+
+def url_password(line):
+    """True when a URL in the line carries a password that looks real."""
+    for m in URL_CREDENTIALS_RE.finditer(line):
+        user, value, host = m.group(1), m.group(2), m.group(3).lower()
+        if (value[0] in "$<{%*[(" or set(value) <= set("x*.") or value.lower() in PLACEHOLDER_PASSWORDS
+                or value == user or host in LOCAL_HOSTS):
+            continue
+        return True
+    return False
+
+
+def utf16_text(data):
+    """data decoded as UTF-16 when it is UTF-16 (a byte-order mark, or a NUL in every other byte as Windows tools
+    write without one), else None. Read as UTF-8, a UTF-16 file has a NUL between every letter and no rule matches."""
+    if data[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        return data.decode("utf-16", "replace")
+    if len(data) >= 4:
+        half = len(data) // 2
+        for nuls, letters, encoding in ((data[1::2], data[0::2], "utf-16-le"), (data[0::2], data[1::2], "utf-16-be")):
+            if nuls.count(0) >= half * 0.9 and letters.count(0) < half // 2:
+                return data.decode(encoding, "replace")
+    return None
+
+
+# little-endian (the letter, then its NUL) or big-endian (the NUL first)
+UTF16_RUN_RE = re.compile(r"(?:[\x20-\x7e]\x00){4,}|(?:\x00[\x20-\x7e]){4,}")
+
+
+def without_nul(line):
+    """An added diff line with its NUL bytes handled: a UTF-16 line (a NUL between every letter) gets them removed so
+    its text can be read; any other NUL becomes a space, so it cannot hide the rest of the line. A line with fewer
+    NULs can still be UTF-16, mostly in a non-Latin script: its runs of UTF-16 Latin text (a character, a NUL, at
+    least four times) are put before it, read without the NULs and followed by a tab, so the line still ends as it
+    did (a content-ok marker stays last). Only those runs: removing every NUL from binary content would make up
+    findings (1.1<NUL>.1.1 would become a public IP)."""
+    nuls = line.count(chr(0))
+    if nuls and nuls * 3 >= len(line):   # a third, not half: the byte-order mark and \r also take places
+        return line.replace(chr(0), "")
+    spaced = line.replace(chr(0), " ")
+    runs = [run.replace(chr(0), "") for run in UTF16_RUN_RE.findall(line)] if nuls else []
+    return "\t".join([*runs, spaced])
 
 
 def denylist():
@@ -81,10 +149,37 @@ def denylist():
     return [re.compile(r"(?<!\w)" + r"\s+".join(map(re.escape, t.split())) + r"(?!\w)", re.I) for t in terms.values()]
 
 
+HIDDEN_TERM = "a denylist term"
+
+
+def quiet():
+    """CONTENT_DENYLIST_QUIET (set by CI on a fork's pull request): denylist findings are reported without a number or
+    a location. On a public repository a fork could otherwise put one guessed name per line and learn from the
+    numbers or the failing lines which ones are on the private list; now each run answers only yes or no."""
+    return bool(os.environ.get("CONTENT_DENYLIST_QUIET"))
+
+
+def term(n):
+    """How a denylist finding is named: by its number, so the maintainer knows which term (none when quiet)."""
+    return HIDDEN_TERM if quiet() else f"denylist term {n}"
+
+
+def secret_kinds(line):
+    """The kinds of secret in a line (the public Azurite emulator key is not one)."""
+    kinds = [kind for kind, pattern in SECRET_RULES
+             if pattern.search(line) and not (kind == "Azure storage key" and AZURITE_ACCOUNT in line)]
+    return kinds + (["password in a URL"] if url_password(line) else [])
+
+
+def marker_skipped(line):
+    """The kinds of secret a line allows through the marker: still allowed, but named, so a reviewer sees them."""
+    return secret_kinds(line) if line.rstrip().endswith(MARKER) else []
+
+
 def wrapped(prev, line, deny):
     """Denylist terms that only appear when two consecutive lines are joined: a line wrap split the term."""
     joined = f"{prev} {line}"
-    return [f"denylist term {n} (split across this line and the next)" for n, p in enumerate(deny, 1)
+    return [f"{term(n)} (split across this line and the next)" for n, p in enumerate(deny, 1)
             if p.search(joined) and not p.search(prev) and not p.search(line)]
 
 
@@ -111,12 +206,12 @@ def ipv6_like(text):
 
 def findings(line, deny):
     """The problems in one line of text, as short descriptions; denylist terms are never quoted back."""
-    found = [f"denylist term {n}" for n, p in enumerate(deny, 1) if p.search(line)]
+    found = [term(n) for n, p in enumerate(deny, 1) if p.search(line)]
     if found:
         return found   # an IP or host finding would print its value, which can contain the term
     if line.rstrip().endswith(MARKER):
         return found
-    found += [f"possible secret ({kind})" for kind, pattern in SECRET_RULES if pattern.search(line)]
+    found += [f"possible secret ({kind})" for kind in secret_kinds(line)]
     for m in (*IPV4_RE.finditer(line), *(m for m in IPV6_RE.finditer(line) if ipv6_like(m.group(1)))):
         try:
             ip = ipaddress.ip_address(m.group(1))
@@ -166,7 +261,7 @@ def added_lines(diff_args):
                     "--dst-prefix=b/", *diff_args).split("\n"):
         if left and line.startswith("+"):
             if path:
-                yield path, num, line[1:].replace(chr(0), " ")
+                yield path, num, without_nul(line[1:])
             num += 1
             left -= 1
         elif line.startswith("@@"):
@@ -219,9 +314,15 @@ def tracked_lines():
             continue
         yield rel, 0, rel   # the file name is content too
         try:
-            text = (ROOT / rel).read_text(encoding="utf-8")
-        except (UnicodeDecodeError, OSError):
-            continue   # binary or unreadable
+            data = (ROOT / rel).read_bytes()
+        except OSError:
+            continue   # unreadable
+        text = utf16_text(data)
+        if text is None:
+            try:
+                text = data.decode("utf-8")
+            except UnicodeDecodeError:
+                continue   # binary
         for num, line in enumerate(text.splitlines(), 1):
             yield rel, num, line
 
@@ -263,21 +364,39 @@ def main(argv):
         print(__doc__, file=sys.stderr)
         return 2
 
-    problems = 0
+    problems, hidden, out = 0, False, []   # output is held until the end: quiet mode may have to drop all of it
+
+    def report(where, num, finding):
+        nonlocal problems, hidden
+        problems += 1
+        if finding.startswith(HIDDEN_TERM):   # quiet: no number, no location (see quiet())
+            hidden = True
+            return
+        out.append(f"{where}: file name: {finding}" if num == 0 else f"{where}:{num}: {finding}")
+
     for _label, lines in sources:
         prev = None   # (where, num, line) of the line before, to catch a term split by a line wrap
         for where, num, line in lines:
             if any(p.search(where) for p in deny):
-                where = "(a file whose path holds a denylist term)"   # never print the term as a location
+                # never print the term as a location; when quiet, not even that a path holds one
+                where = "(a file)" if quiet() else "(a file whose path holds a denylist term)"
             if prev and prev[0] == where and num == prev[1] + 1 and num > 1:
                 for f in wrapped(prev[2], line, deny):
-                    print(f"{where}:{prev[1]}: {f}")
-                    problems += 1
-            for f in findings(line, deny):
-                print(f"{where}: file name: {f}" if num == 0 else f"{where}:{num}: {f}")
-                problems += 1
+                    report(where, prev[1], f)
+            for f in dict.fromkeys(findings(line, deny)):   # once each, though a line can hold two readings
+                report(where, num, f)
+            for kind in marker_skipped(line):
+                out.append(f"{where}:{num}: note: '{MARKER}' allows a possible secret ({kind}); make sure it is a fake")
             prev = (where, num, line)
     names = ", ".join(label for label, _ in sources)
+    if hidden:
+        # Nothing else either: a line with a term drops its other findings, and the count includes the hidden ones,
+        # so any per-line output or count would still tell a fork which of its guesses matched.
+        print("Denylisted terms found. On a fork's pull request nothing more is shown (no locations, no other "
+              "findings); a maintainer can run the guard locally to see them.")
+        return 1
+    if out:
+        print("\n".join(out))
     if problems:
         print(f"\n{problems} problem(s) in {names}. Remove the content, or end an intended example line with "
               f"'{MARKER}' (built-in rules only).")
