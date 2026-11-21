@@ -10,3 +10,6 @@ docs/diagrams/*.svg
 
 # Personal Claude Code settings (permissions on this machine only)
 .claude/settings.local.json
+
+# Eval results (scripts/run-evals.sh): local runs only, CI uploads them as an artifact
+evals/results/

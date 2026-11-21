@@ -20,6 +20,12 @@ class SelftestWorkflow(unittest.TestCase):
         self.assertIn("run: python -m unittest discover -s scripts/tests -v", runs)
         self.assertLess(self.text.index("scripts/validate.py"), self.text.index("unittest discover"))
 
+    def test_shellcheck_covers_the_eval_scripts(self):
+        """run-evals.sh is in scripts/*.sh; the scaffolds source the shared helper, which -x follows."""
+        (line,) = [line.strip() for line in self.text.splitlines() if "run: shellcheck" in line]
+        for part in ("-x", "scripts/*.sh", "evals/_lib/*.sh", "evals/*/scaffold.sh"):
+            self.assertIn(f" {part}", line)
+
     def test_actions_pinned_by_sha(self):
         uses = USES_RE.findall(self.text)
         self.assertTrue(uses)

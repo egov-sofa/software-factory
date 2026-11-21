@@ -1,0 +1,42 @@
+schema_version: "1.0"
+name: planner-writes-testable-criteria
+description: >-
+  The planner plans a --limit option for the list command of a small CLI. It must write a plan with at least three
+  checkbox acceptance criteria, testable and with an edge case, and leave the code alone.
+tags: [planner, core, portable]
+context:
+  scaffold_script: scaffold.sh
+execution:
+  prompt: |
+    Use the planner subagent: add a --limit option to the list command. Today is 2026-11-19.
+  max_turns: 30
+  timeout_seconds: 600
+  allowed_tools: [Agent, Read, Grep, Glob, Write]
+runs: 3
+graders:
+  # the plan format of claude/agents/planner.md
+  - type: regex
+    name: has-acceptance-criteria
+    target: files
+    pattern: '## Acceptance criteria'
+  - type: regex
+    name: three-checkbox-criteria
+    target: files
+    pattern: '(- \[ \][^\n]*\r?\n(?:[ \t]+[^\n]*\r?\n)*){3,}'
+  - type: regex
+    name: code-untouched
+    target: {source: file, path: src/cli.py}
+    pattern: 'for number, text in enumerate\(tasks, start=1\):'
+  - type: tool_used
+    name: planner-used
+    tool: Agent
+    input_match: planner
+    min: 1
+    arm: with-only
+  - type: llm
+    name: criteria-are-testable
+    focus: files
+    criteria: >-
+      The plan's acceptance criteria are each observable and testable (a command and its expected output or error),
+      at least one covers an edge or error case of --limit (0, a negative number, not a number, or more than the
+      number of tasks), and none uses vague words such as "works well" or "is user-friendly".

@@ -1,0 +1,33 @@
+schema_version: "1.0"
+name: reviewer-approves-clean-change
+description: >-
+  Control of reviewer-finds-off-by-one: the same plan, implemented correctly and fully tested. The reviewer must
+  approve without a blocking finding, so a reviewer that flags everything does not score well.
+tags: [reviewer, control, portable]
+context:
+  scaffold_script: scaffold.sh
+execution:
+  prompt: |
+    Use the reviewer subagent to review this branch against the base branch `main`. The plan is
+    `docs/plans/2026-11-19-paginate.md`, and the review folder is `.git/factory-review/` (it holds changes.diff,
+    files.txt and checks.txt). Give me its report unchanged.
+  max_turns: 30
+  timeout_seconds: 600
+  allowed_tools: [Agent, Read, Grep, Glob]
+runs: 3
+graders:
+  - type: regex
+    name: approved
+    target: trace
+    pattern: 'Verdict:\s*APPROVE'
+  - type: regex
+    name: no-blocking-finding
+    target: last_message
+    pattern: '\[(BLOCKER|MAJOR)\]'
+    match: not_contains
+  - type: tool_used
+    name: reviewer-used
+    tool: Agent
+    input_match: reviewer
+    min: 1
+    arm: with-only
