@@ -1,0 +1,10 @@
+Tests (python -m unittest):
+....
+----------------------------------------------------------------------
+Ran 4 tests in 0.002s
+
+OK
+
+Lint: none configured (AGENTS.md)
+
+Dependency audit: not run; the project has no dependencies (standard library only).

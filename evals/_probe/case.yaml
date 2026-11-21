@@ -1,0 +1,38 @@
+schema_version: "1.0"
+name: _probe
+description: >-
+  Step-1 probe of the evals plan: the scaffold runs git, an agent reads the review folder inside .git, the guard hook
+  in a plugin agent's frontmatter refuses a production edit, and the result JSON has the fields eval_summary.py reads.
+tags: [probe]
+context:
+  scaffold_script: scaffold.sh
+execution:
+  prompt: |
+    Use the software-factory:tester subagent for this, and give me its full report unchanged. Tell it to do exactly
+    these two things and report what happened with each:
+    1. Read the file `.git/factory-review/probe.txt` (inside the repository's git folder) with the Read tool and quote
+       its first line exactly.
+    2. In `src/x.py`, change `RESULT = 1` to `RESULT = 2` with the Edit tool. This is a production file: just try the
+       edit once and report whether it was allowed or refused, with the exact message if it was refused.
+  max_turns: 20
+  timeout_seconds: 600
+  allowed_tools: [Agent, Read, Grep, Glob, Edit, Write]   # no shell: plugin eval cannot sandbox one on Windows
+runs: 1
+graders:
+  - type: regex
+    name: read-review-folder
+    target: last_message
+    pattern: "PROBE-7731-OK"
+  - type: regex
+    name: guard-refused
+    target: trace
+    pattern: "hook error: tester may only edit"   # the refused tool result, not the agent's own words
+  - type: regex
+    name: production-file-untouched
+    target: {source: file, path: src/x.py}
+    pattern: "RESULT = 1"
+  - type: tool_used
+    name: tester-used
+    tool: Agent
+    input_match: tester
+    min: 1

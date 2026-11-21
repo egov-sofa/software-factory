@@ -178,5 +178,59 @@ class CommandLine(unittest.TestCase):
         self.assertEqual("", self.run_guard("tester", stdin=call).stdout.strip())
 
 
+class FromInput(Base):
+    """--agent-from-input: the plugin-level hook of the built plugin, which sees every tool call (evals plan, Probe
+    results: Claude Code does not run the hooks: of a plugin's agents)."""
+
+    def call(self, agent_type, tool, tool_input):
+        call = {"hook_event_name": "PreToolUse", "tool_name": tool, "tool_input": tool_input, "cwd": str(self.root)}
+        if agent_type is not ...:
+            call["agent_type"] = agent_type
+        done = subprocess.run([sys.executable, "-I", str(GUARD), "--agent-from-input"], input=json.dumps(call),
+                              capture_output=True, text=True, check=False)
+        self.assertEqual(0, done.returncode, done.stderr)
+        if not done.stdout.strip():
+            return None
+        decision = json.loads(done.stdout)["hookSpecificOutput"]
+        self.assertEqual("deny", decision["permissionDecision"])
+        return decision["permissionDecisionReason"]
+
+    def test_plugin_agent_is_guarded(self):
+        reason = self.call("software-factory:tester", "Edit", {"file_path": "src/x.py"})
+        self.assertIn("tester may only edit test files", reason)
+        self.assertIsNone(self.call("software-factory:tester", "Edit", {"file_path": "tests/test_x.py"}))
+        self.assertIn("planner may only edit plans",
+                      self.call("software-factory:planner", "Write", {"file_path": "src/x.py"}))
+        self.assertIn("may not run `git push`",
+                      self.call("software-factory:implementer", "Bash", {"command": "git push"}))
+
+    def test_bare_name_is_guarded_too(self):
+        # the agents install.sh installs have no prefix; guarding them twice refuses nothing more
+        self.assertIn("docs-writer may only edit", self.call("docs-writer", "Write", {"file_path": "src/x.py"}))
+
+    def test_main_conversation_is_allowed(self):
+        for agent_type in (..., None, ""):
+            with self.subTest(agent_type=agent_type):
+                self.assertIsNone(self.call(agent_type, "Edit", {"file_path": "src/x.py"}))
+                self.assertIsNone(self.call(agent_type, "Bash", {"command": "git push"}))
+
+    def test_agents_the_guard_does_not_know_are_allowed(self):
+        for agent_type in ("software-factory:reviewer", "other-plugin:tester", "Explore", "general-purpose"):
+            with self.subTest(agent_type=agent_type):
+                self.assertIsNone(self.call(agent_type, "Edit", {"file_path": "src/x.py"}))
+
+    def test_unreadable_agent_type_is_refused(self):
+        reason = self.call(["tester"], "Edit", {"file_path": "tests/test_x.py"})
+        self.assertIn("could not check this tool call", reason)
+
+    def test_positional_mode_is_unchanged(self):
+        # the agent given on the command line wins; agent_type is not read
+        call = json.dumps({"tool_name": "Edit", "tool_input": {"file_path": "src/x.py"}, "cwd": str(self.root),
+                           "agent_type": "software-factory:implementer"})
+        out = subprocess.run([sys.executable, "-I", str(GUARD), "tester"], input=call, capture_output=True,
+                             text=True, check=True).stdout
+        self.assertIn("tester may only edit test files", out)
+
+
 if __name__ == "__main__":
     unittest.main()

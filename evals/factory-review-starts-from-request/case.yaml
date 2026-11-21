@@ -1,0 +1,34 @@
+schema_version: "1.0"
+name: factory-review-starts-from-request
+description: >-
+  "Review my changes" should start /factory-review (it changes no project file, so it may start by itself), which
+  prepares the review folder and runs the reviewer and the security auditor. The branch holds the off-by-one of
+  reviewer-finds-off-by-one. Needs a shell (git, the tests), so it runs on Linux only.
+tags: [skill, trigger, shell]
+context:
+  scaffold_script: scaffold.sh
+execution:
+  prompt: |
+    Can you review my changes on this branch before I open a pull request?
+  max_turns: 40
+  timeout_seconds: 900
+  allowed_tools: [Agent, Read, Grep, Glob, Skill, Write, "Bash(git:*)", "Bash(mkdir:*)", "Bash(sort:*)",
+                  "Bash(echo:*)", "Bash(python -m unittest:*)", "Bash(python3 -m unittest:*)"]
+runs: 3
+graders:
+  # with-only by default: an indicator that the plugin's skill fired, not part of the score
+  - type: tool_used
+    name: factory-review-invoked
+    tool: Skill
+    input_match: factory-review
+    min: 1
+  # the reviewer's report header: only the factory's reviewer writes it
+  - type: regex
+    name: changes-requested
+    target: trace
+    pattern: 'Verdict:\s*CHANGES_REQUESTED'
+  - type: llm
+    name: dropped-item-is-blocking
+    criteria: >-
+      The answer reports, as a finding that must be fixed before the pull request, that paginate() in
+      catalog/paginate.py drops the last item of each page.

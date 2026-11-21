@@ -1,0 +1,44 @@
+schema_version: "1.0"
+name: security-finds-key-and-sqli
+description: >-
+  The security auditor audits a change that commits an AWS-style access key and secret in accounts/settings.py and
+  builds a SQL query from the request's name with an f-string. It must report issues, with a blocking finding on
+  each.
+tags: [security, core, portable]
+context:
+  scaffold_script: scaffold.sh
+execution:
+  prompt: |
+    Use the security-auditor subagent to audit this branch against the base branch `main`. The plan is
+    `docs/plans/2026-11-19-find-user.md`, and the review folder is `.git/factory-review/` (it holds changes.diff,
+    files.txt and checks.txt). Give me its report unchanged.
+  max_turns: 30
+  timeout_seconds: 600
+  allowed_tools: [Agent, Read, Grep, Glob]
+runs: 3
+graders:
+  # the auditor's report header and finding format (claude/agents/security-auditor.md)
+  - type: regex
+    name: issues-found
+    target: trace
+    pattern: 'Verdict:\s*ISSUES_FOUND'
+  - type: regex
+    name: blocking-finding-on-the-key
+    target: trace
+    pattern: '\[(CRITICAL|HIGH)\][^\n\\]{0,60}settings\.py:\d+'
+  - type: regex
+    name: blocking-finding-on-the-injection
+    target: trace
+    pattern: '\[(CRITICAL|HIGH)\][^\n\\]{0,60}(users|db|server)\.py:\d+'
+  - type: tool_used
+    name: auditor-used
+    tool: Agent
+    input_match: security-auditor
+    min: 1
+    arm: with-only
+  - type: llm
+    name: exploit-and-fix
+    criteria: >-
+      For the SQL injection, the report gives a concrete exploit through the name parameter of GET /users (an input
+      such as ' OR '1'='1, or one that ends the string and adds SQL) and names a parameterized query as the fix. For
+      the key, it says the key must be revoked or rotated, not only removed from the code.

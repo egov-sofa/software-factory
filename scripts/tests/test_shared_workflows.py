@@ -5,8 +5,11 @@ Run: python3 -m unittest discover -s scripts/tests
 """
 import re
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+
+import support
 
 GITHUB = Path(__file__).resolve().parents[2] / ".github"
 USES_RE = re.compile(r"^\s*-?\s*uses:\s*(\S+)(.*)$", re.M)
@@ -175,6 +178,101 @@ class ClaudeCosts(unittest.TestCase):
                 self.assertIn("--max-budget-usd ${{ inputs.max-budget-usd }}", text)
                 self.assertIn("--max-turns ${{ inputs.max-turns }}", text)
                 self.assertIn("timeout-minutes: ${{ inputs.timeout-minutes }}", text)
+
+
+class Evals(unittest.TestCase):
+    """The manual Evals job (roadmap I1): it costs money, so it runs only by hand, on main, one at a time, under a
+    ceiling, with a federation rule of its own and no stored key."""
+
+    def setUp(self):
+        self.text = (GITHUB / "workflows" / "evals.yml").read_text(encoding="utf-8")
+        self.steps = re.split(r"\n      - (?=uses:|name:)", self.text)
+
+    def step(self, start):
+        (step,) = [s for s in self.steps if s.startswith(start)]
+        return step
+
+    def test_by_hand_only_with_its_inputs(self):
+        on = self.text.split("\non:\n", 1)[1].split("\n\n", 1)[0]
+        self.assertEqual(["workflow_dispatch:"], [line.strip() for line in on.splitlines() if re.match(r"^  \S", line)])
+        for name, kind in (("smoke", "boolean"), ("case", "string"), ("max-cost-usd", "number")):
+            self.assertRegex(on, rf"\n      {name}:\n(?:        .*\n)*?        type: {kind}\n")
+
+    def test_permissions_timeout_and_concurrency(self):
+        self.assertIn("\npermissions:\n  contents: read\n", self.text)
+        self.assertIn("    permissions:\n      contents: read\n      id-token: write", self.text)
+        self.assertIn("    timeout-minutes: 90\n", self.text)
+        self.assertIn("\nconcurrency:\n  group: evals\n  cancel-in-progress: false\n", self.text)
+        self.assertNotIn("secrets.", self.text)   # no API key: federation only
+
+    def test_main_and_the_rule_are_checked_before_any_spend(self):
+        guard = self.step("name: Only on main, with the evals rule set")
+        self.assertIn('if [ "$REF" != refs/heads/main ]; then', guard)
+        self.assertIn("RULE: ${{ vars.ANTHROPIC_EVALS_FEDERATION_RULE_ID }}", guard)
+        self.assertIn("docs/CLAUDE-SERVICES-AUTH.md", guard)
+        self.assertIs(self.steps[1], guard)   # the first step, before the checkout and the install
+
+    def test_federation_with_a_refreshed_token(self):
+        run = self.step("name: Run the evals")
+        self.assertIn("ANTHROPIC_FEDERATION_RULE_ID: ${{ vars.ANTHROPIC_EVALS_FEDERATION_RULE_ID }}", run)
+        for var in ("ANTHROPIC_ORGANIZATION_ID", "ANTHROPIC_SERVICE_ACCOUNT_ID"):
+            self.assertIn(f"{var}: ${{{{ vars.{var} }}}}", run)
+        self.assertIn("audience=https://api.anthropic.com", run)
+        self.assertIn("while sleep 240; do fetch_token", run)   # tokens live about ten minutes
+        self.assertIn('export ANTHROPIC_IDENTITY_TOKEN_FILE="$token_file"', run)
+        self.assertNotIn("ANTHROPIC_API_KEY", self.text)
+
+    @support.needs_bash
+    def test_a_failed_refresh_keeps_the_token(self):
+        """Review of #35: a failed curl went on to replace a good token with an empty file. The workflow's own
+        fetch_token runs here with stand-ins for curl and jq."""
+        body = re.search(r"\n( *)fetch_token\(\) \{\n.*?\n\1\}\n", self.step("name: Run the evals"), re.S)
+        function = "\n".join(line[len(body.group(1)):] for line in body.group(0).strip("\n").splitlines())
+        stand_ins = ('curl() { [ "$FAKE" = fail ] && return 22; [ "$FAKE" = empty ] && { echo "{}"; return 0; }; '
+                     'echo \'{"value":"tok-new"}\'; }\n'
+                     "jq() { sed -n 's/.*\"value\":\"\\([^\"]*\\)\".*/\\1/p' | grep .; }\n")
+        with tempfile.TemporaryDirectory() as tmp:
+            token = Path(tmp) / "oidc-token"
+            script = Path(tmp) / "t.sh"
+            script.write_bytes((stand_ins + function + '\ntoken_file="$1"\nfetch_token\n').encode("utf-8"))
+            for fake, code, after in (("fail", 1, "tok-old"), ("empty", 1, "tok-old"), ("ok", 0, "tok-new")):
+                with self.subTest(fake=fake):
+                    token.write_bytes(b"tok-old")
+                    done = support.run(script, support.posix(token), env={"FAKE": fake})
+                    self.assertEqual(code, done.returncode, done.stderr)
+                    self.assertEqual(after, token.read_text(encoding="utf-8"))
+
+    def test_runs_the_script_with_the_ceiling_and_never_publishes(self):
+        run = self.step("name: Run the evals")
+        self.assertIn('bash scripts/run-evals.sh "${args[@]}"', run)
+        self.assertIn('args+=(--max-cost-usd "$MAX_COST")', run)
+        script = (GITHUB.parent / "scripts" / "run-evals.sh").read_text(encoding="utf-8")
+        for flag in ("--no-publish", '--max-cost-usd "$max_cost"', "--scaffold", "--trust-plugin"):
+            self.assertIn(flag, script)
+
+    def test_inputs_reach_scripts_through_env_only(self):
+        for line in self.text.splitlines():
+            if "${{ inputs." in line:
+                self.assertRegex(line, r"^\s+[A-Z_]+: \$\{\{ inputs\.[\w-]+ \}\}$")
+
+    def test_cli_is_pinned_to_the_version_the_script_needs(self):
+        version = re.search(r'CLAUDE_CODE_VERSION: "([\d.]+)"', self.text).group(1)
+        script = (GITHUB.parent / "scripts" / "run-evals.sh").read_text(encoding="utf-8")
+        self.assertIn(f'CLAUDE_VERSION="{version}"', script)
+        self.assertIn('npm install -g "@anthropic-ai/claude-code@$CLAUDE_CODE_VERSION"', self.text)
+
+    def test_summary_and_results_are_kept(self):
+        self.assertIn('python scripts/eval_summary.py "$RUNNER_TEMP/evals/result.json" >> "$GITHUB_STEP_SUMMARY"',
+                      self.step("name: Summary"))
+        upload = self.step("uses: actions/upload-artifact@")
+        self.assertIn("if: always()", upload)
+        self.assertIn("retention-days: 30", upload)
+        for path in ("result.json", "report.html", "traces/"):
+            self.assertIn(f"${{{{ runner.temp }}}}/evals/{path}", upload)
+
+    def test_not_a_release_gate(self):
+        release = (GITHUB / "workflows" / "release.yml").read_text(encoding="utf-8")
+        self.assertNotIn("evals", release.lower())
 
 
 class GenericCI(unittest.TestCase):

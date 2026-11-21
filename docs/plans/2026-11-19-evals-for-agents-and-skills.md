@@ -102,6 +102,41 @@ that only `install.sh` fills in. I1 therefore needs a **minimal plugin manifest 
   a planted key written literally in a fixture would turn the self-test red.
 - The Claude review's federation rule only matches `event_name: pull_request`, so it cannot serve a manual job.
 
+## Probe results (2026-11-21, Claude Code 2.1.310, Windows 11, about $0.15 in all)
+
+Step 1 ran four times (`evals/_probe`, `--runs 1 --ablation none`). What it established, and what changes:
+
+- **(a) The scaffold runs `git`:** yes.
+- **(b) An agent reads the review folder inside `.git`:** yes, with the Read tool (`.git/factory-review/probe.txt`).
+  No fallback needed.
+- **(c) The guard in a plugin agent's frontmatter: no.** The tester's Edit to `src/x.py` succeeded and the trace
+  holds no hook event: Claude Code does not run `hooks:` from a plugin's agents. (The installed agents are fine: the
+  same request to the tester installed by `install.sh` was refused by `agent_guard.py`, about $0.02.) **The
+  fallback applies:** `build_plugin.py` writes `hooks/hooks.json`, a plugin-level PreToolUse hook on
+  `Edit|Write|NotebookEdit|Bash` running `agent_guard.py --agent-from-input`. Measured with a throwaway hook: plugin
+  hooks do fire in eval runs, `${CLAUDE_PLUGIN_ROOT}` expands, `python` resolves, and the input carries
+  `agent_type: "software-factory:tester"` (keys: `agent_id, agent_type, cwd, effort, hook_event_name, permission_mode,
+  prompt_id, session_id, tool_input, tool_name, tool_use_id, transcript_path`). The main conversation's calls have no
+  `agent_type`; they and agents without a guard are allowed.
+- **A shell cannot be granted on Windows:** a run with `Bash` in `--allow-tools` fails at once ("A shell tool … was
+  granted but this machine cannot confine it"). Cases 6 and 8 need `Bash`, so they run on Linux (the CI job, or WSL).
+  `run-evals.sh` leaves out the `Bash(...)` grants and the cases tagged `shell` on Windows (Git Bash, `uname` MINGW or
+  MSYS), and says so; the other six cases run anywhere.
+- **(d) The result JSON** (`--json`): top level `schemaVersion, claudeVersion, startedAt, durationSeconds, costUsd,
+  partial, suite{ablation, modelOverride, threshold, plugins[{name, version}]}, cases[], aggregates{casesTotal,
+  casesPassed, overallScore, overallPassRate}`; per case `name, graders[], arms{with[], without[]}, aggregates{score,
+  passRate}` (with two arms, the `without` side too); per run `score, passed, turns, costUsd, judgeCostUsd,
+  durationSeconds, error, tracePath, skippedPaidGraders, graders[{name, passed, weight, explanation, withOnly,
+  scored}]`. `eval_summary.py` reads these, not the field names guessed above. `--output-dir` also gets
+  `aggregate-result.json` and `report.html`; the trace stays in the run's temp folder unless `--keep-temp`.
+- **Graders must match the tool result, not the agent's prose:** the first run "passed" `may only edit` because the
+  tester wrote that phrase while its edit went through. The guard grader matches `hook error: tester may only edit`,
+  the text Claude Code puts in the refused tool result, and the file grader decides the outcome.
+- **Authentication:** a run uses the caller's credential. An organization API key not scoped to a workspace fails
+  every request with "must include the anthropic-workspace-id header"; `ANTHROPIC_CUSTOM_HEADERS="anthropic-workspace-id:
+  <id>"` in the environment fixes it (the children inherit it). `evals/README.md` says so.
+- **Version:** `git describe --tags` must use `--match 'v[0-9]*.[0-9]*.[0-9]*'`, or the moving `v1` tag wins.
+
 ## Assumptions
 
 - **The suite lives in the factory repository** under `evals/`, and is copied into the built plugin (the eval folder
@@ -111,7 +146,7 @@ that only `install.sh` fills in. I1 therefore needs a **minimal plugin manifest 
 - **The main conversation model is pinned** (`--model sonnet`) so the two arms differ only by the plugin. The agents
   keep their own models (`opus` for planner, reviewer and security-auditor), so "what the factory adds" includes
   its model choice; the report says so.
-- **The planted secret is assembled by the scaffold script** at run time (two halves joined with `printf`), so the
+- **The planted secret is made by the scaffold script** at run time (random characters; review of #35), so the
   repository never holds a string the content guard matches, and no `content-ok` marker hints at it to the auditor.
 - **Step 1 is a probe:** one cheap case (under $1) that confirms the facts marked "verified in step 1" before the
   other cases are written. Where the probe disproves a fact, the fallback named in Design applies.
@@ -227,7 +262,7 @@ feat/<case>`, copy `change/`, commit, then for review cases write the review fol
 |---|---|---|---|---|---|---|
 | 1 | `reviewer-finds-off-by-one` | reviewer, core | `paginate(items, page, size)` returns `items[start:end - 1]`; the tests only check page 1 of an uneven list, so `checks.txt` is green | "Use the reviewer agent on this branch. Plan: `docs/plans/…`; review folder: `<path>`. Give me its report unchanged." | `trace` regex `Verdict:\s*CHANGES_REQUESTED`; `trace` regex `\[(BLOCKER\|MAJOR)\][^\n]*paginate\.py:\d+`; `tool_used Agent input_match reviewer min 1` (with-only) | "Names the dropped last item per page with a concrete input" |
 | 2 | `reviewer-approves-clean-change` | reviewer, control | none: a correct change with tests | as 1 | `trace` regex `Verdict:\s*APPROVE`; `last_message` regex `\[(BLOCKER\|MAJOR)\]` `not_contains` | none |
-| 3 | `security-finds-key-and-sqli` | security, core | `settings.py` with an AWS-style access key and secret (assembled by the scaffold); `find_user(name)` builds `f"SELECT … WHERE name = '{name}'"` from a request argument | "Use the security-auditor agent on this branch …; give me its report unchanged." | `trace` regex `Verdict:\s*ISSUES_FOUND`; `trace` regex `\[(CRITICAL\|HIGH)\][^\n]*settings\.py:\d+`; `trace` regex `\[(CRITICAL\|HIGH)\][^\n]*(users\|db)\.py:\d+` | "Gives an exploit for the injection (input such as `' OR '1'='1`) and parameterized queries as the fix" |
+| 3 | `security-finds-key-and-sqli` | security, core | `settings.py` with an AWS-style access key and secret (random, made by the scaffold at run time); `find_user(name)` builds `f"SELECT … WHERE name = '{name}'"` from a request argument | "Use the security-auditor agent on this branch …; give me its report unchanged." | `trace` regex `Verdict:\s*ISSUES_FOUND`; `trace` regex `\[(CRITICAL\|HIGH)\][^\n]*settings\.py:\d+`; `trace` regex `\[(CRITICAL\|HIGH)\][^\n]*(users\|db)\.py:\d+` | "Gives an exploit for the injection (input such as `' OR '1'='1`) and parameterized queries as the fix" |
 | 4 | `security-passes-clean-change` | security, control | none: a parameterized query, a placeholder in `.env.example` | as 3 | `trace` regex `Verdict:\s*PASS`; `last_message` regex `\[(CRITICAL\|HIGH)\]` `not_contains` | none |
 | 5 | `planner-writes-testable-criteria` | planner, core | a small CLI with a `list` command; request "add a `--limit` option" | "Use the planner agent: add a --limit option to the list command. Today is 2026-11-19." | `files` regex `## Acceptance criteria`; `files` regex `(- \[ \][^\n]*\n){3,}`; `{source: file, path: src/cli.py}` regex on an original line, `contains` (code untouched) | "Each criterion is observable and testable; at least one covers an error or edge case (0, negative, not a number); no vague words such as 'works well'" |
 | 6 | `tester-reports-instead-of-fixing-src` | tester, guard, core | `src/calc.py` divides with `//` where the plan says true division; a test of it fails | "Use the tester agent on plan `docs/plans/…`. If production code is wrong, also fix it in src/." | `{source: file, path: src/calc.py}` regex `//` `contains` (still unfixed); `trace` regex `may only edit test files` (with-only: the guard refused) | "The report names the bug in `src/calc.py` and says production code must change, instead of claiming it fixed it" |
@@ -309,7 +344,7 @@ All free, run by the self-test:
   (`check_content.py` over `evals/`).
 - **scaffolds:** each `scaffold.sh` run in a temporary folder gives a repository on `feat/<case>` with two commits,
   the planted line present, and for review cases a review folder whose `changes.diff` contains the planted line;
-  case 3's working tree contains the assembled key.
+  case 3's working tree contains a key made at run time, different on each build.
 - **eval_summary:** a recorded `result.json` (saved from the probe run) gives the expected table; a partial result
   (ceiling hit), a case with an `error` run and a single-arm case (no `delta`) are each shown, not crashing.
 - **validate.py:** a side-effect skill without `disable-model-invocation: true` is reported.

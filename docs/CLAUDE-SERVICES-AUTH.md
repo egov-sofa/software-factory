@@ -122,6 +122,32 @@ organization role `developer`, never `admin`. A review needs model calls in one 
 - **API credit.** Usage is paid from the organization's API credit (Console, Billing), not from a Claude Pro or Max
   plan. Without credit every review fails with `Credit balance is too low`.
 
+### The factory's evals rule
+
+The factory repository has one more rule, for its manual [Evals workflow](../.github/workflows/evals.yml), which runs
+the evals of the agents and skills ([evals/README.md](../evals/README.md), roadmap I1). Projects do not need it.
+
+| Rule | Matches | Repository variable |
+|---|---|---|
+| `<repo>-evals` | subject `<prefix>:ref:refs/heads/main`, claims `repository_owner`, `repository_owner_id`, `event_name: workflow_dispatch` and `job_workflow_ref: <owner>/<repo>/.github/workflows/evals.yml@refs/heads/main` | `ANTHROPIC_EVALS_FEDERATION_RULE_ID` |
+
+- **Its own rule, not the review's:** the review rule matches pull request runs only, and a rule pinned to
+  `evals.yml` on `main` lets a spend limit or a revocation apply to the evals alone. The job reuses
+  `ANTHROPIC_ORGANIZATION_ID`, `ANTHROPIC_SERVICE_ACCOUNT_ID` and `ANTHROPIC_WORKSPACE_ID`.
+- **Pinned to the workflow on `main`:** `evals.yml` is not a reusable workflow, so `job_workflow_ref` names it
+  directly. The job runs author-written scaffolds with `--trust-plugin`, so it must never run from a branch or a fork.
+- **Cost:** a full run costs about $10–18 and a smoke run $3–6 (estimates; the measured costs are in
+  [evals/README.md](../evals/README.md)). The job's `--max-cost-usd` ceiling is the first guard, the workspace's spend
+  limit the second.
+- **Setup,** by an `org:admin` with admin access to the repository, once (`--evals` adds the rule; the review rule
+  and the shared variables already exist here and are reused):
+
+  ```bash
+  python3 scripts/claude_federation.py --repo egov-sofa/software-factory --service-account svac_... --workspace wrkspc_... --evals --apply --set-variables
+  ```
+
+  Until the variable is set, the Evals job fails at its first step with a message pointing here, before any spend.
+
 ---
 
 ## Set up a repository from Claude Code (recommended)
@@ -338,3 +364,5 @@ To turn the Claude review off instead, set `CLAUDE_REVIEW_ENABLED` to anything b
 | `--service-account must be a service account ID ... or set FACTORY_CLAUDE_SERVICE_ACCOUNT` | Neither the option nor the environment variable is set | Pass the option, or export the variable (see [Once per machine](#once-per-machine)) |
 | No review and no message | Claude's messages are hidden by default | Set `CLAUDE_REVIEW_DEBUG` to `true`, rerun, read the log, then delete the variable |
 | The mention job is skipped | `ANTHROPIC_MENTION_FEDERATION_RULE_ID` is not set | Create the mention rule and set the variable |
+| The Evals job fails at once: `ANTHROPIC_EVALS_FEDERATION_RULE_ID ... must be set` | The evals rule was never created, or the variable not set | [The factory's evals rule](#the-factorys-evals-rule) |
+| A local eval run fails every request with `must include the anthropic-workspace-id header` | An organization API key not scoped to a workspace | Set `ANTHROPIC_CUSTOM_HEADERS="anthropic-workspace-id: <id>"` ([evals/README.md](../evals/README.md)) |
