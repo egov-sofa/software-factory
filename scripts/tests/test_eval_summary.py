@@ -90,8 +90,11 @@ class Summary(unittest.TestCase):
     def test_error_run_is_shown(self):
         result = two_arms()
         result["cases"][0]["arms"]["with"][0]["error"] = "API Error: 529 overloaded |\nretry later"
-        notes = table_row(eval_summary.summary(result), "_probe")[8]
-        self.assertIn("error in 1 run(s): API Error: 529 overloaded \\| retry later", notes)
+        row = table_row(eval_summary.summary(result), "_probe")
+        self.assertIn("error in 1 run(s): API Error: 529 overloaded \\| retry later", row[8])
+        # the first Actions run: every run errored, yet a case whose graders need nothing to happen scored 1.00
+        result["cases"][0]["aggregates"]["score"] = 1.0
+        self.assertEqual("**error**", table_row(eval_summary.summary(result), "_probe")[1])
 
     def test_unscored_graders_are_not_failures(self):
         result = probe()

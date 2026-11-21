@@ -336,6 +336,10 @@ class RunEvals(unittest.TestCase):
             trace = self.tmp / name / "out" / "trace.jsonl"
             trace.parent.mkdir(parents=True)
             trace.write_bytes(b'{"type": "result"}\n')
+            if name.startswith("claude-eval-"):   # sealed as on Linux: a mode-000 folder in a read-only one
+                (trace.parent.parent / "sealed").mkdir()
+                (trace.parent.parent / "sealed").chmod(0)
+                trace.parent.parent.chmod(0o555)
             runs.append({"score": 1, "passed": True, "turns": 1, "costUsd": 0, "graders": [],
                          "tracePath": str(trace)})
         result = self.tmp / "fake-result.json"

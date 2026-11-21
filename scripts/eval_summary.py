@@ -91,7 +91,12 @@ def summary(result):
         score = agg.get("score", 0)
         without = agg.get("scoreWithout")
         delta = agg.get("delta")
-        verdict = "pass" if score >= threshold else "**below threshold**"
+        # a run that ended on an error was not graded: a case can "pass" on graders that need nothing to happen
+        # (the first Actions run showed one at 1.00 with both runs errored), so an error wins over the score
+        if any(run.get("error") for run in runs_of(case)):
+            verdict = "**error**"
+        else:
+            verdict = "pass" if score >= threshold else "**below threshold**"
         lines.append("| " + " | ".join([
             cell(case.get("name", "?")), verdict, f"{score:.2f}",
             f"{without:.2f}" if without is not None else "–",

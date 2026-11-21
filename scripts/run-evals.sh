@@ -97,9 +97,9 @@ claude plugin eval "${args[@]}" || status=$?
 if $keep_traces && [ -f "$out/result.json" ]; then
   "$PY" "$root/scripts/eval_summary.py" --copy-traces "$out/traces" "$out/result.json" || true
   # --keep-temp kept each run's whole folder; the CLI asks for them to be removed once read. Only claude-eval-*
-  # folders, named in the result itself, are removed.
-  # (Python on Windows ends its lines with CRLF: the \r is dropped)
-  "$PY" - "$out/result.json" <<'EOF' | while IFS= read -r kept; do rm -rf -- "${kept%$'\r'}"; done
+  # folders, named in the result itself, are removed. On Linux the CLI seals them read-only, so they are opened
+  # first; a folder that still cannot go is reported, never a reason to fail the run.
+  kept_folders="$("$PY" - "$out/result.json" <<'EOF' || true
 import json, sys
 from pathlib import Path
 for case in json.load(open(sys.argv[1], encoding="utf-8")).get("cases", []):
@@ -109,6 +109,13 @@ for case in json.load(open(sys.argv[1], encoding="utf-8")).get("cases", []):
             if folder.name.startswith("claude-eval-") and folder.is_dir():
                 print(folder.as_posix())
 EOF
+)"
+  while IFS= read -r kept; do
+    kept="${kept%$'\r'}"   # Python on Windows ends its lines with CRLF
+    [ -n "$kept" ] || continue
+    chmod -R u+rwx -- "$kept" 2>/dev/null || true
+    rm -rf -- "$kept" 2>/dev/null || echo "note: could not remove $kept" >&2
+  done <<< "$kept_folders"
 fi
 echo "results: $out (result.json, report.html)"
 exit "$status"
