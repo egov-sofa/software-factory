@@ -8,6 +8,7 @@
 
 Run: python3 -m unittest discover -s scripts/tests
 """
+import json
 import os
 import re
 import shutil
@@ -238,6 +239,12 @@ class Scaffolds(unittest.TestCase):
 FAKE_CLAUDE = """#!/usr/bin/env bash
 if [ "$1" = "--version" ]; then echo "${FAKE_VERSION:-2.1.310} (Claude Code)"; exit 0; fi
 printf '%s\\n' "$@" > "$FAKE_LOG"
+if [ -n "${FAKE_RESULT:-}" ]; then   # the result file a real run writes at --json
+  while [ $# -gt 0 ]; do
+    if [ "$1" = "--json" ]; then mkdir -p "$(dirname "$2")"; cp "$FAKE_RESULT" "$2"; fi
+    shift
+  done
+fi
 exit "${FAKE_EXIT:-0}"
 """
 FAKE_UNAME = """#!/usr/bin/env bash
@@ -311,6 +318,26 @@ class RunEvals(unittest.TestCase):
         self.assertEqual(2, done.returncode)
         self.assertEqual(["2.5"], self.option(args, "--max-cost-usd"))
         self.assertIn("results: ", done.stdout)
+
+    def test_keep_traces_copies_them_and_removes_the_kept_run_folders(self):
+        """Smoke run 1 left twelve claude-eval-* folders behind; the CLI asks for them to be removed once read. Only
+        those, named in the result, go."""
+        runs = []
+        for name in ("claude-eval-abc123", "not-a-run-folder"):
+            trace = self.tmp / name / "out" / "trace.jsonl"
+            trace.parent.mkdir(parents=True)
+            trace.write_bytes(b'{"type": "result"}\n')
+            runs.append({"score": 1, "passed": True, "turns": 1, "costUsd": 0, "graders": [],
+                         "tracePath": str(trace)})
+        result = self.tmp / "fake-result.json"
+        result.write_bytes(json.dumps({"cases": [{"name": "c", "graders": [], "arms": {"with": runs}}]})
+                           .encode("utf-8"))
+        done, args = self.run_evals("--keep-traces", FAKE_RESULT=support.posix(result))
+        self.assertEqual(0, done.returncode, done.stderr)
+        self.assertIn("--keep-temp", args)
+        self.assertTrue(list((self.out / "traces").rglob("*.jsonl")))
+        self.assertFalse((self.tmp / "claude-eval-abc123").exists())
+        self.assertTrue((self.tmp / "not-a-run-folder").exists())
 
     def test_refusals(self):
         for args, env, says in ((["--max-cost-usd", "lots"], {}, "must be a number"),

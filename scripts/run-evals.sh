@@ -96,6 +96,19 @@ claude plugin eval "${args[@]}" || status=$?
 
 if $keep_traces && [ -f "$out/result.json" ]; then
   "$PY" "$root/scripts/eval_summary.py" --copy-traces "$out/traces" "$out/result.json" || true
+  # --keep-temp kept each run's whole folder; the CLI asks for them to be removed once read. Only claude-eval-*
+  # folders, named in the result itself, are removed.
+  # (Python on Windows ends its lines with CRLF: the \r is dropped)
+  "$PY" - "$out/result.json" <<'EOF' | while IFS= read -r kept; do rm -rf -- "${kept%$'\r'}"; done
+import json, sys
+from pathlib import Path
+for case in json.load(open(sys.argv[1], encoding="utf-8")).get("cases", []):
+    for runs in (case.get("arms") or {}).values():
+        for run in runs:
+            folder = Path(run.get("tracePath") or "x/x/x").parent.parent
+            if folder.name.startswith("claude-eval-") and folder.is_dir():
+                print(folder.as_posix())
+EOF
 fi
 echo "results: $out (result.json, report.html)"
 exit "$status"
