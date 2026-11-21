@@ -178,8 +178,8 @@ These need an answer before E1 starts:
 
 1. **Hosting.** Stay public in `egov-sofa`, or make the factory private? This decides how claude-skills and future
    teams reach the factory. The five ways to keep it private and still usable from every organization are compared in
-   [PRIVATE-FACTORY-OPTIONS.md](PRIVATE-FACTORY-OPTIONS.md); in an enterprise account a private repository is enough,
-   it does not have to be internal. Today and the private case are drawn in
+   [PRIVATE-FACTORY-OPTIONS.md](PRIVATE-FACTORY-OPTIONS.md); in an enterprise account the factory can be internal or
+   private, but a private one serves private projects only, not internal ones. Today and the private case are drawn in
    [SHARED-SERVICES.md](SHARED-SERVICES.md#who-can-call-the-factory); the enterprise option:
 
    ![Option, one GitHub Enterprise: an internal software-factory in egov-sofa serves claude-skills in egov-ai and a project in egov-infra](diagrams/cross-org-access-3.png)

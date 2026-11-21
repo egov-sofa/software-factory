@@ -24,15 +24,23 @@ From GitHub's documentation (read 2026-11-21 from the `github/docs` repository,
 | an organization | "Accessible from repositories in the 'ORGANIZATION-NAME' organization" | repositories of that organization only |
 | an organization owned by an enterprise account | allows workflows in other internal or private repositories | "repositories owned by the same organization, or by any organization owned by the enterprise" |
 
-Two rules of the enterprise case matter here:
+Three rules of the enterprise case matter here:
 
-- **Private is enough; internal is not required.** GitHub: "Any actions or reusable workflows stored in the internal
-  or private repository can be used in workflows defined in other internal or private repositories owned by the same
-  organization, or by any organization owned by the enterprise." (ENTERPRISE-VISION.md said "internal"; a private
-  repository works as well.)
-- **Public repositories lose access.** "Actions and reusable workflows stored in private repositories cannot be used in
-  public or internal repositories." A public project could no longer call a private factory, in any option that keeps
-  the factory private and calls it directly.
+- **Both internal and private factories can be shared.** GitHub: "Any actions or reusable workflows stored in the
+  internal or private repository can be used in workflows defined in other internal or private repositories owned by
+  the same organization, or by any organization owned by the enterprise."
+- **But they serve different callers.** "Actions and reusable workflows stored in internal repositories cannot be used
+  in public repositories and actions and reusable workflows stored in private repositories cannot be used in public or
+  internal repositories." So:
+
+  | Factory | Private projects | Internal projects | Public projects |
+  |---|---|---|---|
+  | internal | yes | yes | no |
+  | private | yes | **no** | no |
+
+  A private factory is the stricter choice, but a project made `internal` (a usual default for shared code in an
+  enterprise) can no longer call it: its run fails with "workflow was not found".
+- **Public repositories lose access** in any option that keeps the factory non-public and calls it directly.
 
 **Price.** GitHub's pricing page (2026-11-21): Enterprise **$21 per user / month**, Team $4. It includes an
 "Enterprise Account to centrally manage multiple organizations".
@@ -86,10 +94,14 @@ leave the enterprise until it is bought. A trial is enough to test option A with
 Create an enterprise account, invite the organizations into it, set the factory's access to the enterprise. Calls stay
 `egov-sofa/software-factory/…@v1`: **no change in any project**.
 
+**Internal or private factory?** Make it **internal** if any project is or may become internal: it serves internal and
+private projects, and its content is visible to the enterprise's members only, never to the public. Keep it **private**
+only if every calling project stays private.
+
 - **For:** the native answer; nothing to build or keep in sync. The enterprise also brings what E1 needs anyway:
   rulesets and policies for every organization, the audit log, single sign-on.
 - **Against:** $21 per person per month, counted once across all organizations (you alone: $252 a year). Public
-  repositories can no longer call the factory; a public project would keep its own copy of the workflows (option E for
+  repositories can no longer call the factory, nor internal ones if the factory is private; a public project would keep its own copy of the workflows (option E for
   that project only).
 - **Effort:** S. Settings plus the update job's App token.
 
@@ -158,6 +170,7 @@ actions into each project.
 | Factory content private | all | all | all but the engine | all | all |
 | Separate organizations kept | yes | **no** | yes | yes | yes |
 | Public projects can use it | **no** | **no** | yes | **no** | yes |
+| Internal projects can use it | if the factory is internal | n/a (no enterprise) | yes | n/a (no enterprise) | yes |
 | Change in projects | none | transfer | one `uses:` change | repo name | workflows become files |
 | New machinery | App token | none | App token, second repo | App, copies, sync | App token, guard change |
 | Cost | $21/person/month, once across all orgs | free | free | free | free |
