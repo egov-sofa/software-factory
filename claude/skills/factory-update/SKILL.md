@@ -40,7 +40,9 @@ If `.factory/answers.yml` is missing, the project was made before the factory re
 - Find the target: `$ARGUMENTS` if it gives `--to <release>`; else the newest stable release of the project's major
   version (`git -C "{{FACTORY_HOME}}" tag --list 'v*' --sort=-v:refname`, the major from `version:` in
   `.factory/answers.yml`). Moving to a new major version is only done when the user names it with `--to`.
-- If the project is already at the target, say so and stop.
+- If the project is already at the target, say so and stop, unless `.factory/answers.yml` has a `_workflows_from:`
+  line: the weekly update job left the workflow files behind (it cannot push them), so run the update anyway; it
+  brings them in and removes that line.
 - Create the branch: `git switch -c chore/factory-update-<release>`.
 - Run `$FU update [--to <release>]` and show its summary. Exit code 0: clean; 1: conflicts left in files; 2: it refused
   and changed nothing (read the message: a dirty tree, broken standards markers, a release it cannot find).
