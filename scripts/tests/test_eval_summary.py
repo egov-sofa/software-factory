@@ -96,6 +96,14 @@ class Summary(unittest.TestCase):
         result["cases"][0]["aggregates"]["score"] = 1.0
         self.assertEqual("**error**", table_row(eval_summary.summary(result), "_probe")[1])
 
+    def test_a_baseline_error_leaves_the_verdict_to_the_with_arm(self):
+        """Review of #37: an errored run without the plugin makes Δ unreliable, not the factory's result."""
+        result = two_arms()
+        result["cases"][0]["arms"]["without"][0]["error"] = "API Error: 529 overloaded"
+        row = table_row(eval_summary.summary(result), "_probe")
+        self.assertEqual("pass", row[1])
+        self.assertIn("error in 1 run(s): API Error: 529 overloaded", row[8])
+
     def test_unscored_graders_are_not_failures(self):
         result = probe()
         for grader in result["cases"][0]["arms"]["with"][0]["graders"]:

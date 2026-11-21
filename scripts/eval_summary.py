@@ -92,8 +92,9 @@ def summary(result):
         without = agg.get("scoreWithout")
         delta = agg.get("delta")
         # a run that ended on an error was not graded: a case can "pass" on graders that need nothing to happen
-        # (the first Actions run showed one at 1.00 with both runs errored), so an error wins over the score
-        if any(run.get("error") for run in runs_of(case)):
+        # (the first Actions run showed one at 1.00 with both runs errored), so an error of the with-plugin arm wins
+        # over the score. A baseline error only shows in Notes: it makes Δ unreliable, not the factory's result.
+        if any(run.get("error") for run in (case.get("arms") or {}).get("with") or []):
             verdict = "**error**"
         else:
             verdict = "pass" if score >= threshold else "**below threshold**"
