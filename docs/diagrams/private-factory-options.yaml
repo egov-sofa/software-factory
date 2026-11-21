@@ -1,0 +1,160 @@
+# Source of private-factory-options.drawio and private-factory-options-1..5.png (docs/PRIVATE-FACTORY-OPTIONS.md).
+# Regenerate: bash docs/diagrams/build.sh private-factory-options
+diagram:
+  title: A private factory for several organizations
+  statement: GitHub shares a private repository's workflows only inside one organization, or one enterprise; every option either changes that boundary or stops calling across it.
+  notation: c4
+  viewpoint: solution
+  status: review
+  version: "1"
+  author: software-factory
+  date: 2026-11-21
+pages:
+  - name: Enterprise
+    title: "A. One GitHub Enterprise account"
+    statement: Inside an enterprise a private factory serves every organization's private repositories; public repositories can no longer call it.
+    flow: left-to-right
+    items:
+      - container: ent
+        kind: tenant
+        name: GitHub Enterprise Cloud account
+        lifecycle: planned
+        layout: row
+        items:
+          - container: sofa
+            kind: subscription
+            name: Org egov-sofa
+            layout: column
+            items:
+              - {node: factory, kind: system, name: software-factory, qualifier: "private, shared with the enterprise"}
+          - container: others
+            kind: group
+            layout: column
+            items:
+              - container: ai
+                kind: subscription
+                name: Org egov-ai
+                items:
+                  - {node: skills, kind: component, name: claude-skills, qualifier: private}
+              - container: pd
+                kind: subscription
+                name: Org pentagone-digital
+                items:
+                  - {node: app, kind: component, name: a private project}
+                  - {node: oss, kind: component, name: a public project, qualifier: cannot call a private factory}
+    edges:
+      - {from: skills, to: factory, kind: sync, label: "uses @v1", primary: true}
+      - {from: app, to: factory, kind: sync, label: "uses @v1"}
+      - {from: oss, to: factory, kind: sync, label: "uses @v1", lifecycle: removed}
+
+  - name: One org
+    title: "B. Every repository in one organization"
+    statement: A private factory serves its own organization for free; the price is giving up the separate organizations.
+    flow: left-to-right
+    items:
+      - container: sofa
+        kind: tenant
+        name: Org egov-sofa
+        layout: row
+        items:
+          - container: fac
+            kind: group
+            layout: column
+            items:
+              - {node: factory, kind: system, name: software-factory, qualifier: "private, shared with the organization"}
+          - container: moved
+            kind: group
+            layout: column
+            items:
+              - {node: skills, kind: component, name: claude-skills, qualifier: "moved from egov-ai", lifecycle: planned}
+              - {node: app, kind: component, name: client project, qualifier: "moved from pentagone-digital", lifecycle: planned}
+    edges:
+      - {from: skills, to: factory, kind: sync, label: "uses @v1", primary: true}
+      - {from: app, to: factory, kind: sync, label: "uses @v1"}
+
+  - name: Split
+    title: "C. A public engine and a private factory"
+    statement: Only the workflows and actions stay public, in a small engine repository; standards, agents and plans move to a private factory delivered with a token.
+    flow: left-to-right
+    items:
+      - container: sofa
+        kind: tenant
+        name: Org egov-sofa
+        layout: column
+        items:
+          - {node: engine, kind: system, name: factory-engine, qualifier: "public: workflows, actions, scripts", lifecycle: planned}
+          - {node: factory, kind: system, name: software-factory, qualifier: "private: standards, agents, docs"}
+      - container: orgs
+        kind: zone
+        name: Projects in any organization
+        layout: column
+        items:
+          - {node: callers, kind: component, name: Caller workflows, qualifier: "public or private repos"}
+          - {node: files, kind: component, name: Managed files, qualifier: "standards, hooks, AGENTS.md block"}
+      - container: delivery
+        kind: zone
+        name: Authenticated delivery
+        layout: column
+        items:
+          - {node: appx, kind: component, name: GitHub App, qualifier: "installed in every org", lifecycle: planned}
+    edges:
+      - {from: callers, to: engine, kind: sync, label: "uses @v1", primary: true}
+      - {from: appx, to: factory, kind: identity, label: read token, ports: {exit: [0.5, 1], entry: [0.5, 1]}}
+      - {from: factory, to: files, kind: file, label: weekly update PR}
+
+  - name: Mirrors
+    title: "D. A private copy in each organization"
+    statement: A release job pushes the private factory into each organization; projects call their own organization's copy, which GitHub allows.
+    flow: left-to-right
+    items:
+      - container: sofa
+        kind: tenant
+        name: Org egov-sofa
+        layout: column
+        items:
+          - {node: factory, kind: system, name: software-factory, qualifier: "private, the source"}
+          - {node: release, kind: component, name: Release workflow, qualifier: "+ GitHub App token", lifecycle: planned}
+      - container: ai
+        kind: tenant
+        name: Org egov-ai
+        layout: column
+        items:
+          - {node: mai, kind: component, name: software-factory copy, qualifier: "private, read-only", lifecycle: planned}
+          - {node: skills, kind: component, name: claude-skills}
+      - container: pd
+        kind: tenant
+        name: Org pentagone-digital
+        layout: column
+        items:
+          - {node: mpd, kind: component, name: software-factory copy, qualifier: "private, read-only", lifecycle: planned}
+          - {node: app, kind: component, name: a private project}
+    edges:
+      - {from: factory, to: release, kind: sync, label: on each release}
+      - {from: release, to: mai, kind: file, label: "pushes tag v1"}
+      - {from: release, to: mpd, kind: file, label: "pushes tag v1"}
+      - {from: skills, to: mai, kind: sync, label: "uses @v1", primary: true}
+      - {from: app, to: mpd, kind: sync, label: "uses @v1"}
+
+  - name: Vendored
+    title: "E. Workflows copied into each project"
+    statement: Projects stop calling the factory; the weekly update pull request copies the workflows and actions in, reading the private factory with an App token.
+    flow: left-to-right
+    items:
+      - container: sofa
+        kind: tenant
+        name: Org egov-sofa
+        layout: column
+        items:
+          - {node: factory, kind: system, name: software-factory, qualifier: private}
+      - container: project
+        kind: zone
+        name: A project, any organization
+        layout: column
+        items:
+          - {node: update, kind: component, name: factory-update job, qualifier: "+ GitHub App token", lifecycle: changed}
+          - {node: local, kind: component, name: Local workflows and actions, qualifier: "managed files, no cross-repo call", lifecycle: new}
+          - {node: guard, kind: component, name: Content guard, qualifier: "must run the base branch's copy"}
+    edges:
+      - {from: update, to: factory, kind: identity, label: reads a release, primary: true}
+      - {from: update, to: local, kind: file, label: update pull request}
+      - {from: guard, to: local, kind: sync, label: "runs from main, not the PR"}

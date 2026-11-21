@@ -237,5 +237,7 @@ shared across organizations. See [CUSTOMIZING.md](CUSTOMIZING.md#why-the-factory
 
 ![If the factory were made private: only projects in egov-sofa keep working; calls from other organizations fail with "workflow was not found"](diagrams/cross-org-access-2.png)
 
-The way out, if the factory must stop being public, is one GitHub Enterprise account with internal repositories; it is
-open question 1 of [ENTERPRISE-VISION.md](ENTERPRISE-VISION.md#7-open-questions-for-the-next-analysis).
+There are five ways to keep the factory private while every organization still uses it (one GitHub Enterprise
+account, one organization, a public engine with a private factory, a copy per organization, or workflows copied into
+each project), compared with diagrams in [PRIVATE-FACTORY-OPTIONS.md](PRIVATE-FACTORY-OPTIONS.md). It answers open
+question 1 of [ENTERPRISE-VISION.md](ENTERPRISE-VISION.md#7-open-questions-for-the-next-analysis).
