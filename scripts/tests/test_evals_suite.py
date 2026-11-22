@@ -181,7 +181,8 @@ class Fixtures(unittest.TestCase):
         helper = (EVALS / "_lib" / "make_repo.sh").read_text(encoding="utf-8")
         helper = re.sub(r"\\\n\s*", "", helper)   # join continued lines
         for line in ('R="$(git rev-parse --absolute-git-dir)/factory-review"',
-                     'rm -rf "${R:?}/round.diff" "${R:?}/checks.txt" "${R:?}/reports"',
+                     'rm -f "${R:?}/round.diff" "${R:?}/checks.txt" "${R:?}/reports/reviewer.md" '
+                     '"${R:?}/reports/security-auditor.md"',
                      'mkdir -p "$R/reports"', 'echo "<base>" > "$R/base.txt"',
                      '{ git diff <base>...HEAD; git diff HEAD; } > "$R/changes.diff"',
                      '{ git diff --name-only <base>...HEAD; git diff --name-only HEAD; git ls-files --others '
@@ -193,12 +194,13 @@ class Fixtures(unittest.TestCase):
 
     def test_the_cleanup_never_runs_without_r(self):
         """Review of #41: the skills set R in their prose, so a block run in another shell call had R unset and
-        `rm -rf "$R/reports"` meant /reports. R is set inside the block, and ${R:?} stops the line without it."""
+        `rm -rf "$R/reports"` would have meant /reports. R is set inside the block, and ${R:?} stops the line
+        without it."""
         for name in ("factory-review", "factory-build"):
             with self.subTest(skill=name):
                 text = (support.FACTORY / "claude" / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
                 self.assertRegex(text, r'```bash\n *R="\$\(git rev-parse --absolute-git-dir\)/factory-review"\n'
-                                       r' *rm -rf "\$\{R:\?\}/round\.diff"')
+                                       r' *rm -f "\$\{R:\?\}/round\.diff"')
         done = subprocess.run([support.BASH, "-c", 'unset R; rm -rf "${R:?}/reports"; echo ran'], capture_output=True,
                               text=True, check=False)
         self.assertNotEqual(0, done.returncode)
@@ -272,12 +274,15 @@ class Scaffolds(unittest.TestCase):
                 self.assertEqual(0, done.returncode, done.stderr)
                 (folder / "round.diff").write_bytes(b"stale\n")
                 (folder / "reports" / "reviewer.md").write_bytes(b"stale\n")
+                (folder / "reports" / "security-auditor.md").write_bytes(b"stale\n")
+                (folder / "reports" / "tester.md").write_bytes(b"Result: PASS\n")   # factory-build Stage 4's
                 (folder / "checks.txt").write_bytes(b"stale\n")
                 done = subprocess.run([program, "-c", script], cwd=work, capture_output=True, text=True,
                                       env=support.environment(), check=False)
                 self.assertEqual(0, done.returncode, done.stderr)
                 self.assertFalse((folder / "round.diff").exists())
-                self.assertEqual([], list((folder / "reports").iterdir()))
+                # the reviewers' reports go; the tester's, which checks.txt is written from, stays (review of #41)
+                self.assertEqual(["tester.md"], sorted(p.name for p in (folder / "reports").iterdir()))
                 self.assertNotEqual(b"stale\n", (folder / "checks.txt").read_bytes())
 
     def test_the_key_is_random_and_made_at_run_time(self):
