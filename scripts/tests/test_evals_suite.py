@@ -174,19 +174,32 @@ class Fixtures(unittest.TestCase):
         self.assertEqual([], found)
 
     def test_make_repo_writes_the_review_folder_as_factory_review_does(self):
-        """Keep evals/_lib/make_repo.sh in step with claude/skills/factory-review/SKILL.md step 3."""
-        skill = (support.FACTORY / "claude" / "skills" / "factory-review" / "SKILL.md").read_text(encoding="utf-8")
+        """Keep evals/_lib/make_repo.sh in step with claude/skills/factory-review/SKILL.md step 3, and both skills with
+        each other (factory-build Stage 5 writes the same folder)."""
+        skills = {name: (support.FACTORY / "claude" / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
+                  for name in ("factory-review", "factory-build")}
         helper = (EVALS / "_lib" / "make_repo.sh").read_text(encoding="utf-8")
         helper = re.sub(r"\\\n\s*", "", helper)   # join continued lines
-        for line in ('mkdir -p "$R/reports"', 'echo "<base>" > "$R/base.txt"',
+        for line in ('R="$(git rev-parse --absolute-git-dir)/factory-review"',
+                     'rm -rf "$R/round.diff" "$R/checks.txt" "$R/reports"',
+                     'mkdir -p "$R/reports"', 'echo "<base>" > "$R/base.txt"',
                      '{ git diff <base>...HEAD; git diff HEAD; } > "$R/changes.diff"',
                      '{ git diff --name-only <base>...HEAD; git diff --name-only HEAD; git ls-files --others '
                      '--exclude-standard; } | sort -u > "$R/files.txt"'):
             with self.subTest(line):
-                self.assertIn(line, skill)
+                for name, skill in skills.items():
+                    self.assertIn(line, skill, name)
                 self.assertIn(line.replace("<base>", "main"), helper)
-        self.assertIn('R="$(git rev-parse --absolute-git-dir)/factory-review"', skill)
-        self.assertIn('R="$(git rev-parse --absolute-git-dir)/factory-review"', helper)
+
+    def test_the_skills_stop_when_the_review_folder_cannot_be_written(self):
+        """Seen in an eval run: the folder could not be written, and the model reviewed the diff itself, without the
+        factory's agents or report format. Both skills say to stop and show the error instead."""
+        for name in ("factory-review", "factory-build"):
+            with self.subTest(skill=name):
+                text = (support.FACTORY / "claude" / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
+                text = " ".join(text.split())
+                self.assertIn("**If `R=` or any of these writes fails**, stop: show the user the error", text)
+                self.assertIn("do not review the diff yourself instead", text)
 
 
 @support.needs_bash
@@ -226,6 +239,33 @@ class Scaffolds(unittest.TestCase):
                 if review:
                     ran = re.search(r"Ran (\d+) tests?", done.stderr).group(1)
                     self.assertIn(f"Ran {ran} tests", (folder / "checks.txt").read_text(encoding="utf-8"))
+
+    def test_a_new_round_leaves_no_stale_input(self):
+        """Each round clears the last round's round.diff, reports and checks.txt with fixed paths: a glob such as
+        reports/*.md fails under zsh (macOS's default shell) when reports/ is empty, as it is on a first round."""
+        for shell in ("bash", "zsh"):
+            program = support.BASH if shell == "bash" else shutil.which("zsh")
+            with self.subTest(shell=shell):
+                if not program:
+                    self.skipTest("zsh is not installed")
+                work = Path(self.tmp.name) / f"stale-{shell}"
+                work.mkdir()
+                self.assertEqual(0, scaffold(EVALS / "reviewer-finds-off-by-one", work).returncode)
+                folder = Path(git(work, "rev-parse", "--absolute-git-dir").strip()) / "factory-review"
+                script = (f'. "{support.posix(EVALS / "_lib" / "make_repo.sh")}"; '
+                          f'review_folder "{support.posix(EVALS / "reviewer-finds-off-by-one")}"')
+                done = subprocess.run([program, "-c", script], cwd=work, capture_output=True, text=True,
+                                      env=support.environment(), check=False)   # reports/ is empty: the first round
+                self.assertEqual(0, done.returncode, done.stderr)
+                (folder / "round.diff").write_bytes(b"stale\n")
+                (folder / "reports" / "reviewer.md").write_bytes(b"stale\n")
+                (folder / "checks.txt").write_bytes(b"stale\n")
+                done = subprocess.run([program, "-c", script], cwd=work, capture_output=True, text=True,
+                                      env=support.environment(), check=False)
+                self.assertEqual(0, done.returncode, done.stderr)
+                self.assertFalse((folder / "round.diff").exists())
+                self.assertEqual([], list((folder / "reports").iterdir()))
+                self.assertNotEqual(b"stale\n", (folder / "checks.txt").read_bytes())
 
     def test_the_key_is_random_and_made_at_run_time(self):
         """Review of #35: no key-shaped value may be stored in the repository, whole or in parts. Two builds give two
@@ -317,7 +357,8 @@ class RunEvals(unittest.TestCase):
         self.assertIn("Bash(python -m unittest:*)", grants)
         self.assertIn("Bash", grants)
         self.assertNotIn("--runs", args)
-        self.assertNotIn("note:", done.stdout)
+        # the factory-review case runs, though it fails under plugin eval for now: the note says so
+        self.assertIn("known to fail under plugin eval", done.stdout)
 
     def test_linux_leaves_out_shell_commands_unless_asked(self):
         """GitHub's Ubuntu runners: the run starts, but every shell command fails (smoke run of 2026-11-21). No

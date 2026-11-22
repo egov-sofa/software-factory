@@ -21,6 +21,7 @@ Extra context from the user: $ARGUMENTS
 3. Prepare the reviewers' input first: they have no shell, so they read it from files. With `<base>` the base branch
    above and `R="$(git rev-parse --absolute-git-dir)/factory-review"` (a folder git never commits, also in a worktree):
    ```bash
+   rm -rf "$R/round.diff" "$R/checks.txt" "$R/reports"   # nothing from an earlier round (fixed paths, no glob)
    mkdir -p "$R/reports"
    echo "<base>" > "$R/base.txt"
    { git diff <base>...HEAD; git diff HEAD; } > "$R/changes.diff"     # committed since <base>, then uncommitted
@@ -29,6 +30,8 @@ Extra context from the user: $ARGUMENTS
    Write `$R/checks.txt` with the latest test and lint results (the tester's report, or run the commands from
    `AGENTS.md`), followed by the dependency audit when the project has one (`npm audit --omit=dev`, or `pip-audit` /
    `uvx pip-audit`). Then pass the folder's full path to both reviewers.
+   **If `R=` or any of these writes fails**, stop: show the user the error (for example a sandbox that refuses the
+   write) and do not review the diff yourself instead: only the two agents give the factory's review.
 4. Launch the `reviewer` and `security-auditor` agents **in parallel in one message**. Pass them the review folder, the base branch, the plan path (if any) and any focus area from the arguments.
    Save each report to `$R/reports/<agent>.md` and check it with `$FS report <agent> <file>`: gate on the values it
    prints. On exit 1, ask the same agent once for a corrected report; if it is still wrong, show the user and stop.
