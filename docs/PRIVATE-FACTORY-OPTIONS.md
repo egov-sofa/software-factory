@@ -288,6 +288,12 @@ For each organization (`egov-sofa`, `egov-ai`, `egov-infra` and the others):
 URLs do not change. The enterprise's policies now apply to the organization, and its plan is billed through the
 enterprise.
 
+**"Organization … cannot be invited because it has an outstanding balance":** the organization has an unpaid invoice,
+typically a failed payment on a paid plan (Team). Pay it in **Organization → Settings → Billing and licensing**
+(update the payment method first if the card failed), wait a few minutes and invite it again. If the amount looks wrong,
+contact GitHub Support from the same page. Meanwhile add the other organizations, and do not do step 7 until this one
+has joined if any of its repositories call the factory.
+
 **Check:** the enterprise's **Organizations** tab lists every organization. In any of them, **New repository** now
 offers an `Internal` visibility.
 
