@@ -1,6 +1,11 @@
 # Plan: The review folder moves out of `.git`, to a self-ignoring `.factory/review/`
 
-**Status:** Proposed
+**Status:** Withdrawn (2026-11-22: its premise was disproved; see "Withdrawn" below. Approved and built on
+2026-11-21 on `feat/review-folder-outside-git`, three review rounds, not merged)
+**Stage:** done
+**Round:** 2
+**Base:** main
+**Branch:** feat/review-folder-outside-git
 **Request:** "Move the review folder to a place that is writable inside the sandbox, is never committed, and keeps
 every guarantee the current design has." Found by a real eval run on 2026-11-21: `/factory-review` (step 3) and
 `/factory-build` (Stage 5) write the review folder to `$(git rev-parse --absolute-git-dir)/factory-review/`; inside
@@ -9,6 +14,29 @@ file system", the model reviewed the diff itself, the reviewer and security-audi
 format was lost. Also, as a small related part: record that `plugin eval` runs inside bubblewrap, that Claude Code's
 Bash sandbox cannot nest inside it on GitHub's Ubuntu runners ("apply-seccomp: write /proc/self/setgroups (nested
 userns is capability-restricted …)") but can in WSL, and verify `factory-review-starts-from-request` locally.
+
+## Withdrawn
+
+Measured on 2026-11-22 in WSL (Ubuntu 26.04, Claude Code 2.1.310), after the plan was built and reviewed:
+
+- **Claude Code's own sandbox does not make `.git` read-only.** `claude -p` with `sandbox.enabled` ran
+  `mkdir -p .git/factory-review/reports` and `mkdir -p .factory/review/reports` in a scratch repository: both
+  succeeded, while `touch ~/outside-sentinel` in the same run was refused ("Read-only file system"), so the sandbox
+  was on. Projects using the factory with the sandbox on were never affected.
+- **The failure that started this plan is `plugin eval`'s.** Each eval run is itself inside bubblewrap, and there the
+  Bash sandbox refused every write: `.git/factory-review/`, `$TMPDIR`, and on the built branch `.factory/review/`
+  too, even Claude Code's own working-directory file under the sandbox's `tmp/`. The plan read that as "`.git` is
+  read-only"; it was "nothing is writable".
+- **So moving the folder fixes nothing real**, and it costs: a folder in the work tree is controlled by the branch
+  under review, which took the symlink, tracked-file, submodule and `find` checks of three review rounds to close.
+  The folder stays inside `.git`, where a branch cannot put files.
+
+Kept from the build (in a separate change, folder unchanged): the conductor stops and reports when it cannot write
+the review folder instead of reviewing the diff alone, and each round clears the last round's `round.diff`,
+`checks.txt` and reports with fixed paths (no glob: zsh's `nomatch`, REV-1.1). The eval case
+`factory-review-starts-from-request` is marked as not runnable under `plugin eval` for now.
+
+The text below is the plan as approved, kept for the record with its review rounds.
 
 ## Goal
 
@@ -72,11 +100,16 @@ The folder stays out of every commit, one per worktree, and readable by both age
    top level). If the command fails, the conductor stops and says so instead of reviewing alone.
 2. **The folder ignores itself.** Before writing, the conductor runs:
    ```bash
+   if [ -L "${R%/review}" ] || [ -L "$R" ] || [ -L "$R/reports" ] || [ -n "$(git ls-files -- "$R")" ]; then
+     echo "error: $R is a symlink or holds tracked files; nothing written" >&2; exit 1
+   fi
+   rm -rf "$R/round.diff" "$R/checks.txt" "$R/reports"                # nothing from an earlier run
    mkdir -p "$R/reports"
    printf '# software-factory review folder: scratch input for the reviewers, never committed\n*\n' > "$R/.gitignore"
-   rm -f "$R/round.diff" "$R"/reports/*.md                            # nothing from an earlier run
    ```
-   then the existing `base.txt`, `changes.diff`, `files.txt` and `checks.txt` lines unchanged. After that,
+   (Round 1 review: fixed paths instead of the `reports/*.md` glob, which zsh's `nomatch` fails on an empty folder;
+   `checks.txt` cleared too; a symlink or tracked file there, which the branch under review controls, stops the
+   conductor before any write.) Then the existing `base.txt`, `changes.diff`, `files.txt` and `checks.txt` lines unchanged. After that,
    `git status --porcelain` shows nothing for the folder, in any repository, with or without a project `.gitignore`
    line, and `git add -A` stages none of it.
 3. **No stale input.** A new review round never sees `round.diff` or a report from an earlier run: both are removed
@@ -134,9 +167,11 @@ changes, the folder's own `.gitignore` hides it from `git status`, `git add -A`,
 `git status` shows `.factory/review/` as untracked, and an accidental commit of `changes.diff` would go through the
 pre-commit content guard, which flags a secret in it. That is the same last line of defence as for any file.
 
-**Stale input.** Today nothing clears the folder. The plan removes only the two kinds of file that are not
-overwritten each round (`round.diff` and the reports), with `rm -f` on fixed names under a path that always ends in
-`/.factory/review`, rather than `rm -rf "$R"`: it cannot reach anything else, and a reader sees at once what it deletes.
+**Stale input.** Today nothing clears the folder. As built after review round 1, each round removes three fixed paths
+before writing (`rm -rf "$R/round.diff" "$R/checks.txt" "$R/reports"`, then `mkdir -p "$R/reports"`): the files not
+overwritten by command, and `checks.txt`, so a skipped write shows as a missing file. It uses no glob (zsh's `nomatch`
+failed on an empty `reports/`) and never `rm -rf "$R"`: it cannot reach anything else, and a reader sees what it
+deletes. Before that, the guard refuses a `.factory` holding any symlink (a submodule's included) or tracked files.
 
 **Reports and `/factory-ship`.** Unchanged: reports are saved to `$R/reports/<agent>.md` and checked with
 `$FS report <agent> <file>`; the round goes into the plan; `/factory-ship` reads the plan. No script learns the path.
@@ -183,7 +218,7 @@ Left unchanged on purpose: the older plans (history) and `scripts/tests/data/eva
 All free, in the self-test, except the last item:
 
 - **`test_make_repo_writes_the_review_folder_as_factory_review_does`:** each folder line (the `R=` line, `mkdir`, the
-  `.gitignore` line, the `rm -f` line and the four file lines) is in factory-review step 3, in factory-build Stage 5,
+  `.gitignore` line, the cleanup line and the four file lines) is in factory-review step 3, in factory-build Stage 5,
   and (with `main` for `<base>`) in `make_repo.sh`.
 - **`test_every_scaffold`:** the review folder is `.factory/review/`, holds `.gitignore` with `*`, the planted line in
   `changes.diff`, and `git status --porcelain` stays empty; `git check-ignore .factory/review/changes.diff` succeeds
@@ -217,12 +252,15 @@ All free, in the self-test, except the last item:
 
 ## Open questions for the user
 
+**Answered 2026-11-21:** the maintainer accepted the recommended answer to every question below; build to those.
+
 1. **Template `.gitignore` line:** add `.factory/review/` to the three stack templates, as a visible second layer?
    *Recommended: yes*, placed before the content guard block so `/factory-update` merges without a conflict; the
    folder's own `.gitignore` remains the real guarantee.
 2. **Clearing the folder:** remove only `round.diff` and `reports/*.md` (`rm -f`), or wipe it (`rm -rf "$R"`) each
    round? *Recommended: `rm -f` on fixed names*: the other files are overwritten anyway, and a targeted delete is
-   easier to trust and less likely to trigger a permission prompt.
+   easier to trust and less likely to trigger a permission prompt. *As built after review round 1:*
+   `rm -rf "$R/round.diff" "$R/checks.txt" "$R/reports"`, still fixed names but no glob (zsh), and `checks.txt` too.
 3. **Guard the folder for the implementer too** (refuse its Edit and Write under `.factory/review/`)? *Recommended:
    no, not now*: the folder is rebuilt after every implementer run, so it cannot change a review; revisit if a stage
    order ever changes.
@@ -231,3 +269,31 @@ All free, in the self-test, except the last item:
    to `.git`, the very thing that fails in the sandbox.
 5. **Verifying case 8:** is a WSL smoke run (one run per arm, about $1) enough before merging, or a full three-run
    case? *Recommended: the smoke run before merging, the full case at the next manual evals run*.
+
+## Review rounds
+
+### Round 1 (reviewed 7977b46)
+| ID | Severity | Location | Finding | Answer |
+|---|---|---|---|---|
+| REV-1.1 | MAJOR | claude/skills/factory-review/SKILL.md:27, factory-build/SKILL.md:110, evals/_lib/make_repo.sh:46 | `rm -f "$R"/reports/*.md` fails under zsh (macOS default, `nomatch`) when `reports/` is empty, so every first review stops | fixed: no glob; `rm -rf "$R/round.diff" "$R/checks.txt" "$R/reports"` before `mkdir -p "$R/reports"`, the same line in both skills and make_repo.sh; `test_a_new_round_leaves_no_stale_input` runs it on an empty `reports/` under bash, and under zsh where installed → resolved (round 2) |
+| REV-1.2 | MINOR | evals/README.md | case 8's WSL result is not recorded yet (waits for criterion 11) | |
+| SEC-1.1 | MEDIUM | claude/skills/factory-review/SKILL.md, factory-build/SKILL.md, evals/_lib/make_repo.sh | the branch under review controls `.factory/review`: a committed symlink redirects the writes and deletes (e.g. the root `.gitignore` becomes `*`), and tracked files there are not ignored, so a later commit picks up the diff | fixed: before any write or delete, the three places stop with "error: $R is a symlink or holds tracked files; nothing written" (`exit 1`) when `.factory`, `$R` or `$R/reports` is a symlink or `git ls-files -- "$R"` prints anything; both skills say to stop, show the error and ask the user to remove the link or untrack the files; tests `test_a_symlinked_folder_is_refused` (target untouched; skipped where symlinks cannot be made) and `test_tracked_files_in_the_folder_are_refused` → resolved (round 2) |
+| SEC-1.2 | LOW | claude/skills/factory-review/SKILL.md, factory-build/SKILL.md | `checks.txt` is not cleared, so a skipped write leaves the last round's results looking current | fixed: `"$R/checks.txt"` is in the cleanup line, so a skipped write shows as a missing file; `test_a_new_round_leaves_no_stale_input` checks it is gone → resolved (round 2) |
+Result: reviewer CHANGES_REQUESTED, security ISSUES_FOUND, tests PASS; blocking 1
+Not blocking: REV-1.2 (MINOR), SEC-1.1 (MEDIUM), SEC-1.2 (LOW); the conductor fixes SEC-1.1 and SEC-1.2 in the same round
+
+### Round 2 (reviewed 91418d9)
+| ID | Severity | Location | Finding | Answer |
+|---|---|---|---|---|
+| REV-2.1 | MINOR | docs/plans/2026-11-21-review-folder-outside-git.md (Design, "Stale input") | still describes `rm -f` on two names, not the `rm -rf` of three fixed paths built after round 1 | fixed: the Design paragraph now describes the cleanup and guard as built |
+| SEC-2.1 | MEDIUM | claude/skills/factory-review/SKILL.md, factory-build/SKILL.md, evals/_lib/make_repo.sh | a `.factory` submodule escapes `git ls-files`, so a symlink committed inside it (e.g. `review/changes.diff`) gets past the check and the write follows it | fixed: the guard refuses any symlink under `.factory` (`find "${R%/review}" -type l`, after the `-L .factory` test), so a link git cannot see is refused; test_an_untracked_link_inside_the_folder_is_refused, run in WSL |
+Result: reviewer APPROVE, security PASS, tests PASS; blocking 0
+Not blocking: REV-2.1 (MINOR), SEC-2.1 (MEDIUM); the conductor fixes both in the last fix round
+
+### Round 3 (reviewed 3335e81)
+| ID | Severity | Location | Finding | Answer |
+|---|---|---|---|---|
+| REV-3.1 | MINOR | claude/skills/factory-review/SKILL.md, factory-build/SKILL.md, evals/_lib/make_repo.sh | before `.factory` exists, `find` prints "No such file or directory", which a conductor told to stop on errors may read as a failure | fixed: `find` runs only when `.factory` exists; test_a_first_review_writes_no_error |
+| SEC-3.1 | LOW | same | the check read only `find`'s output, so a failing `find` (Windows' `find.exe` first on PATH) passed it | fixed: a failed `find` refuses ("could not check"); test_a_failing_find_refuses |
+Result: reviewer APPROVE, security PASS, tests PASS; blocking 0
+Not blocking: REV-3.1 (MINOR), SEC-3.1 (LOW), both fixed by the conductor after the round (no fix round counted)
