@@ -81,10 +81,12 @@ It then gets a plain `Bash` grant: `/factory-review` chains commands and sets va
 rule approves, and every command still runs inside the sandbox. `EVALS_SANDBOX=yes|no` skips the bubblewrap check.
 macOS runs every case (Claude Code sandboxes with Seatbelt there).
 
-**Known failure (2026-11-21):** in WSL the commands run, but `/factory-review` cannot write its review folder:
-`.git` is read-only inside Claude Code's sandbox. The fix is planned in
-[docs/plans/2026-11-21-review-folder-outside-git.md](../docs/plans/2026-11-21-review-folder-outside-git.md); until
-then this case fails.
+**Known failure (measured 2026-11-22):** in WSL the commands start, but under `plugin eval` no Bash write succeeds:
+each run is itself inside bubblewrap, and the nested Bash sandbox refuses every write, `/factory-review`'s review
+folder included. It is `plugin eval`'s, not the factory's: Claude Code's own sandbox lets Bash write the review
+folder (see the "Withdrawn" section of
+[docs/plans/2026-11-21-review-folder-outside-git.md](../docs/plans/2026-11-21-review-folder-outside-git.md)). Until
+`plugin eval` allows writes there, this case fails wherever it runs.
 
 ### In GitHub Actions
 
