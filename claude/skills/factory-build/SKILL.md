@@ -104,7 +104,8 @@ you log that round in Stage 5 (still run the review, so one round covers both).
 Prepare the reviewers' input first: they have no shell, so they read it from files. With `<base>` from the plan and
 `R="$(git rev-parse --absolute-git-dir)/factory-review"` (a folder git never commits, also in a worktree):
 ```bash
-rm -rf "$R/round.diff" "$R/checks.txt" "$R/reports"   # nothing from an earlier round (fixed paths, no glob)
+R="$(git rev-parse --absolute-git-dir)/factory-review"
+rm -rf "${R:?}/round.diff" "${R:?}/checks.txt" "${R:?}/reports"   # the last round's input; no glob
 mkdir -p "$R/reports"
 echo "<base>" > "$R/base.txt"
 { git diff <base>...HEAD; git diff HEAD; } > "$R/changes.diff"     # committed since <base>, then uncommitted

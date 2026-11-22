@@ -21,7 +21,8 @@ Extra context from the user: $ARGUMENTS
 3. Prepare the reviewers' input first: they have no shell, so they read it from files. With `<base>` the base branch
    above and `R="$(git rev-parse --absolute-git-dir)/factory-review"` (a folder git never commits, also in a worktree):
    ```bash
-   rm -rf "$R/round.diff" "$R/checks.txt" "$R/reports"   # nothing from an earlier round (fixed paths, no glob)
+   R="$(git rev-parse --absolute-git-dir)/factory-review"
+   rm -rf "${R:?}/round.diff" "${R:?}/checks.txt" "${R:?}/reports"   # the last round's input; no glob
    mkdir -p "$R/reports"
    echo "<base>" > "$R/base.txt"
    { git diff <base>...HEAD; git diff HEAD; } > "$R/changes.diff"     # committed since <base>, then uncommitted

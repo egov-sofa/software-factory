@@ -41,7 +41,7 @@ commit_change() {
 review_folder() {
   local fixture="$1" R
   R="$(git rev-parse --absolute-git-dir)/factory-review"
-  rm -rf "$R/round.diff" "$R/checks.txt" "$R/reports"   # nothing from an earlier round (fixed paths, no glob)
+  rm -rf "${R:?}/round.diff" "${R:?}/checks.txt" "${R:?}/reports"   # the last round's input; no glob
   mkdir -p "$R/reports"
   echo "main" > "$R/base.txt"
   { git diff main...HEAD; git diff HEAD; } > "$R/changes.diff"

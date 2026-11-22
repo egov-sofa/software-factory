@@ -181,7 +181,7 @@ class Fixtures(unittest.TestCase):
         helper = (EVALS / "_lib" / "make_repo.sh").read_text(encoding="utf-8")
         helper = re.sub(r"\\\n\s*", "", helper)   # join continued lines
         for line in ('R="$(git rev-parse --absolute-git-dir)/factory-review"',
-                     'rm -rf "$R/round.diff" "$R/checks.txt" "$R/reports"',
+                     'rm -rf "${R:?}/round.diff" "${R:?}/checks.txt" "${R:?}/reports"',
                      'mkdir -p "$R/reports"', 'echo "<base>" > "$R/base.txt"',
                      '{ git diff <base>...HEAD; git diff HEAD; } > "$R/changes.diff"',
                      '{ git diff --name-only <base>...HEAD; git diff --name-only HEAD; git ls-files --others '
@@ -190,6 +190,19 @@ class Fixtures(unittest.TestCase):
                 for name, skill in skills.items():
                     self.assertIn(line, skill, name)
                 self.assertIn(line.replace("<base>", "main"), helper)
+
+    def test_the_cleanup_never_runs_without_r(self):
+        """Review of #41: the skills set R in their prose, so a block run in another shell call had R unset and
+        `rm -rf "$R/reports"` meant /reports. R is set inside the block, and ${R:?} stops the line without it."""
+        for name in ("factory-review", "factory-build"):
+            with self.subTest(skill=name):
+                text = (support.FACTORY / "claude" / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
+                self.assertRegex(text, r'```bash\n *R="\$\(git rev-parse --absolute-git-dir\)/factory-review"\n'
+                                       r' *rm -rf "\$\{R:\?\}/round\.diff"')
+        done = subprocess.run([support.BASH, "-c", 'unset R; rm -rf "${R:?}/reports"; echo ran'], capture_output=True,
+                              text=True, check=False)
+        self.assertNotEqual(0, done.returncode)
+        self.assertNotIn("ran", done.stdout)
 
     def test_the_skills_stop_when_the_review_folder_cannot_be_written(self):
         """Seen in an eval run: the folder could not be written, and the model reviewed the diff itself, without the
