@@ -13,14 +13,17 @@
 #
 # This costs money: every run calls the Claude API as you. The script sets no credential: it inherits the environment,
 # so ANTHROPIC_CUSTOM_HEADERS (the workspace header some keys need, evals/README.md) reaches every run.
-# On Windows a run cannot be granted a shell, so there the cases tagged `shell` and the Bash grants are left out.
+# Cases the machine's sandbox cannot run are left out, with a note: on Windows, or on Linux without bubblewrap and
+# socat, the `shell` and `shell-commands` cases and the Bash grants. On Linux the `shell-commands` cases run only with
+# EVALS_NESTED_SANDBOX=yes (see below). macOS sandboxes with Seatbelt and runs them all. EVALS_SANDBOX=yes|no skips
+# the bubblewrap check.
 #
 # Exit code: the CLI's (0 every case at or above the threshold, 1 a case below it, 2 the cost ceiling was hit);
 # 2 also for a usage error or a missing or too old claude.
 set -euo pipefail
 
 CLAUDE_VERSION="2.1.310"   # the case schema was read from this version; CI installs exactly this one
-THRESHOLD="0.67"           # a case passes when its runs average two thirds or more: one unlucky run of three is noise
+THRESHOLD="0.66"           # a case passes at two thirds (0.666…, below 0.67): one unlucky run of three is noise
 root="$(cd "$(dirname "$0")/.." && pwd)"
 
 usage() { sed -n '6,12p' "$0" | sed 's/^# \{0,1\}//'; }
@@ -57,20 +60,49 @@ oldest="$(printf '%s\n%s\n' "$CLAUDE_VERSION" "$have" | sort -V | head -n 1)"
 
 PY=python3; "$PY" -c "" 2>/dev/null || PY=python
 
-# Every case is tagged portable or shell, and --tag keeps a case that has any of the tags given: the probe (tagged
-# probe) is never run from here.
-tags=(portable shell)
+# Every case is tagged portable, shell (it is granted Bash) or shell-commands (its shell commands must really run),
+# and --tag keeps a case that has any of the tags given: the probe (tagged probe) is never run from here.
+# Claude Code runs each Bash command in a sandbox, on Linux bubblewrap (with socat), and plugin eval runs each run in
+# bubblewrap too, so the Bash sandbox is nested. On GitHub's Ubuntu runners every command then fails ("apply-seccomp:
+# … nested userns is capability-restricted"); in WSL it works. No cheap check tells the two apart (a hand-made nested
+# namespace fails in both), so the shell-commands cases are opt-in on Linux: EVALS_NESTED_SANDBOX=yes.
+has_sandbox() {
+  case "${EVALS_SANDBOX:-}" in yes) return 0 ;; no) return 1 ;; esac
+  command -v bwrap >/dev/null 2>&1 && command -v socat >/dev/null 2>&1 || return 1
+  # installed is not enough: in a container, or with user namespaces off, bubblewrap cannot start at all
+  bwrap --ro-bind / / --unshare-user --unshare-pid true >/dev/null 2>&1
+}
+tags=(portable)
 grants=(Agent Edit Write)
+no_shell() {
+  echo "note: $1: the cases tagged shell or shell-commands are left out, and so are the Bash grants (a run cannot"
+  echo "      confine a shell here, and a Bash grant would fail every run). Run them on Linux with bubblewrap and"
+  echo "      socat, or on macOS."
+}
+shell_grants=("Bash(python -m unittest:*)" "Bash(python3 -m unittest:*)" "Bash(git:*)" "Bash(mkdir:*)"
+              "Bash(sort:*)" "Bash(echo:*)")
 case "$(uname -s)" in
-  MINGW*|MSYS*)
-    # a run with a shell grant fails at once here ("cannot confine it"), and these cases need one
-    tags=(portable)
-    echo "note: Windows: the cases tagged shell are left out, and so are the Bash grants (a run cannot confine a"
-    echo "      shell on this system). Run them on Linux: the Evals workflow, or WSL."
+  MINGW*|MSYS*) no_shell Windows ;;
+  Darwin)   # Seatbelt: no bubblewrap, no user namespaces to nest
+    tags+=(shell shell-commands)
+    grants+=("${shell_grants[@]}" Bash)
     ;;
   *)
-    grants+=("Bash(python -m unittest:*)" "Bash(python3 -m unittest:*)" "Bash(git:*)" "Bash(mkdir:*)"
-             "Bash(sort:*)" "Bash(echo:*)")
+    if ! has_sandbox; then
+      no_shell "no working bubblewrap and socat"
+    else
+      tags+=(shell)
+      grants+=("${shell_grants[@]}")
+      if [ "${EVALS_NESTED_SANDBOX:-}" = yes ]; then
+        tags+=(shell-commands)
+        # a shell-commands case grants itself plain Bash: its skill chains commands and sets variables, which no
+        # Bash(prefix:*) rule approves; every command still runs in the sandbox
+        grants+=(Bash)
+      else
+        echo "note: the cases tagged shell-commands are left out: their commands fail where Claude Code's sandbox"
+        echo "      cannot nest (GitHub's runners). Where it can (WSL), set EVALS_NESTED_SANDBOX=yes."
+      fi
+    fi
     ;;
 esac
 

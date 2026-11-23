@@ -18,15 +18,17 @@ Plan and design: [docs/plans/2026-11-19-evals-for-agents-and-skills.md](../docs/
 | `planner-writes-testable-criteria` | planner, core | a request: "add a `--limit` option to the list command" | a written plan with `## Acceptance criteria` and three or more `- [ ]` criteria; `src/cli.py` unchanged |
 | `tester-reports-instead-of-fixing-src` | tester, guard, core, **shell** | `average()` uses `//` where the plan asks for true division; a test fails; the prompt asks to fix `src/` too | `src/calc.py` still holds the bug (the tester's guard refused the edit) |
 | `factory-build-not-started-by-request` | skill, trigger, core | nothing: "Add a --verbose flag to the CLI." | the Skill tool never started `factory-build`; no "Factory Build Pipeline" in the trace |
-| `factory-review-starts-from-request` | skill, trigger, **shell** | the off-by-one of the first case; "Can you review my changes …?" | `Verdict: CHANGES_REQUESTED` (only the factory's reviewer writes it) |
+| `factory-review-starts-from-request` | skill, trigger, **shell-commands** | the off-by-one of the first case; "Can you review my changes …?" | `Verdict: CHANGES_REQUESTED` (only the factory's reviewer writes it) |
 
 The two control cases keep an agent that flags everything from scoring well. Some cases also have an `llm` grader
 (Haiku, a few cents) for "found the right thing for the right reason", which a pattern cannot judge, and a `with-only`
 grader that shows whether the factory's agent or skill was used (not part of the score). `_probe/` is the step-1 probe
 of the plan (tag `probe`): it is never run by `run-evals.sh`.
 
-Every case is tagged either `portable` or `shell`: the shell cases need `Bash` (running the tests, git), which a run
-cannot get on Windows.
+Every case is tagged `portable`, `shell` or `shell-commands`. A `shell` case is granted `Bash`, which a run cannot get
+on Windows; its outcome does not depend on the commands (the tester's guard refuses an edit either way). A
+`shell-commands` case needs its commands to really run (`/factory-review` prepares the review folder with git), which
+also needs a sandbox that can nest a user namespace: not on GitHub's Ubuntu runners (see below).
 
 ## Run them
 
@@ -42,7 +44,7 @@ bash scripts/run-evals.sh --smoke --max-cost-usd 2    # a lower ceiling
 
 The script builds the factory as a plugin in a temporary folder (`scripts/build_plugin.py`) and runs
 `claude plugin eval` with `--scaffold --trust-plugin --no-publish --model sonnet --ablation with-without --threshold
-0.67`, the cost ceiling, and the tool grants the cases need. Results go to `evals/results/<UTC time>/`
+0.66`, the cost ceiling, and the tool grants the cases need. Results go to `evals/results/<UTC time>/`
 (git-ignored): `result.json`, `report.html` and `aggregate-result.json`. The exit code is the CLI's: 0 every case at
 or above the threshold, 1 a case below it, 2 the cost ceiling was hit (the partial results are still written).
 
@@ -60,8 +62,31 @@ ANTHROPIC_CUSTOM_HEADERS="anthropic-workspace-id: wrkspc_..." bash scripts/run-e
 ### On Windows
 
 A run that is granted a shell fails at once on Windows ("A shell tool … was granted but this machine cannot confine
-it"). So in Git Bash `run-evals.sh` leaves out the `Bash(...)` grants and the two cases tagged `shell`, and says so;
-the other six run normally. Run the shell cases on Linux: the Evals workflow, or WSL.
+it"). So in Git Bash `run-evals.sh` leaves out the `Bash(...)` grants and the cases tagged `shell` or `shell-commands`,
+and says so; the other six run normally.
+
+### On Linux
+
+Claude Code sandboxes each Bash command with bubblewrap and socat; without a working bubblewrap `run-evals.sh`
+behaves as on Windows (a Bash grant would fail every run). `plugin eval` runs each run in bubblewrap too, so the Bash
+sandbox is nested. On GitHub's Ubuntu runners every command then fails (`apply-seccomp: … nested userns is
+capability-restricted`; neither the AppArmor sysctls nor removing the bwrap AppArmor profile changes that). In WSL
+(Ubuntu 26.04) it works. No cheap check tells the two apart, so the `shell-commands` case is **opt-in on Linux**:
+
+```bash
+EVALS_NESTED_SANDBOX=yes bash scripts/run-evals.sh --smoke --case factory-review-starts-from-request
+```
+
+It then gets a plain `Bash` grant: `/factory-review` chains commands and sets variables, which no `Bash(prefix:*)`
+rule approves, and every command still runs inside the sandbox. `EVALS_SANDBOX=yes|no` skips the bubblewrap check.
+macOS runs every case (Claude Code sandboxes with Seatbelt there).
+
+**Known failure (measured 2026-11-22):** in WSL the commands start, but under `plugin eval` no Bash write succeeds:
+each run is itself inside bubblewrap, and the nested Bash sandbox refuses every write, `/factory-review`'s review
+folder included. It is `plugin eval`'s, not the factory's: Claude Code's own sandbox lets Bash write the review
+folder (see the "Withdrawn" section of
+[docs/plans/2026-11-21-review-folder-outside-git.md](../docs/plans/2026-11-21-review-folder-outside-git.md)). Until
+`plugin eval` allows writes there, this case fails wherever it runs.
 
 ### In GitHub Actions
 
@@ -85,7 +110,7 @@ The job summary (or `python3 scripts/eval_summary.py evals/results/<time>/result
 | Failed graders (with) | which graders failed in the runs with the factory, and how often: start here |
 | Notes | runs that ended in an error (an API error, a timeout), and paid graders skipped at the ceiling: a low score from these says nothing about the agent |
 
-A case passes at a score of 0.67 (two runs of three). It shows **error** instead when a run with the plugin ended
+A case passes at a score of 0.66, two thirds (two runs of three, or two graders of three: 0.666… is below 0.67). It shows **error** instead when a run with the plugin ended
 on an error: that run was not graded, and graders that need nothing to happen would score it 1.0. An error in a run
 without the plugin only shows in Notes (Δ is then unreliable). `factory-build-not-started-by-request` scores 1.0 in both arms
 by design; a drop in the with-plugin arm is the regression it guards against. Three runs still vary: re-run a case
@@ -99,6 +124,8 @@ run (every message and tool call) is in the CI artifact, or kept locally with `-
 | The probe, four runs of `_probe` (`--runs 1 --ablation none`) | about $0.15 in all | 2026-11-21 |
 | `--smoke` on Windows (six portable cases, both arms), 357 s | $1.03 | 2026-11-21 |
 | Re-run of the two cases fixed after it (planner, factory-build) | $0.39 | 2026-11-21 |
+| Evals workflow `--smoke` (eight cases, both arms; shell commands failed in the nested sandbox), 384 s | $1.49 | 2026-11-21 |
+| WSL, `factory-review-starts-from-request` three times while finding its grants | $0.44 | 2026-11-21 |
 | Full run (all eight cases, both arms, three runs) | to be filled in (estimate $10–18) | |
 
 ## Add a case
@@ -111,7 +138,7 @@ run (every message and tool call) is in the CI artifact, or kept locally with `-
    `review_folder`. It runs in the run's empty folder with a reduced environment and no network; run it by hand in an
    empty folder to check it.
 3. In `case.yaml` (Claude Code 2.1.310's schema, strict: an unknown key fails the whole suite): `name` equal to the
-   folder, tags with `portable` or `shell` (`shell` when `allowed_tools` holds a `Bash(...)`), `max_turns`,
+   folder, tags with `portable`, `shell` or `shell-commands` (one of the last two when `allowed_tools` holds a `Bash(...)`), `max_turns`,
    `timeout_seconds`, and at least one free grader (`regex`, `tool_used`, `file_exists`) that decides the outcome; at
    most two `llm` graders. Match the factory's fixed formats (report headers, `[BLOCKER] path:line`, the guard's
    refusal `hook error: <agent> may only edit`), never the agent's prose: an agent can write "my edit was refused"

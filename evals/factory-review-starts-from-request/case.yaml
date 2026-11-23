@@ -3,8 +3,9 @@ name: factory-review-starts-from-request
 description: >-
   "Review my changes" should start /factory-review (it changes no project file, so it may start by itself), which
   prepares the review folder and runs the reviewer and the security auditor. The branch holds the off-by-one of
-  reviewer-finds-off-by-one. Needs a shell (git, the tests), so it runs on Linux only.
-tags: [skill, trigger, shell]
+  reviewer-finds-off-by-one. Its git and test commands must really run, so it needs Linux with a sandbox that can nest
+  a user namespace (not Windows, not GitHub's Ubuntu runners): tag shell-commands.
+tags: [skill, trigger, shell-commands]
 context:
   scaffold_script: scaffold.sh
 execution:
@@ -12,8 +13,7 @@ execution:
     Can you review my changes on this branch before I open a pull request?
   max_turns: 40
   timeout_seconds: 900
-  allowed_tools: [Agent, Read, Grep, Glob, Skill, Write, "Bash(git:*)", "Bash(mkdir:*)", "Bash(sort:*)",
-                  "Bash(echo:*)", "Bash(python -m unittest:*)", "Bash(python3 -m unittest:*)"]
+  allowed_tools: [Agent, Read, Grep, Glob, Skill, Write, Bash]
 runs: 3
 graders:
   # with-only by default: an indicator that the plugin's skill fired, not part of the score
