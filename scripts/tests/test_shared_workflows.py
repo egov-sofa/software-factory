@@ -97,12 +97,14 @@ class FactoryUpdate(unittest.TestCase):
             return value
         return "\n".join(line for line in lines[start + 1:] if line.startswith("        "))
 
-    def test_caller_permissions_timeout_and_no_secrets(self):
+    def test_caller_permissions_timeout_and_only_the_factory_app_secret(self):
         block = re.search(r"\npermissions:\n((?:  .*\n)+)", self.caller).group(1)
         self.assertEqual(["contents: write", "pull-requests: write", "issues: write"],
                          [line.strip() for line in block.splitlines()])
         self.assertEqual(1, self.caller.count("permissions:"))   # no job-level widening
-        self.assertNotIn("secrets.", self.caller)
+        # the one secret: the key of the App that can only read the factory (needed once it is not public)
+        self.assertEqual(["secrets.FACTORY_APP_PRIVATE_KEY"], re.findall(r"secrets\.\w+", self.caller))
+        self.assertIn("factory-app-private-key: ${{ secrets.FACTORY_APP_PRIVATE_KEY }}", self.caller)
         self.assertRegex(self.caller, r"\n    timeout-minutes: 10\n")
         self.assertIn("uses: {{FACTORY_REPO}}/.github/actions/factory-update@v1\n", self.caller)
         self.assertIn("workflow_dispatch:", self.caller)
@@ -139,8 +141,14 @@ class FactoryUpdate(unittest.TestCase):
         self.assertIn(" publish ", with_token[0])
         self.assertIn("GH_TOKEN: ${{ github.token }}", with_token[0])
         (prepare,) = [s for s in self.steps if " prepare " in s]
-        self.assertNotIn("env:", prepare)
-        self.assertNotIn("secrets.", self.action)
+        # prepare gets the factory's read-only token and nothing else; the project's token never reaches it
+        env = re.search(r"\n      env:\n((?:        .*\n)+)", prepare).group(1)
+        self.assertEqual(["FACTORY_TOKEN: ${{ steps.factory-token.outputs.token }}"],
+                         [line.strip() for line in env.splitlines()])
+        (minting,) = [s for s in self.steps if "actions/create-github-app-token@" in s]
+        self.assertIn("permission-contents: read", minting)
+        self.assertIn("repositories: ${{ steps.factory.outputs.repository }}", minting)   # the factory alone
+        self.assertNotIn("secrets.", self.action)   # the key arrives as an input, from the caller
 
     def test_skips_without_answers_file(self):
         self.assertIn("if [ -f .factory/answers.yml ]; then", self.action)

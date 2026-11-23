@@ -3,7 +3,8 @@
 (docs/plans/2026-11-19-project-updates-and-shipped-standards.md, criterion 8; docs/SHARED-SERVICES.md, "Updates").
 
 Two steps, so the token is only present for the second:
-  prepare   (no token) clones the factory named in .factory/answers.yml (public, no credentials), runs
+  prepare   (no project token) clones the factory named in .factory/answers.yml: without credentials while it is
+            public, or with FACTORY_TOKEN (a read-only token for the factory alone) once it is internal or private; runs
             factory_update.py update on the checkout, takes the changes to .github/workflows/ back out (GITHUB_TOKEN
             cannot push them), commits the rest on branch factory-update/<version>, and writes what publish needs
             into the work folder.
@@ -43,7 +44,8 @@ NOT_ALLOWED_RE = re.compile(r"not permitted to create or approve pull requests",
 BOT_NAME, BOT_EMAIL = "github-actions[bot]", "41898282+github-actions[bot]@users.noreply.github.com"
 SETTING = ("Settings → Actions → General → Workflow permissions → \"Allow GitHub Actions to create and approve pull "
            "requests\"")
-TOKENS = ("GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN")
+FACTORY_TOKEN = "FACTORY_TOKEN"   # read-only, for the factory repository alone; given to the clone and nothing else
+TOKENS = ("GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN", FACTORY_TOKEN)
 # Hooks off for every git command: the job works on the project's content, and none of it may run. The identity and
 # signing are set here, never read from the repository.
 GIT = ["git", "-c", "core.hooksPath=/dev/null", "-c", f"user.name={BOT_NAME}", "-c", f"user.email={BOT_EMAIL}",
@@ -63,10 +65,21 @@ def git(repo, *args, check=True, env=None):
 
 
 def no_token_env():
-    """The environment without any token: the factory is public, and prepare never needs one."""
+    """The environment without any token: prepare works on the project's content, and no token may reach it."""
     env = {k: v for k, v in os.environ.items() if k not in TOKENS}
     env["GIT_TERMINAL_PROMPT"] = "0"
     return env
+
+
+def with_token(env, token):
+    """env plus the token as an HTTP header for git, for the one command it is given to (never written to a config).
+    The header is added after any GIT_CONFIG_* entries the environment already has, which stay as they are."""
+    server = os.environ.get("GITHUB_SERVER_URL", "https://github.com")
+    basic = base64.b64encode(f"x-access-token:{token}".encode("utf-8")).decode("ascii")
+    count = env.get("GIT_CONFIG_COUNT", "0")
+    n = int(count) if count.isdigit() else 0
+    return {**env, "GIT_CONFIG_COUNT": str(n + 1), f"GIT_CONFIG_KEY_{n}": f"http.{server}/.extraheader",
+            f"GIT_CONFIG_VALUE_{n}": f"AUTHORIZATION: basic {basic}"}
 
 
 def notice(text):
@@ -140,8 +153,13 @@ def prepare(project, workdir, factory_url=None):
     if not SRC_RE.match(src):
         raise fu.Usage(f"{fu.ANSWERS}: _src_path '{src}' is not an owner/repository name")
     factory = workdir / "factory"
-    git(workdir, "-c", "credential.helper=", "clone", "--quiet", "--filter=blob:none", "--no-checkout",
-        factory_url or f"https://github.com/{src}.git", str(factory), env=no_token_env())
+    # With a token the clone is complete: a partial clone fetches file contents later, from commands that carry no
+    # token. The token leaves the environment right after, so nothing that reads the project's files can see it.
+    token = os.environ.pop(FACTORY_TOKEN, "")
+    partial = [] if token else ["--filter=blob:none"]
+    git(workdir, "-c", "credential.helper=", "clone", "--quiet", *partial, "--no-checkout",
+        factory_url or f"https://github.com/{src}.git", str(factory),
+        env=with_token(no_token_env(), token) if token else no_token_env())
     base_branch = git(project, "rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
     report_file = workdir / "update.json"
     # keep_workflows: the workflow files stay as they are, and _workflows_from records the commit they are at, so
@@ -247,13 +265,8 @@ def push(project, branch):
     """Push the branch with the job's token, given to git through the environment for these commands (the checkout
     keeps none). A branch already on GitHub is kept as it is, never forced: an earlier run left it, and people may
     have pushed conflict resolutions to it (the fallback issue asks them to open the pull request from it)."""
-    env = dict(os.environ)
     token = os.environ.get("GH_TOKEN")
-    if token:
-        server = os.environ.get("GITHUB_SERVER_URL", "https://github.com")
-        basic = base64.b64encode(f"x-access-token:{token}".encode("utf-8")).decode("ascii")
-        env.update(GIT_CONFIG_COUNT="1", GIT_CONFIG_KEY_0=f"http.{server}/.extraheader",
-                   GIT_CONFIG_VALUE_0=f"AUTHORIZATION: basic {basic}")
+    env = with_token(dict(os.environ), token) if token else dict(os.environ)
     if git(project, "ls-remote", "--heads", "origin", f"refs/heads/{branch}", env=env).stdout.strip():
         notice(f"branch {branch} is already on GitHub: kept as it is")
         return

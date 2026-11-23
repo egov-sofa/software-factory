@@ -8,6 +8,9 @@
 #   - Opening pull requests needs the repository setting Settings > Actions > General > "Allow GitHub Actions to create
 #     and approve pull requests". Without it, the job keeps one issue labelled factory-update instead.
 #   - CI does not start on a pull request opened by GITHUB_TOKEN: close and reopen it, or push a commit to it.
+#   - Once the factory is internal or private, the job needs a GitHub App that can read it: set the organization (or
+#     repository) variable FACTORY_APP_CLIENT_ID and secret FACTORY_APP_PRIVATE_KEY. While they are unset, the
+#     factory is read without credentials, which works only while it is public.
 name: Factory update
 
 on:
@@ -31,3 +34,6 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: {{FACTORY_REPO}}/.github/actions/factory-update@v1
+        with:
+          factory-app-client-id: ${{ vars.FACTORY_APP_CLIENT_ID }}
+          factory-app-private-key: ${{ secrets.FACTORY_APP_PRIVATE_KEY }}

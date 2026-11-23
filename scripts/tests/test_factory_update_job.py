@@ -148,6 +148,46 @@ class Prepare(Base):
         self.assertIn("- `fix: a better guard`", details)
         self.assertNotIn("feat: the first release", details)   # before the base
 
+    def record_clone(self):
+        """Run prepare with job.git wrapped, and return the clone's arguments and environment."""
+        seen, real = {}, job.git
+
+        def spy(repo, *args, check=True, env=None):
+            if "clone" in args:
+                seen.update(args=args, env=dict(env or {}), token_left=os.environ.get(job.FACTORY_TOKEN))
+            return real(repo, *args, check=check, env=env)
+        job.git = spy
+        self.addCleanup(setattr, job, "git", real)
+        self.prepare()
+        return seen
+
+    def test_a_factory_token_goes_to_the_clone_only_and_makes_it_complete(self):
+        os.environ[job.FACTORY_TOKEN] = "read-only-test-token"
+        self.addCleanup(os.environ.pop, job.FACTORY_TOKEN, None)
+        seen = self.record_clone()
+        self.assertNotIn("--filter=blob:none", seen["args"])   # later reads carry no token: nothing left to fetch
+        n = int(seen["env"]["GIT_CONFIG_COUNT"]) - 1
+        self.assertTrue(seen["env"][f"GIT_CONFIG_KEY_{n}"].endswith("/.extraheader"))
+        self.assertTrue(seen["env"][f"GIT_CONFIG_VALUE_{n}"].startswith("AUTHORIZATION: basic "))
+        self.assertNotIn(job.FACTORY_TOKEN, seen["env"])
+        self.assertIsNone(seen["token_left"])                   # out of the environment before the clone runs
+        self.assertNotIn(job.FACTORY_TOKEN, os.environ)
+        config = (self.work / "factory" / ".git" / "config").read_text(encoding="utf-8")
+        self.assertNotIn("extraheader", config.lower())         # never written into the clone
+
+    def test_without_a_token_the_clone_has_no_credentials(self):
+        os.environ.pop(job.FACTORY_TOKEN, None)
+        seen = self.record_clone()
+        self.assertIn("--filter=blob:none", seen["args"])
+        self.assertFalse([k for k, v in seen["env"].items() if k.startswith("GIT_CONFIG_VALUE_") and "AUTHORIZATION" in v])
+
+    def test_the_token_header_keeps_the_git_settings_already_in_the_environment(self):
+        env = job.with_token({"GIT_CONFIG_COUNT": "2", "GIT_CONFIG_KEY_0": "a.b", "GIT_CONFIG_VALUE_0": "1",
+                              "GIT_CONFIG_KEY_1": "c.d", "GIT_CONFIG_VALUE_1": "2"}, "t")
+        self.assertEqual(("3", "a.b", "c.d"), (env["GIT_CONFIG_COUNT"], env["GIT_CONFIG_KEY_0"], env["GIT_CONFIG_KEY_1"]))
+        self.assertTrue(env["GIT_CONFIG_KEY_2"].endswith("/.extraheader"))
+        self.assertEqual("1", job.with_token({}, "t")["GIT_CONFIG_COUNT"])
+
     def test_nothing_when_current(self):
         git(self.project, "checkout", "-q", "-b", "other")
         answers = fu.parse_answers((self.project / fu.ANSWERS).read_text(encoding="utf-8"))
