@@ -4,6 +4,9 @@
 #
 # A GitHub App token covers one owner (organization or user). Add one "Token for ..." step per owner in registry.yml,
 # and pass each token as DOCS_DRIFT_TOKEN_<OWNER>: upper case, - becomes _.
+#
+# Once the factory is internal or private, the checkout of its scripts needs a token too: set the variable
+# FACTORY_APP_CLIENT_ID and the secret FACTORY_APP_PRIVATE_KEY (a GitHub App with Contents read on the factory).
 name: Docs dashboard
 
 on:
@@ -42,12 +45,24 @@ jobs:
           owner: other-org
           permission-contents: read
 
+      - name: Token to read the factory
+        id: factory
+        if: ${{ vars.FACTORY_APP_CLIENT_ID != '' }}
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.FACTORY_APP_CLIENT_ID }}
+          private-key: ${{ secrets.FACTORY_APP_PRIVATE_KEY }}
+          owner: egov-sofa
+          repositories: software-factory
+          permission-contents: read
+
       - name: The factory's docs drift scripts, at v1
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: egov-sofa/software-factory
           ref: v1
           path: .factory-tools
+          token: ${{ steps.factory.outputs.token || github.token }}
           persist-credentials: false
 
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0

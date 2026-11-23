@@ -1,6 +1,7 @@
 # A private factory for several organizations
 
-**Status:** analysis, 2026-11-21. No decision yet; it answers open question 1 of
+**Status:** decided 2026-11-22: **option A**, one GitHub Enterprise account with an internal factory. Setup in
+progress (see [Setting up option A](#setting-up-option-a)). It answers open question 1 of
 [ENTERPRISE-VISION.md](ENTERPRISE-VISION.md#7-open-questions-for-the-next-analysis) and roadmap item E1.6.
 
 **Question:** can the factory become private while projects in the other organizations (`egov-ai`,
@@ -101,9 +102,9 @@ only if every calling project stays private.
 - **For:** the native answer; nothing to build or keep in sync. The enterprise also brings what E1 needs anyway:
   rulesets and policies for every organization, the audit log, single sign-on.
 - **Against:** $21 per person per month, counted once across all organizations (you alone: $252 a year). Public
-  repositories can no longer call the factory, nor internal ones if the factory is private; a public project would keep its own copy of the workflows (option E for
-  that project only).
-- **Effort:** S. Settings plus the update job's App token.
+  repositories can no longer call the factory, nor internal ones if the factory is private; a public project would
+  keep its own copy of the workflows (option E for that project only).
+- **Effort:** S. Settings plus the update job's App token. Step by step: [Setting up option A](#setting-up-option-a).
 
 ### B. Every repository in one organization
 
@@ -187,6 +188,195 @@ It depends on **what has to be private**:
   option with nothing to build, and it pays for E1 at the same time. Keep any public project on option E.
 - **B** only if separate organizations are not needed after all. **D** and **E** work, but add machinery that A and C
   avoid.
+
+---
+
+## Setting up option A
+
+The steps in order. **You** do steps 1 to 4 in GitHub's settings. The factory's maintainers (with Claude) do steps 5
+and 6 in this repository. Step 7 comes **only after** 5 and 6 are merged and released, otherwise the weekly update job
+breaks in every project. The commands use the GitHub CLI (`gh`), logged in as an owner of the organizations.
+
+Sources: GitHub's documentation, read 2026-11-21 from `github/docs`: the Enterprise Cloud trial, adding organizations
+to an enterprise, sharing actions and workflows with an enterprise, repository Actions settings and setting repository
+visibility.
+
+### How to check what is public, private or internal
+
+**A repository** has one of three visibilities: `public`, `private` or `internal`. `internal` exists only in an
+organization that belongs to an enterprise.
+
+| Where | How | What you see |
+|---|---|---|
+| Its page on github.com | The label next to the repository's name | `Public`, `Private` or `Internal` |
+| Its settings | **Settings → General → Danger Zone → Change repository visibility**: the text says what it is now | "This repository is currently public" (or private, internal) |
+| Command line | `gh repo view OWNER/REPO --json visibility --jq .visibility` | `PUBLIC`, `PRIVATE` or `INTERNAL` |
+| REST API | `gh api repos/OWNER/REPO --jq .visibility` | `public`, `private` or `internal` |
+| From outside | Open `https://github.com/OWNER/REPO` in a private browser window, logged out | The page shows: public. "404 Not Found": private or internal |
+
+The logged-out check is the one that proves what a stranger sees; the others need you to be logged in.
+
+**Every repository of an organization at once**, with its visibility:
+
+```bash
+gh repo list ORG --limit 1000 --json nameWithOwner,visibility --jq '.[] | "\(.visibility)\t\(.nameWithOwner)"'
+```
+
+Only the public ones: `gh repo list ORG --visibility public --limit 1000`.
+
+**An organization** has no visibility of its own: it is not public or private. Its profile page
+(`https://github.com/ORG`) is always visible to everyone, and it lists only the organization's **public**
+repositories (and the members who chose to show their membership). What you can check for an organization:
+
+| Question | How |
+|---|---|
+| Which repositories are public? | The command above, or the organization's page while logged out: it lists only public repositories |
+| Which plan is it on? | **Organization → Settings → Billing and licensing** (owners only). Or `gh api orgs/ORG --jq .plan.name` (owners only) |
+| Does it belong to an enterprise? | The enterprise's **Organizations** tab lists it. Only an organization in an enterprise offers `Internal` when you create a repository |
+
+**Who may call the factory** (once it is private or internal):
+
+```bash
+gh api repos/egov-sofa/software-factory/actions/permissions/access --jq .access_level
+```
+
+It prints `none`, `user`, `organization` or `enterprise`. Option A needs `enterprise`. The same setting is in
+**Settings → Actions → General → Access**; it only appears on a private or internal repository.
+
+**On a public repository** the command fails with `Access policy only applies to internal and private repositories.
+(HTTP 422)`. That is not an error to fix: it confirms the repository is still public, which is the expected answer for
+the factory until step 7.
+
+### Step 1. Before you start (10 minutes)
+
+1. **Find the repositories that call the factory, and their visibility.** In each organization:
+
+   ```bash
+   gh search code "egov-sofa/software-factory" --owner ORG --json repository,path --jq '.[] | "\(.repository.nameWithOwner)\t\(.path)"'
+   ```
+
+   Then check each repository's visibility with the commands above. A **public** caller loses access once the factory
+   is not public: make it private or internal, or give it its own copy of the workflows (option E for that project
+   only).
+2. **Check each organization's installed apps:** **Organization → Settings → GitHub Apps**. An organization with a
+   GitHub Marketplace app installed (free or paid) cannot be moved into a **trial** enterprise. If a check on
+   `https://github.com/marketplace` shows an installed app is listed there, either remove it during the trial or skip the
+   trial and buy Enterprise directly.
+3. **Choose the factory's future visibility** (see [option A](#a-one-github-enterprise-account)): **internal** if any
+   caller is or may become internal; **private** only if every caller stays private.
+4. **Note the factory's current state**, to compare later: `gh repo view egov-sofa/software-factory --json visibility`
+   prints `PUBLIC`, and the `access_level` command above answers HTTP 422 because the factory is public.
+
+### Step 2. Create the enterprise account (trial)
+
+1. Open the trial page:
+   `https://github.com/account/enterprises/new?ref_product=ghec&ref_type=trial&ref_plan=enterprise`.
+2. Choose an enterprise with **personal accounts**, not **Enterprise Managed Users**: with managed users, existing
+   organizations cannot be added.
+3. Give it a name and finish. No payment method is needed. The trial lasts 30 days with up to 50 licenses.
+
+**Check:** `https://github.com/enterprises/<your-enterprise>` opens and shows you as owner.
+
+### Step 3. Add the organizations
+
+For each organization (`egov-sofa`, `egov-ai`, `egov-infra` and the others):
+
+1. In the enterprise, open **Organizations → Invite organization**, type the organization's name, select it and click
+   **Invite organization**.
+2. As the organization's owner you get an email: accept the invitation.
+3. Back in the enterprise's **Organizations** tab, click **X pending**, then **Approve** next to the organization.
+
+URLs do not change. The enterprise's policies now apply to the organization, and its plan is billed through the
+enterprise.
+
+**"Organization … cannot be invited because it has an outstanding balance":** the organization has an unpaid invoice,
+typically a failed payment on a paid plan (Team). Pay it in **Organization → Settings → Billing and licensing**
+(update the payment method first if the card failed), wait a few minutes and invite it again. If the amount looks wrong,
+contact GitHub Support from the same page. Meanwhile add the other organizations, and do not do step 7 until this one
+has joined if any of its repositories call the factory.
+
+**Check:** the enterprise's **Organizations** tab lists every organization. In any of them, **New repository** now
+offers an `Internal` visibility.
+
+### Step 4. Check the enterprise's Actions policies
+
+In the enterprise: **Policies → Actions**.
+
+1. **Allowed actions and reusable workflows:** they must still allow what the factory and its callers use: the
+   factory's own workflows and actions, and the public actions it pins (`actions/checkout`,
+   `actions/create-github-app-token` and the others). "Allow all actions and reusable workflows" works; a stricter
+   setting must list them.
+2. **Workflow permissions:** if an organization gave workflows **read and write** permission before, set it again at
+   enterprise level; GitHub does not carry it over when an organization joins.
+
+**Check:** re-run any workflow in `egov-ai/claude-skills` that calls the factory. The factory is still public at this
+point, so it must pass exactly as before.
+
+### Step 5. Give the weekly update job a GitHub App token (factory change)
+
+`factory-update` clones the factory, and the docs dashboard checks it out; without credentials that fails once the
+factory is not public. The factory change is made: the action takes the client ID and private key of a GitHub App that
+can only read the factory, and makes a token for the clone alone. What you do, in order:
+
+1. Merge the factory change and **release** it (a new `v1.x.y`), so `@v1` has it.
+2. Create the App, install it on `egov-sofa` for `software-factory` only, and set `FACTORY_APP_CLIENT_ID` (variable)
+   and `FACTORY_APP_PRIVATE_KEY` (secret) in every organization with projects: the steps are in
+   [SHARED-SERVICES.md, Reading the factory from a job](SHARED-SERVICES.md#reading-the-factory-from-a-job).
+3. In each existing project, bring in the new caller workflow with `/factory-update` locally, or add its two `with:`
+   lines by hand (the weekly job cannot change workflow files).
+
+**Check, while the factory is still public:** run **Actions → Factory update → Run workflow** in one project. The step
+"Token to read the factory" must run (not be skipped), and the job must finish as before.
+
+### Step 6. Update the docs (factory change)
+
+Done in the same change as step 5: SHARED-SERVICES.md ("Who can call the factory", "Reading the factory from a job"),
+CUSTOMIZING.md, DOCS-DRIFT.md and GETTING-STARTED.md describe the internal factory inside the enterprise.
+
+### Step 7. Change the factory's visibility and share it
+
+Only after steps 5 and 6 are released.
+
+1. Change the visibility, in **Settings → General → Danger Zone → Change repository visibility**, or:
+
+   ```bash
+   gh repo edit egov-sofa/software-factory --visibility internal --accept-visibility-change-consequences
+   ```
+
+   (`--visibility private` if every caller stays private.) GitHub's consequences: stars and watchers are erased;
+   public forks stay public and are detached, so **what was already public stays public in them**; internal makes the
+   repository readable by every member of the enterprise.
+2. Share it with the enterprise: **Settings → Actions → General → Access**, choose "Accessible from repositories in
+   the '<enterprise>' enterprise", click **Save**. Or:
+
+   ```bash
+   gh api -X PUT repos/egov-sofa/software-factory/actions/permissions/access -f access_level=enterprise
+   ```
+
+**Check:** `gh repo view egov-sofa/software-factory --json visibility` prints `INTERNAL` (or `PRIVATE`), the
+`access_level` command above prints `enterprise`, and the repository's URL gives "404 Not Found" in a logged-out
+browser window.
+
+GitHub's warning: outside collaborators on a calling repository can read the logs of runs that use the factory's
+workflows.
+
+### Step 8. Test, in this order
+
+1. Re-run a workflow in `egov-ai/claude-skills` that calls the factory at `@v1`: it must pass.
+2. Open a small pull request in a private or internal repository of `egov-infra`: the content guard and the Claude
+   review must run. The Claude review needs no Console change: its federation rules match `repository_owner` and its
+   ID, which joining an enterprise does not change.
+3. Run `factory-update` once by hand in one project: it must clone the factory with the App token and finish.
+
+**If anything breaks:** make the factory public again (`gh repo edit egov-sofa/software-factory --visibility public
+--accept-visibility-change-consequences`); every caller works again at once. Stars and watchers do not come back.
+
+### Step 9. Before the trial ends
+
+Buy Enterprise before day 30, or the trial expires and the enterprise is deleted 90 days later. Organizations
+**transferred** into the trial can leave it; organizations **created** during the trial cannot leave until it is bought.
+Cost: $21 a month for you, plus $21 for each other member of any of the organizations (see
+[How people are counted](#what-github-allows)).
 
 ## To decide
 

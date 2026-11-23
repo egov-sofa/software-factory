@@ -93,16 +93,26 @@ until you **release** it:
 > new major version instead: tag `v2.0.0`. `v1` stays where it was, and each project moves to `@v2` when you choose.
 > See [SHARED-SERVICES.md](SHARED-SERVICES.md#versioning-and-releases-of-the-factory).
 
-## Why the factory repo is public
+## Where the factory lives and who can call it
 
-The factory lives in the `egov-sofa` org, but projects live in many orgs (`egov-ai`, `egov-infra`, …). GitHub only lets a **private** repo share its workflows with repos in the **same** org (or, in a GitHub Enterprise account, with the enterprise's organizations; see [PRIVATE-FACTORY-OPTIONS.md](PRIVATE-FACTORY-OPTIONS.md)), so the factory is **public**. That way every project, in any org, can call its CI and shared services.
+The factory lives in the `egov-sofa` org, but projects live in many orgs (`egov-ai`, `egov-infra`, …). They all belong
+to one **GitHub Enterprise account**, and the factory is **internal**: it shares its workflows and actions with every
+organization of the enterprise. GitHub's sharing rules, and why this option was chosen over four others, are in
+[PRIVATE-FACTORY-OPTIONS.md](PRIVATE-FACTORY-OPTIONS.md); the details are in
+[SHARED-SERVICES.md](SHARED-SERVICES.md#who-can-call-the-factory).
 
-Public means anyone can *read* it, so **never put secrets, tokens, internal URLs or client data in this repo.** Projects keep their secrets in their own GitHub Secrets. The content guard checks pull requests for such details.
+- **Private and internal projects** in any of the enterprise's organizations call the factory at `@v1` as before.
+- **Public projects cannot**: an internal repository's workflows are not available to public ones.
+- **Jobs that read the factory's files** (the weekly update, the docs dashboard) need the factory's read-only GitHub
+  App: see [Reading the factory from a job](SHARED-SERVICES.md#reading-the-factory-from-a-job).
 
-![If the factory were made private: calls from other organizations fail with "workflow was not found"](diagrams/cross-org-access-2.png)
+Internal means every member of the enterprise can *read* it, so **never put secrets, tokens, internal URLs or client
+data in this repo.** Projects keep their secrets in their own GitHub Secrets. The content guard checks pull requests
+for such details.
 
-If you ever make it private again, only projects inside `egov-sofa` keep working. Turn on sharing in GitHub → software-factory → **Settings → Actions → General → Access** → *"Accessible from repositories in the 'egov-sofa' organization"*, or from the terminal:
-`gh api -X PUT repos/egov-sofa/software-factory/actions/permissions/access -f access_level=organization`.
+The factory's sharing setting is in GitHub → software-factory → **Settings → Actions → General → Access** →
+*"Accessible from repositories in the '<enterprise>' enterprise"*, or from the terminal:
+`gh api -X PUT repos/egov-sofa/software-factory/actions/permissions/access -f access_level=enterprise`.
 
 **In each repository that calls the factory:** its own Settings → Actions → General → *Actions permissions* must
 allow the factory's workflows. "Allow all actions and reusable workflows" does; if a repo allows only its own
