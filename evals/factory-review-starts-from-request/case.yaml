@@ -3,8 +3,9 @@ name: factory-review-starts-from-request
 description: >-
   "Review my changes" should start /factory-review (it changes no project file, so it may start by itself), which
   prepares the review folder and runs the reviewer and the security auditor. The branch holds the off-by-one of
-  reviewer-finds-off-by-one. Its git and test commands must really run, so it needs Linux with a sandbox that can nest
-  a user namespace (not Windows, not GitHub's Ubuntu runners): tag shell-commands.
+  reviewer-finds-off-by-one. Its git and test commands must really run: tag shell-commands. Not runnable under
+  plugin eval for now (measured 2026-11-22): in WSL every Bash write is refused in the eval's nested sandbox, the
+  review folder included, and on GitHub's runners the nested sandbox does not start (evals/README.md).
 tags: [skill, trigger, shell-commands]
 context:
   scaffold_script: scaffold.sh

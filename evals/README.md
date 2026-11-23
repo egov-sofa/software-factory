@@ -27,8 +27,9 @@ of the plan (tag `probe`): it is never run by `run-evals.sh`.
 
 Every case is tagged `portable`, `shell` or `shell-commands`. A `shell` case is granted `Bash`, which a run cannot get
 on Windows; its outcome does not depend on the commands (the tester's guard refuses an edit either way). A
-`shell-commands` case needs its commands to really run (`/factory-review` prepares the review folder with git), which
-also needs a sandbox that can nest a user namespace: not on GitHub's Ubuntu runners (see below).
+`shell-commands` case needs its commands to really run (`/factory-review` prepares the review folder with git). Under
+`plugin eval` that does not work anywhere we have tried yet (see "On Linux" below), so the one such case is known to
+fail for now; it stays in the suite to show when that changes.
 
 ## Run them
 
@@ -71,7 +72,8 @@ Claude Code sandboxes each Bash command with bubblewrap and socat; without a wor
 behaves as on Windows (a Bash grant would fail every run). `plugin eval` runs each run in bubblewrap too, so the Bash
 sandbox is nested. On GitHub's Ubuntu runners every command then fails (`apply-seccomp: … nested userns is
 capability-restricted`; neither the AppArmor sysctls nor removing the bwrap AppArmor profile changes that). In WSL
-(Ubuntu 26.04) it works. No cheap check tells the two apart, so the `shell-commands` case is **opt-in on Linux**:
+(Ubuntu 26.04) the commands run, but none of their writes succeeds (the known failure below). No cheap check tells the
+cases apart, so the `shell-commands` case is **opt-in on Linux**:
 
 ```bash
 EVALS_NESTED_SANDBOX=yes bash scripts/run-evals.sh --smoke --case factory-review-starts-from-request

@@ -41,6 +41,7 @@ commit_change() {
 review_folder() {
   local fixture="$1" R
   R="$(git rev-parse --absolute-git-dir)/factory-review"
+  rm -f "${R:?}/round.diff" "${R:?}/checks.txt" "${R:?}/reports/reviewer.md" "${R:?}/reports/security-auditor.md"
   mkdir -p "$R/reports"
   echo "main" > "$R/base.txt"
   { git diff main...HEAD; git diff HEAD; } > "$R/changes.diff"
