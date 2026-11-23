@@ -13,8 +13,10 @@ It has three parts:
 | The check | the factory's `docs-drift` action, called at `@v1` from `.github/workflows/docs-drift.yml` | On a pull request: reports a source that changes while its document does not. Every Monday: keeps one issue, labelled `docs-drift`, in step with the state of every document |
 | The dashboard | a private registry repository, made from [`templates/_docs-registry/`](../templates/_docs-registry/) | Every Monday: one issue that shows the documentation of all projects together |
 
-The factory is public, so it holds only the engine. The list of your projects and the state of their documents stay in
-the projects themselves and in the private registry.
+Every member of the enterprise can read the factory, so it holds only the engine. The list of your projects and the
+state of their documents stay in the projects themselves and in the private registry. The dashboard checks out the
+factory's scripts with the factory's read-only GitHub App: set `FACTORY_APP_CLIENT_ID` and `FACTORY_APP_PRIVATE_KEY` in
+the registry's organization (see [Reading the factory from a job](SHARED-SERVICES.md#reading-the-factory-from-a-job)).
 
 ## How a document is judged
 

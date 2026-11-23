@@ -223,21 +223,76 @@ that already exists.
 
 ## Who can call the factory
 
-The factory repository (`egov-sofa/software-factory`) is **public**, so any repository can call its services with no
-setup on the factory side. Two things follow:
-- Everything in the factory is public: keep employer and customer details out of it.
-- Each calling repository must allow it under its own Settings → Actions → General → *Actions permissions*: "Allow
-  all actions and reusable workflows", or the "select" option with `egov-sofa/software-factory/*` added. This matters
-  for `egov-ai/claude-skills`, which lives in another organization.
+`egov-sofa` and the organizations the projects live in (`egov-ai`, `egov-infra`, …) belong to one **GitHub Enterprise
+account**. Inside it, the factory repository (`egov-sofa/software-factory`) is **internal** and shares its workflows
+and actions with every organization of the enterprise. This is option A of
+[PRIVATE-FACTORY-OPTIONS.md](PRIVATE-FACTORY-OPTIONS.md), which compares it with four other ways and lists the setup
+steps; until its step 7 the factory was public.
 
-![Today, a public factory: claude-skills in egov-ai and a project in egov-infra call software-factory in egov-sofa at v1](diagrams/cross-org-access-1.png)
+![One GitHub Enterprise: an internal software-factory in egov-sofa serves claude-skills in egov-ai and a project in egov-infra](diagrams/cross-org-access-3.png)
 
-If the factory is ever made private, it can only serve repositories of the same organization, unless every
-organization belongs to one GitHub Enterprise account. See [CUSTOMIZING.md](CUSTOMIZING.md#why-the-factory-repo-is-public).
+What follows:
 
-![If the factory were made private: only projects in egov-sofa keep working; calls from other organizations fail with "workflow was not found"](diagrams/cross-org-access-2.png)
+- **Who can call it:** a **private or internal** repository in any organization of the enterprise, at `@v1`, with no
+  change in the project. A **public** repository cannot call an internal factory: its run fails with "workflow was not
+  found". It needs its own copy of the workflows (option E of the comparison, for that project only). A repository
+  outside the enterprise cannot call it either.
+- **Each calling repository** must still allow it under its own Settings → Actions → General → *Actions permissions*:
+  "Allow all actions and reusable workflows", or the "select" option with `egov-sofa/software-factory/*` added.
+- **Calling is not reading.** A job that clones or checks out the factory's files (the weekly update, the docs
+  dashboard) needs a token that can read it: see [Reading the factory from a job](#reading-the-factory-from-a-job).
+- **Every member of the enterprise can read the factory**, and outside collaborators on a calling repository can read
+  the logs of its runs: keep secrets, employer and customer details out of it all the same. The content guard checks.
 
-There are five ways to keep the factory private while every organization still uses it (one GitHub Enterprise
-account, one organization, a public engine with a private factory, a copy per organization, or workflows copied into
-each project), compared with diagrams in [PRIVATE-FACTORY-OPTIONS.md](PRIVATE-FACTORY-OPTIONS.md). It answers open
-question 1 of [ENTERPRISE-VISION.md](ENTERPRISE-VISION.md#7-open-questions-for-the-next-analysis).
+**Check the factory's state** (see also [PRIVATE-FACTORY-OPTIONS.md](PRIVATE-FACTORY-OPTIONS.md#how-to-check-what-is-public-private-or-internal)):
+
+```bash
+gh repo view egov-sofa/software-factory --json visibility --jq .visibility                 # INTERNAL
+gh api repos/egov-sofa/software-factory/actions/permissions/access --jq .access_level      # enterprise
+```
+
+### Reading the factory from a job
+
+Calling the factory's workflows and actions needs nothing more: GitHub fetches them for the run. Reading its files
+does: the weekly `factory-update` job clones it, and the docs dashboard checks it out. Both use one **GitHub App that
+can only read the factory**, and make a short-lived token from it at the start of the job.
+
+**Set up the App once:**
+
+1. **Create it** in `egov-sofa`: **Organization → Settings → Developer settings → GitHub Apps → New GitHub App**. Any
+   name (for example `software-factory-reader`); untick **Webhook → Active**; under **Repository permissions** set
+   **Contents: Read-only** (Metadata read-only comes with it) and nothing else; **Where can this GitHub App be
+   installed?** "Only on this account". Create it.
+2. **Note its Client ID** (on its General page) and **generate a private key** (same page, bottom). Keep the `.pem`
+   file only until step 4.
+3. **Install it** on `egov-sofa` (**Install App**), with **Only select repositories → software-factory**.
+4. **Give it to every organization that has projects** (`egov-sofa`, `egov-ai`, `egov-infra`, …): an organization
+   variable `FACTORY_APP_CLIENT_ID` and an organization secret `FACTORY_APP_PRIVATE_KEY`, in **Organization → Settings
+   → Secrets and variables → Actions**, available to private and internal repositories. Or:
+
+   ```bash
+   gh variable set FACTORY_APP_CLIENT_ID --org ORG --visibility private --body "<client ID>"
+   gh secret set FACTORY_APP_PRIVATE_KEY --org ORG --visibility private < software-factory-reader.private-key.pem
+   ```
+
+   Then delete the `.pem` file. Anyone who can use the secret can read the factory, and nothing else.
+
+**In each project:** the caller workflow `.github/workflows/factory-update.yml` passes them to the action (projects
+made from the factory since this release have it):
+
+```yaml
+      - uses: egov-sofa/software-factory/.github/actions/factory-update@v1
+        with:
+          factory-app-client-id: ${{ vars.FACTORY_APP_CLIENT_ID }}
+          factory-app-private-key: ${{ secrets.FACTORY_APP_PRIVATE_KEY }}
+```
+
+The weekly job cannot change its own workflow file (`GITHUB_TOKEN` cannot push under `.github/workflows/`), so in an
+existing project run `/factory-update` locally, or add the two `with:` lines by hand. While the variable is unset,
+the job reads the factory without credentials, which works only while it is public.
+
+**What the token can do:** read `software-factory`, for about an hour; it is revoked when the job ends. The action
+gives it to the `git clone` alone and removes it from the environment before anything reads the project's files.
+
+**Check:** run **Actions → Factory update → Run workflow** in one project. The step "Token to read the factory" runs,
+and "Prepare the update" clones the factory without an error.

@@ -176,7 +176,9 @@ The phases are listed with their work items in [ROADMAP.md](ROADMAP.md#enterpris
 
 These need an answer before E1 starts:
 
-1. **Hosting.** Stay public in `egov-sofa`, or make the factory private? This decides how claude-skills and future
+1. **Hosting.** *Decided 2026-11-22: option A, one GitHub Enterprise account with an internal factory; setup in
+   [PRIVATE-FACTORY-OPTIONS.md](PRIVATE-FACTORY-OPTIONS.md#setting-up-option-a).* Stay public in `egov-sofa`, or make
+   the factory private? This decides how claude-skills and future
    teams reach the factory. The five ways to keep it private and still usable from every organization are compared in
    [PRIVATE-FACTORY-OPTIONS.md](PRIVATE-FACTORY-OPTIONS.md); in an enterprise account the factory can be internal or
    private, but a private one serves private projects only, not internal ones. Today and the private case are drawn in

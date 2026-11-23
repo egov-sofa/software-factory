@@ -1,6 +1,7 @@
 # A private factory for several organizations
 
-**Status:** analysis, 2026-11-21. No decision yet; it answers open question 1 of
+**Status:** decided 2026-11-22: **option A**, one GitHub Enterprise account with an internal factory. Setup in
+progress (see [Setting up option A](#setting-up-option-a)). It answers open question 1 of
 [ENTERPRISE-VISION.md](ENTERPRISE-VISION.md#7-open-questions-for-the-next-analysis) and roadmap item E1.6.
 
 **Question:** can the factory become private while projects in the other organizations (`egov-ai`,
@@ -313,15 +314,24 @@ point, so it must pass exactly as before.
 
 ### Step 5. Give the weekly update job a GitHub App token (factory change)
 
-`factory-update` clones the factory without credentials; that fails once the factory is not public. The job will
-create a token with `actions/create-github-app-token` for a GitHub App installed on `egov-sofa` with **Contents: read**
-on `software-factory` only, like the docs-drift job. You create or choose the App and store its ID and private key as
-secrets where the job runs; the change itself is made in the factory and released.
+`factory-update` clones the factory, and the docs dashboard checks it out; without credentials that fails once the
+factory is not public. The factory change is made: the action takes the client ID and private key of a GitHub App that
+can only read the factory, and makes a token for the clone alone. What you do, in order:
+
+1. Merge the factory change and **release** it (a new `v1.x.y`), so `@v1` has it.
+2. Create the App, install it on `egov-sofa` for `software-factory` only, and set `FACTORY_APP_CLIENT_ID` (variable)
+   and `FACTORY_APP_PRIVATE_KEY` (secret) in every organization with projects: the steps are in
+   [SHARED-SERVICES.md, Reading the factory from a job](SHARED-SERVICES.md#reading-the-factory-from-a-job).
+3. In each existing project, bring in the new caller workflow with `/factory-update` locally, or add its two `with:`
+   lines by hand (the weekly job cannot change workflow files).
+
+**Check, while the factory is still public:** run **Actions → Factory update → Run workflow** in one project. The step
+"Token to read the factory" must run (not be skipped), and the job must finish as before.
 
 ### Step 6. Update the docs (factory change)
 
-SHARED-SERVICES.md and CUSTOMIZING.md still say the factory is public and must stay public. They are rewritten for an
-internal or private factory inside the enterprise, in the same release as step 5.
+Done in the same change as step 5: SHARED-SERVICES.md ("Who can call the factory", "Reading the factory from a job"),
+CUSTOMIZING.md, DOCS-DRIFT.md and GETTING-STARTED.md describe the internal factory inside the enterprise.
 
 ### Step 7. Change the factory's visibility and share it
 
