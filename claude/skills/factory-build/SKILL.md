@@ -104,6 +104,8 @@ you log that round in Stage 5 (still run the review, so one round covers both).
 Prepare the reviewers' input first: they have no shell, so they read it from files. With `<base>` from the plan and
 `R="$(git rev-parse --absolute-git-dir)/factory-review"` (a folder git never commits, also in a worktree):
 ```bash
+R="$(git rev-parse --absolute-git-dir)/factory-review"
+rm -f "${R:?}/round.diff" "${R:?}/checks.txt" "${R:?}/reports/reviewer.md" "${R:?}/reports/security-auditor.md"
 mkdir -p "$R/reports"
 echo "<base>" > "$R/base.txt"
 { git diff <base>...HEAD; git diff HEAD; } > "$R/changes.diff"     # committed since <base>, then uncommitted
@@ -112,6 +114,8 @@ echo "<base>" > "$R/base.txt"
 Write `$R/checks.txt` with the latest test and lint results (the tester's report, or run the commands from
 `AGENTS.md`), followed by the dependency audit when the project has one (`npm audit --omit=dev`, or `pip-audit` /
 `uvx pip-audit`).
+**If `R=` or any of these writes fails**, stop: show the user the error (for example a sandbox that refuses the write)
+and do not review the diff yourself instead: only the two agents give the factory's review.
 **The round number** `<n>` is one more than the highest `### Round <number>` already in the plan (1 if there is
 none), the same rule `/factory-review` uses, so IDs never repeat; the fix-round cap reads `Round`, not `<n>`.
 **Round 2 and later** (the plan already has a round): also write `$R/round.diff` with

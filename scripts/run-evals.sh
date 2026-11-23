@@ -98,6 +98,8 @@ case "$(uname -s)" in
         # a shell-commands case grants itself plain Bash: its skill chains commands and sets variables, which no
         # Bash(prefix:*) rule approves; every command still runs in the sandbox
         grants+=(Bash)
+        echo "note: the shell-commands case is known to fail under plugin eval for now: no Bash write succeeds in"
+        echo "      its nested sandbox (evals/README.md). It runs, to show when that changes."
       else
         echo "note: the cases tagged shell-commands are left out: their commands fail where Claude Code's sandbox"
         echo "      cannot nest (GitHub's runners). Where it can (WSL), set EVALS_NESTED_SANDBOX=yes."
