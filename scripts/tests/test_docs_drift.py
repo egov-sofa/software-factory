@@ -231,6 +231,20 @@ class ScanRegistryEdges(unittest.TestCase):
         self.assertEqual(result["state"], "unknown")
         self.assertIn("403", result["unknown"][0]["reason"])
 
+    def test_api_mode_uses_each_commits_own_date_a_known_limit(self):
+        # pins the limit in DOCS-DRIFT.md: the commits API has no --first-parent, so GitHub.last_change dates a path
+        # by the commit that touched it (made on the branch, day 1), not by the merge that brought it to main (day 3)
+        github = docs_drift.GitHub(token=None)
+        urls = []
+
+        def get(url, repo=None):
+            urls.append(url)
+            return [{"sha": "d0c0ffee0000", "commit": {"committer": {"date": "2023-11-15T22:13:20Z"}}}]
+        github.get = get
+        self.assertEqual((T0 + DAY, "d0c0ffe"), github.last_change("org/app", "docs/sad.md"))
+        self.assertIn("/repos/org/app/commits?", urls[0])
+        self.assertNotIn("first", urls[0].lower())   # no first-parent option is asked for: the API has none
+
 
 class Escaping(unittest.TestCase):
     def test_pipes_and_mentions_from_a_manifest_cannot_break_or_ping(self):
