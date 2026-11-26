@@ -248,6 +248,9 @@ class Evals(unittest.TestCase):
         self.assertIn("ANTHROPIC_FEDERATION_RULE_ID: ${{ vars.ANTHROPIC_EVALS_FEDERATION_RULE_ID }}", run)
         for var in ("ANTHROPIC_ORGANIZATION_ID", "ANTHROPIC_SERVICE_ACCOUNT_ID"):
             self.assertIn(f"{var}: ${{{{ vars.{var} }}}}", run)
+        # 2026-11-26: the evals reached the workspace's monthly limit, which the PR review shares; they have their own
+        self.assertIn("ANTHROPIC_WORKSPACE_ID: ${{ vars.ANTHROPIC_EVALS_WORKSPACE_ID || vars.ANTHROPIC_WORKSPACE_ID }}",
+                      run)
         self.assertIn('export ANTHROPIC_IDENTITY_TOKEN_FILE="$token_file"', run)
         self.assertIn('export EVALS_BEFORE_EACH="bash $GITHUB_WORKSPACE/scripts/fetch-oidc-token.sh"', run)
         self.assertIn("--one-at-a-time", run)

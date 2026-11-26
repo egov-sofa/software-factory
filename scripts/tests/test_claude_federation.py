@@ -86,6 +86,27 @@ class Rules(unittest.TestCase):
         self.assertEqual(review["payload"]["target"], p["target"])
         self.assertEqual("ANTHROPIC_FEDERATION_RULE_ID", review["variable"])
 
+    def test_evals_rule_can_have_a_workspace_of_its_own(self):
+        """2026-11-26: the evals reached the limit of the workspace the review shares. --evals-workspace binds the
+        evals rule elsewhere, leaves the review rule alone, and sets the variable the Evals workflow sends."""
+        args = fed.parse_args(ARGS + ["--evals", "--evals-workspace", "wrkspc_evals"])
+        review, evals = fed.build_rules(args, PREFIX, OWNER_ID)
+        self.assertEqual("wrkspc_evals", evals["payload"]["workspace_id"])
+        self.assertEqual("wrkspc_456", review["payload"]["workspace_id"])
+        values = dict(fed.variable_values({"ANTHROPIC_FEDERATION_RULE_ID": "fdrl_1"}, "org-uuid", args))
+        self.assertEqual("wrkspc_evals", values["ANTHROPIC_EVALS_WORKSPACE_ID"])
+        self.assertEqual("wrkspc_456", values["ANTHROPIC_WORKSPACE_ID"])
+        # without it, the evals share the workspace and no extra variable is set
+        plain = fed.parse_args(ARGS + ["--evals"])
+        self.assertEqual("wrkspc_456", fed.build_rules(plain, PREFIX, OWNER_ID)[1]["payload"]["workspace_id"])
+        self.assertNotIn("ANTHROPIC_EVALS_WORKSPACE_ID",
+                         dict(fed.variable_values({"ANTHROPIC_FEDERATION_RULE_ID": "fdrl_1"}, "org-uuid", plain)))
+
+    def test_evals_workspace_needs_evals_and_a_workspace_id(self):
+        for extra in (["--evals-workspace", "wrkspc_evals"], ["--evals", "--evals-workspace", "evals"]):
+            with self.subTest(extra=extra), self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
+                fed.parse_args(ARGS + extra)
+
     def test_evals_rule_only_when_asked(self):
         names = [r["payload"]["name"] for r in fed.build_rules(fed.parse_args(ARGS + ["--mention"]), PREFIX, OWNER_ID)]
         self.assertNotIn("software-factory-evals", names)
@@ -406,6 +427,20 @@ class Apply(unittest.TestCase):
         ids, _ = self.run_apply(client)
         self.assertEqual({"ANTHROPIC_FEDERATION_RULE_ID": "fdrl_old"}, ids)
         self.assertEqual([], client.created)
+
+    def test_a_reused_evals_rule_must_be_in_the_evals_workspace(self):
+        """Review of #46: a reused rule keeps its workspace, so with --evals-workspace a rule still in the shared one
+        would disagree with ANTHROPIC_EVALS_WORKSPACE_ID. The setup stops with the command that moves it."""
+        def evals_rule(workspace):
+            return SimpleNamespace(id="fdrl_evals", name="software-factory-evals", issuer_id="fdis_1",
+                                   archived_at=None, workspace_id=workspace)
+        client = FakeAdmin(issuers=[GH_ISSUER], rules=[evals_rule("wrkspc_456")])
+        with self.assertRaises(fed.SetupError) as err:
+            self.run_apply(client, ["--evals", "--evals-workspace", "wrkspc_evals"])
+        self.assertIn("--federation-rule-id fdrl_evals --workspace-id wrkspc_evals", str(err.exception))
+        client = FakeAdmin(issuers=[GH_ISSUER], rules=[evals_rule("wrkspc_evals")])
+        ids, _ = self.run_apply(client, ["--evals", "--evals-workspace", "wrkspc_evals"])
+        self.assertEqual("fdrl_evals", ids["ANTHROPIC_EVALS_FEDERATION_RULE_ID"])
 
     def test_existing_evals_rule_is_reused(self):
         old = SimpleNamespace(id="fdrl_evals", name="software-factory-evals", issuer_id="fdis_1", archived_at=None)
