@@ -1,6 +1,9 @@
 # Plan: Evals for the agents and skills (roadmap I1, first step of E6.1)
 
-**Status:** Approved (2026-11-20: every recommended answer in "Open questions" accepted)
+**Status:** Done (2026-11-26; approved 2026-11-20: every recommended answer in "Open questions" accepted)
+**Measured:** the full suite passed on GitHub on 2026-11-25/26 (seven cases, about $4.07; scores in
+`evals/README.md`). A run that refreshed its OIDC token midway failed with `jti_reused` (each token is accepted once),
+so the workflow runs each case as its own `plugin eval` with a fresh token (`run-evals.sh --one-at-a-time`).
 **Request:** roadmap I1: "Evals for agents and skills. `claude plugin eval` cases per agent: reviewer finds a planted
 off-by-one, security auditor finds a planted key and SQL injection, planner writes testable acceptance criteria,
 `/factory-build` does not start by itself from a natural request (it runs only when typed, I23). Each case runs with

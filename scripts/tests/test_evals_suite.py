@@ -22,6 +22,7 @@ import support
 
 sys.path.insert(0, str(support.SCRIPTS))
 import check_content  # noqa: E402  (after the sys.path line above)
+import eval_summary  # noqa: E402
 
 try:
     import yaml
@@ -311,13 +312,35 @@ class Scaffolds(unittest.TestCase):
 FAKE_CLAUDE = """#!/usr/bin/env bash
 if [ "$1" = "--version" ]; then echo "${FAKE_VERSION:-2.1.310} (Claude Code)"; exit 0; fi
 printf '%s\\n' "$@" > "$FAKE_LOG"
+json="" name="" ceiling=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --json) json="$2" ;;
+    --case) name="$2" ;;
+    --max-cost-usd) ceiling="$2" ;;
+  esac
+  shift
+done
+if [ -n "${FAKE_CALLS:-}" ]; then echo "claude $name $ceiling" >> "$FAKE_CALLS"; fi
 if [ -n "${FAKE_RESULT:-}" ]; then   # the result file a real run writes at --json
-  while [ $# -gt 0 ]; do
-    if [ "$1" = "--json" ]; then mkdir -p "$(dirname "$2")"; cp "$FAKE_RESULT" "$2"; fi
-    shift
-  done
+  mkdir -p "$(dirname "$json")"; cp "$FAKE_RESULT" "$json"
 fi
-exit "${FAKE_EXIT:-0}"
+code=0
+if [ -n "${FAKE_COST:-}" ]; then   # a one-case result: it costs FAKE_COST, and fails when its name matches FAKE_BELOW
+  score=1 passed=1 delta=0.5 cost="$FAKE_COST" partial='"partial": false'
+  case "$name" in ${FAKE_BELOW:-no-such-case}) code=1 score=0.5 passed=0 delta=0 ;; esac
+  if awk -v c="$cost" -v m="$ceiling" 'BEGIN { exit !(c > m) }'; then   # the CLI stops at its ceiling
+    code=2 cost="$ceiling" partial='"partial": true, "partialReason": "cost_ceiling"'
+  fi
+  mkdir -p "$(dirname "$json")"
+  printf '{"schemaVersion": 1, "claudeVersion": "2.1.310", "startedAt": "t-%s", "durationSeconds": 10, ' \\
+    "$name" > "$json"
+  printf '"costUsd": %s, %s, "suite": {"threshold": 0.66, "ablation": "with-without"}, ' "$cost" "$partial" >> "$json"
+  printf '"cases": [{"name": "%s", "arms": {}, "aggregates": {"score": %s, "passRate": %s, "scoreWithout": 0.5, ' \\
+    "$name" "$score" "$passed" >> "$json"
+  printf '"delta": %s}}], "aggregates": {"casesTotal": 1, "casesPassed": %s}}\\n' "$delta" "$passed" >> "$json"
+fi
+exit "${FAKE_EXIT:-$code}"
 """
 FAKE_UNAME = """#!/usr/bin/env bash
 echo "${FAKE_UNAME:-Linux}"
@@ -447,6 +470,124 @@ class RunEvals(unittest.TestCase):
         self.assertTrue(list((self.out / "traces").rglob("*.jsonl")))
         self.assertFalse((self.tmp / "claude-eval-abc123").exists())
         self.assertTrue((self.tmp / "not-a-run-folder").exists())
+
+    def one_at_a_time(self, *args, **env):
+        """run-evals.sh --one-at-a-time; its claude calls as `claude <case> <ceiling>` (and what EVALS_BEFORE_EACH
+        writes to $FAKE_CALLS), the merged result.json or None, and the last call's words."""
+        calls = self.tmp / "calls.txt"
+        done, last = self.run_evals("--one-at-a-time", *args, FAKE_CALLS=support.posix(calls), **env)
+        merged = self.out / "result.json"
+        return (done, calls.read_text(encoding="utf-8").splitlines() if calls.exists() else [],
+                json.loads(merged.read_text(encoding="utf-8")) if merged.exists() else None, last)
+
+    def test_one_at_a_time_runs_each_case_alone(self):
+        """The Evals workflow (2026-11-25): a token refreshed during one long plugin eval was refused as reused, so
+        each case is its own plugin eval with the options of a whole run and its own results folder."""
+        done, calls, merged, last = self.one_at_a_time(EVALS_SANDBOX="yes", FAKE_COST="0.5")
+        self.assertEqual(0, done.returncode, done.stderr)
+        names = ["factory-build-not-started-by-request", "planner-writes-testable-criteria",
+                 "reviewer-approves-clean-change", "reviewer-finds-off-by-one", "security-finds-key-and-sqli",
+                 "security-passes-clean-change", "tester-reports-instead-of-fixing-src"]   # no probe, no shell-commands
+        self.assertEqual([line.split()[1] for line in calls], names)
+        # one ceiling for the whole run: each case gets what the ones before it left
+        self.assertEqual(["20.00", "19.50", "19.00", "18.50", "18.00", "17.50", "17.00"],
+                         [line.split()[2] for line in calls])
+        self.assertEqual(["tester-reports-instead-of-fixing-src"], self.option(last, "--case"))
+        self.assertTrue(last[2].endswith("/software-factory"))
+        for flag in ("--scaffold", "--trust-plugin", "--no-publish"):
+            self.assertIn(flag, last)
+        self.assertEqual(["with-without"], self.option(last, "--ablation"))
+        self.assertEqual(["portable", "shell"], self.option(last, "--tag"))
+        self.assertIn("Bash(git:*)", self.option(last, "--allow-tools"))
+        dest = "/out/cases/tester-reports-instead-of-fixing-src"
+        (json_path,) = self.option(last, "--json")
+        self.assertTrue(json_path.endswith(f"{dest}/result.json"), json_path)
+        self.assertTrue(self.option(last, "--report")[0].endswith(f"{dest}/report.html"))
+        self.assertTrue(self.option(last, "--output-dir")[0].endswith(dest))
+        for name in names:
+            self.assertTrue((self.out / "cases" / name / "result.json").is_file(), name)
+        self.assertEqual(names, [case["name"] for case in merged["cases"]])
+
+    def test_one_at_a_time_keeps_the_tag_rules_and_the_glob(self):
+        for args, names in (([], ["factory-build-not-started-by-request", "planner-writes-testable-criteria",
+                                  "reviewer-approves-clean-change", "reviewer-finds-off-by-one",
+                                  "security-finds-key-and-sqli", "security-passes-clean-change"]),
+                            (["--case", "security-*"], ["security-finds-key-and-sqli",
+                                                        "security-passes-clean-change"])):
+            with self.subTest(args=args):
+                done, calls, _, last = self.one_at_a_time(*args, FAKE_UNAME="MINGW64_NT-10.0-26300", FAKE_COST="0")
+                self.assertEqual(0, done.returncode, done.stderr)
+                self.assertEqual(names, [line.split()[1] for line in calls])   # on Windows only the portable ones
+                self.assertEqual(["portable"], self.option(last, "--tag"))
+                (self.tmp / "calls.txt").unlink()
+        done, calls, _, _ = self.one_at_a_time("--case", "nothing-*", FAKE_UNAME="MINGW64_NT-10.0-26300")
+        self.assertEqual(2, done.returncode)
+        self.assertIn("no case has the tags portable and matches nothing-*", done.stderr)
+        self.assertEqual([], calls)
+
+    def test_one_at_a_time_runs_the_before_each_command_first(self):
+        """The workflow fetches a fresh OIDC token there: each one is accepted once and lives 300 s."""
+        done, calls, _, _ = self.one_at_a_time("--case", "security-*", EVALS_SANDBOX="no", FAKE_COST="0.1",
+                                               EVALS_BEFORE_EACH='echo before >> "$FAKE_CALLS"')
+        self.assertEqual(0, done.returncode, done.stderr)
+        self.assertEqual(["before", "claude security-finds-key-and-sqli 20.00",
+                          "before", "claude security-passes-clean-change 19.90"], calls)
+
+    def test_one_at_a_time_stops_when_the_before_each_command_fails(self):
+        mark = support.posix(self.tmp / "fetched-once")
+        first_only = f'[ ! -f "{mark}" ] && touch "{mark}"'   # succeeds once, then fails
+        for before, ran in (("exit 3", []), (first_only, ["reviewer-approves-clean-change"])):
+            with self.subTest(before=before):
+                done, calls, merged, _ = self.one_at_a_time("--case", "reviewer-*", EVALS_SANDBOX="no",
+                                                            FAKE_COST="0.1", EVALS_BEFORE_EACH=before)
+                self.assertEqual(2, done.returncode)
+                self.assertIn("error: EVALS_BEFORE_EACH failed before the case", done.stderr)
+                self.assertEqual(ran, [line.split()[1] for line in calls])
+                self.assertEqual(ran, [case["name"] for case in merged["cases"]])
+                self.assertEqual((True, "interrupted"), (merged["partial"], merged["partialReason"]))
+                (self.tmp / "calls.txt").unlink(missing_ok=True)
+
+    def test_one_at_a_time_stops_at_the_ceiling(self):
+        # 2.00 - 3 x 0.60 leaves 0.20: the fourth case starts with it, and the CLI stops there (exit 2);
+        # 1.23 - 2 x 0.60 leaves 0.03, less than one cheap run: the third case never starts
+        for ceiling, ceilings, spent in (("2", ["2.00", "1.40", "0.80", "0.20"], 2.0),
+                                         ("1.23", ["1.23", "0.63"], 1.2)):
+            with self.subTest(ceiling=ceiling):
+                done, calls, merged, _ = self.one_at_a_time("--max-cost-usd", ceiling, FAKE_COST="0.6",
+                                                            FAKE_UNAME="MINGW64_NT-10.0-26300")
+                self.assertEqual(2, done.returncode, done.stderr)
+                self.assertEqual(ceilings, [line.split()[2] for line in calls])
+                self.assertEqual((True, "cost_ceiling"), (merged["partial"], merged["partialReason"]))
+                self.assertEqual(len(ceilings), merged["aggregates"]["casesTotal"])
+                self.assertAlmostEqual(spent, merged["costUsd"])
+                self.assertIn(f"the cost ceiling of ${ceiling} is reached", done.stdout)
+                (self.tmp / "calls.txt").unlink()
+
+    def test_one_at_a_time_merges_the_results_and_exits_with_the_worst(self):
+        done, _, merged, _ = self.one_at_a_time(FAKE_COST="0.25", FAKE_BELOW="reviewer-*",
+                                                FAKE_UNAME="MINGW64_NT-10.0-26300")
+        self.assertEqual(1, done.returncode, done.stderr)   # two cases below the threshold, none at the ceiling
+        self.assertEqual("t-factory-build-not-started-by-request", merged["startedAt"])   # from the first case
+        self.assertEqual((1, "2.1.310", 0.66), (merged["schemaVersion"], merged["claudeVersion"],
+                                                merged["suite"]["threshold"]))
+        self.assertEqual((1.5, 60, False), (merged["costUsd"], merged["durationSeconds"], merged["partial"]))
+        self.assertNotIn("partialReason", merged)
+        totals = merged["aggregates"]
+        self.assertEqual((6, 4), (totals["casesTotal"], totals["casesPassed"]))
+        self.assertAlmostEqual(5 / 6, totals["overallScore"])   # four at 1.0 and two at 0.5
+        self.assertAlmostEqual(4 / 6, totals["overallPassRate"])
+        self.assertAlmostEqual(2 / 6, totals["meanDelta"])
+        # the Evals job's summary reads the merged result unchanged
+        self.assertIn("Cases passed: 4 of 6; overall score 0.83, mean difference +0.33",
+                      eval_summary.summary(merged))
+
+    def test_one_at_a_time_stops_when_a_case_writes_no_result(self):
+        """Without its result the cost of a case is unknown, so the next one's budget would be a guess."""
+        done, calls, merged, _ = self.one_at_a_time(FAKE_UNAME="MINGW64_NT-10.0-26300", FAKE_EXIT="1")
+        self.assertEqual(2, done.returncode)
+        self.assertIn("wrote no result.json (claude exited 1)", done.stderr)
+        self.assertEqual(1, len(calls))
+        self.assertEqual(([], "interrupted"), (merged["cases"], merged["partialReason"]))
 
     def test_refusals(self):
         for args, env, says in ((["--max-cost-usd", "lots"], {}, "must be a number"),

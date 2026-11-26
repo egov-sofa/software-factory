@@ -41,6 +41,7 @@ bash scripts/run-evals.sh --smoke                     # one run per case, ceilin
 bash scripts/run-evals.sh                             # three runs per case, ceiling $20
 bash scripts/run-evals.sh --case 'reviewer-*'         # only some cases
 bash scripts/run-evals.sh --smoke --max-cost-usd 2    # a lower ceiling
+bash scripts/run-evals.sh --one-at-a-time             # one plugin eval per case, as the workflow runs it
 ```
 
 The script builds the factory as a plugin in a temporary folder (`scripts/build_plugin.py`) and runs
@@ -51,6 +52,22 @@ or above the threshold, 1 a case below it, 2 the cost ceiling was hit (the parti
 
 **The ceiling** is checked before each run starts, so a run can overshoot it by at most the run in flight (runs go
 one at a time).
+
+**`--one-at-a-time`** chooses the cases the same way (the same tags for the machine, and `--case`), then runs
+`claude plugin eval --case <name>` once per case, each into `<out>/cases/<name>/` (its `result.json`, `report.html`,
+`aggregate-result.json`, and with `--keep-traces` its traces). Before each case it runs the command in the
+environment variable `EVALS_BEFORE_EACH`, if set, with `bash -c`; if that fails, no further case runs and the exit
+code is 2. The ceiling covers the whole run: each case gets `--max-cost-usd` set to what the cases before it left,
+and when less than $0.05 is left the run stops there. `<out>/result.json` merges the cases' results (the same shape,
+so `eval_summary.py` reads it), marked partial when the run stopped early. The exit code is the worst of the cases':
+2 the ceiling was hit, 1 a case below the threshold, otherwise 0.
+
+The GitHub workflow needs it. It logs in with GitHub OIDC tokens, and Anthropic accepts each token only once (its
+`jti`); a token lives 300 s. A long run had to refresh its token, and after a refresh two Claude processes of the
+same `plugin eval` exchanged the same new token: the first succeeded, the second was refused (`jti_reused` in the
+Claude Console) and every later run failed with 401. One case (3 runs × 2 arms, 2–6 minutes) needs no refresh: the
+Claude access token a token buys lives 600 s. So the workflow fetches a fresh token before each case
+(`EVALS_BEFORE_EACH`, `scripts/fetch-oidc-token.sh`) and never during one.
 
 **Authentication.** The script sets no credential: each run uses yours. An organization API key that is not scoped to
 a workspace fails every request with `must include the anthropic-workspace-id header`. Set the header in the
@@ -95,9 +112,15 @@ folder (see the "Withdrawn" section of
 Actions, **Evals**, Run workflow (on `main` only): `smoke` (default on), `case` (a glob, empty for all) and
 `max-cost-usd` (0 for the default). The job authenticates by workload identity federation with its own rule; until an
 `org:admin` has created it, the job fails at its first step, before any spend
-([CLAUDE-SERVICES-AUTH.md](../docs/CLAUDE-SERVICES-AUTH.md#the-factorys-evals-rule)). It writes the table below to
-the job summary and keeps `result.json`, `report.html` and the run traces as an artifact for 30 days. A failing eval
-fails the job but blocks nothing: it is not a release gate.
+([CLAUDE-SERVICES-AUTH.md](../docs/CLAUDE-SERVICES-AUTH.md#the-factorys-evals-rule)). It runs
+`run-evals.sh --one-at-a-time` with a fresh token before each case (see above), writes the table below to the job
+summary, and keeps the merged `result.json` and `cases/` (each case's result, report and run traces) as an artifact
+for 30 days. A failing eval fails the job but blocks nothing: it is not a release gate.
+
+**The workspace's own limit.** The Claude workspace the job uses has its own monthly spend limit, apart from the
+cost ceiling. On 2026-11-26 it was reached and blocked the runs until it was raised. The same workspace serves the
+pull request review, so a full evals run can stop the reviews too: a workspace of its own for the evals is the safer
+setup (a roadmap follow-up).
 
 ## Read the report
 
@@ -128,7 +151,21 @@ run (every message and tool call) is in the CI artifact, or kept locally with `-
 | Re-run of the two cases fixed after it (planner, factory-build) | $0.39 | 2026-11-21 |
 | Evals workflow `--smoke` (eight cases, both arms; shell commands failed in the nested sandbox), 384 s | $1.49 | 2026-11-21 |
 | WSL, `factory-review-starts-from-request` three times while finding its grants | $0.44 | 2026-11-21 |
-| Full run (all eight cases, both arms, three runs) | to be filled in (estimate $10–18) | |
+| Evals workflow, full suite (the seven cases that run on GitHub, both arms, three runs), in two runs: four cases, then the other three | about $4.07 in all ($2.70, then $1.37) | 2026-11-25/26 |
+
+The scores of that full run (score with the plugin / without / Δ):
+
+| Case | With | Without | Δ |
+|---|---|---|---|
+| `factory-build-not-started-by-request` | 1.00 | 1.00 | 0.00 |
+| `planner-writes-testable-criteria` | 1.00 | 0.67 | +0.33 |
+| `reviewer-approves-clean-change` | 1.00 | 0.50 | +0.50 |
+| `reviewer-finds-off-by-one` | 0.67 | 0.00 | +0.67 |
+| `security-finds-key-and-sqli` | 1.00 | 0.00 | +1.00 |
+| `security-passes-clean-change` | 1.00 | 0.50 | +0.50 |
+| `tester-reports-instead-of-fixing-src` | 1.00 | 0.50 | +0.50 |
+
+`factory-review-starts-from-request` is known to fail under `plugin eval`, as documented in "On Linux" above.
 
 ## Add a case
 
