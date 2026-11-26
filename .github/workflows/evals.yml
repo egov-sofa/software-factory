@@ -93,7 +93,8 @@ jobs:
           ANTHROPIC_FEDERATION_RULE_ID: ${{ vars.ANTHROPIC_EVALS_FEDERATION_RULE_ID }}
           ANTHROPIC_ORGANIZATION_ID: ${{ vars.ANTHROPIC_ORGANIZATION_ID }}
           ANTHROPIC_SERVICE_ACCOUNT_ID: ${{ vars.ANTHROPIC_SERVICE_ACCOUNT_ID }}
-          ANTHROPIC_WORKSPACE_ID: ${{ vars.ANTHROPIC_WORKSPACE_ID }}
+          # a workspace of its own, with its own monthly limit, so the evals cannot use up the PR review's budget
+          ANTHROPIC_WORKSPACE_ID: ${{ vars.ANTHROPIC_EVALS_WORKSPACE_ID || vars.ANTHROPIC_WORKSPACE_ID }}
           SMOKE: ${{ inputs.smoke }}
           CASE: ${{ inputs.case }}
           MAX_COST: ${{ inputs.max-cost-usd }}

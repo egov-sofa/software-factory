@@ -133,7 +133,16 @@ the evals of the agents and skills ([evals/README.md](../evals/README.md), roadm
 
 - **Its own rule, not the review's:** the review rule matches pull request runs only, and a rule pinned to
   `evals.yml` on `main` lets a spend limit or a revocation apply to the evals alone. The job reuses
-  `ANTHROPIC_ORGANIZATION_ID`, `ANTHROPIC_SERVICE_ACCOUNT_ID` and `ANTHROPIC_WORKSPACE_ID`.
+  `ANTHROPIC_ORGANIZATION_ID` and `ANTHROPIC_SERVICE_ACCOUNT_ID`.
+- **Its own workspace** (since 2026-11-26): `software-factory-evals`, in `ANTHROPIC_EVALS_WORKSPACE_ID`, with its
+  own monthly spend limit, because the evals once reached the limit of the workspace the PR review shares and blocked
+  the reviews. The rule is bound to that workspace and the service account is a `workspace_developer` in it. Without
+  the variable the job falls back to `ANTHROPIC_WORKSPACE_ID`. Set up with the admin profile
+  (`ant ... --profile admin`): `organization:workspaces create --name software-factory-evals`,
+  `organization:workspaces:service-accounts add --workspace-id <new> --service-account-id svac_...
+  --workspace-role workspace_developer`, `organization:federation:rules update --federation-rule-id <evals rule>
+  --workspace-id <new>`, then `gh variable set ANTHROPIC_EVALS_WORKSPACE_ID`. Its spend limit is set in the Claude
+  Console (Settings, Workspaces, Limits).
 - **Pinned to the workflow on `main`:** `evals.yml` is not a reusable workflow, so `job_workflow_ref` names it
   directly. The job runs author-written scaffolds with `--trust-plugin`, so it must never run from a branch or a fork.
 - **Cost:** a full run costs about $10–18 and a smoke run $3–6 (estimates; the measured costs are in

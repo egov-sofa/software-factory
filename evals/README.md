@@ -118,9 +118,10 @@ summary, and keeps the merged `result.json` and `cases/` (each case's result, re
 for 30 days. A failing eval fails the job but blocks nothing: it is not a release gate.
 
 **The workspace's own limit.** The Claude workspace the job uses has its own monthly spend limit, apart from the
-cost ceiling. On 2026-11-26 it was reached and blocked the runs until it was raised. The same workspace serves the
-pull request review, so a full evals run can stop the reviews too: a workspace of its own for the evals is the safer
-setup (a roadmap follow-up).
+cost ceiling. On 2026-11-26 it was reached and blocked the runs until it was raised; that workspace also served the
+pull request review, so the evals could stop the reviews too. Since then the job uses a workspace of its own,
+`software-factory-evals` (`ANTHROPIC_EVALS_WORKSPACE_ID`, set up in
+[docs/CLAUDE-SERVICES-AUTH.md](../docs/CLAUDE-SERVICES-AUTH.md#the-factorys-evals-rule)).
 
 ## Read the report
 
