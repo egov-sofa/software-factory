@@ -31,6 +31,25 @@ class AllWorkflows(unittest.TestCase):
                     self.assertRegex(action, r"^[\w.-]+/[\w./-]+@[0-9a-f]{40}$")
                     self.assertRegex(comment, r"#\s*v\d")
 
+    def test_each_action_is_pinned_to_one_commit_everywhere(self):
+        """#44: Dependabot bumps only .github/, so the templates (and the fixtures made from them) kept the old pin of
+        create-github-app-token. Every use of an action, in the factory and in what it gives projects, names the same
+        commit."""
+        root = GITHUB.parent
+        files = [*workflow_files(), *root.glob("templates/**/*.yml"), *root.glob("tests/fixtures/**/*.yml")]
+        pins = {}
+        for path in files:
+            for action, comment in USES_RE.findall(path.read_text(encoding="utf-8")):
+                name, _, ref = action.partition("@")
+                if action.startswith(("./", "{{")) or not re.fullmatch(r"[0-9a-f]{40}", ref):
+                    continue   # this repository's own, a placeholder, or not a commit pin (checked above for .github)
+                pins.setdefault(name, {}).setdefault(f"{ref} {comment.strip()}", []).append(
+                    path.relative_to(root).as_posix())
+        self.assertIn("actions/create-github-app-token", pins)   # the check reaches the templates
+        for name, seen in sorted(pins.items()):
+            with self.subTest(action=name):
+                self.assertEqual(1, len(seen), seen)
+
 
 class ClaudeReview(unittest.TestCase):
     def setUp(self):
