@@ -358,6 +358,14 @@ def apply(client, args, rules):
         payload = rule["payload"]
         found = existing.get(payload["name"])
         if found:
+            # a reused rule keeps its workspace: with --evals-workspace, a rule still elsewhere would disagree with the
+            # ANTHROPIC_EVALS_WORKSPACE_ID set next, and every token exchange of the Evals job would fail
+            want = payload.get("workspace_id")
+            have = getattr(found, "workspace_id", None)
+            if rule["variable"] == "ANTHROPIC_EVALS_FEDERATION_RULE_ID" and args.evals_workspace and have != want:
+                raise SetupError(f"rule {payload['name']} ({found.id}) exists in workspace {have}, not {want}; move it "
+                                 f"first: ant organization:federation:rules update --federation-rule-id {found.id} "
+                                 f"--workspace-id {want} --profile admin, then run this again (no variable was set)")
             print(f"rule:   {payload['name']} exists ({found.id}), reused; check its match if the repository changed")
             ids[rule["variable"]] = found.id
             continue

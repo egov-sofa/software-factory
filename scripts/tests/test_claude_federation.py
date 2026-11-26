@@ -428,6 +428,20 @@ class Apply(unittest.TestCase):
         self.assertEqual({"ANTHROPIC_FEDERATION_RULE_ID": "fdrl_old"}, ids)
         self.assertEqual([], client.created)
 
+    def test_a_reused_evals_rule_must_be_in_the_evals_workspace(self):
+        """Review of #46: a reused rule keeps its workspace, so with --evals-workspace a rule still in the shared one
+        would disagree with ANTHROPIC_EVALS_WORKSPACE_ID. The setup stops with the command that moves it."""
+        def evals_rule(workspace):
+            return SimpleNamespace(id="fdrl_evals", name="software-factory-evals", issuer_id="fdis_1",
+                                   archived_at=None, workspace_id=workspace)
+        client = FakeAdmin(issuers=[GH_ISSUER], rules=[evals_rule("wrkspc_456")])
+        with self.assertRaises(fed.SetupError) as err:
+            self.run_apply(client, ["--evals", "--evals-workspace", "wrkspc_evals"])
+        self.assertIn("--federation-rule-id fdrl_evals --workspace-id wrkspc_evals", str(err.exception))
+        client = FakeAdmin(issuers=[GH_ISSUER], rules=[evals_rule("wrkspc_evals")])
+        ids, _ = self.run_apply(client, ["--evals", "--evals-workspace", "wrkspc_evals"])
+        self.assertEqual("fdrl_evals", ids["ANTHROPIC_EVALS_FEDERATION_RULE_ID"])
+
     def test_existing_evals_rule_is_reused(self):
         old = SimpleNamespace(id="fdrl_evals", name="software-factory-evals", issuer_id="fdis_1", archived_at=None)
         client = FakeAdmin(issuers=[GH_ISSUER], rules=[old])
