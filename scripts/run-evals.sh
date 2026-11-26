@@ -4,12 +4,15 @@
 # plugin, under a cost ceiling.
 #
 #   bash scripts/run-evals.sh [--smoke] [--case <glob>] [--max-cost-usd <usd>] [--out <dir>] [--keep-traces]
+#                             [--one-at-a-time]
 #
 #   --smoke          one run per case instead of three; default ceiling $6 instead of $20
 #   --case <glob>    only the cases whose name matches
 #   --max-cost-usd   the hard ceiling: the CLI stops launching runs once it is reached, and exits 2
 #   --out <dir>      the results folder; default evals/results/<UTC time>/ (git-ignored)
 #   --keep-traces    copy each run's trace into <out>/traces/ (CI uploads them)
+#   --one-at-a-time  one `claude plugin eval` per case, into <out>/cases/<name>/, each after the command in
+#                    EVALS_BEFORE_EACH if set, under one ceiling; <out>/result.json merges them
 #
 # This costs money: every run calls the Claude API as you. The script sets no credential: it inherits the environment,
 # so ANTHROPIC_CUSTOM_HEADERS (the workspace header some keys need, evals/README.md) reaches every run.
@@ -18,22 +21,28 @@
 # EVALS_NESTED_SANDBOX=yes (see below). macOS sandboxes with Seatbelt and runs them all. EVALS_SANDBOX=yes|no skips
 # the bubblewrap check.
 #
-# Exit code: the CLI's (0 every case at or above the threshold, 1 a case below it, 2 the cost ceiling was hit);
-# 2 also for a usage error or a missing or too old claude.
+# --one-at-a-time is for the Evals workflow: GitHub's OIDC token lives 300 s and Anthropic accepts each one once (its
+# jti), so a token refreshed during a long run was exchanged by two of its processes and the second was refused
+# (jti_reused, then 401 for every run). A case is short enough for one token, and EVALS_BEFORE_EACH fetches it.
+#
+# Exit code: the CLI's (0 every case at or above the threshold, 1 a case below it, 2 the cost ceiling was hit), with
+# --one-at-a-time the worst of the cases'; 2 also for a usage error, a missing or too old claude, or a failed
+# EVALS_BEFORE_EACH.
 set -euo pipefail
 
 CLAUDE_VERSION="2.1.310"   # the case schema was read from this version; CI installs exactly this one
 THRESHOLD="0.66"           # a case passes at two thirds (0.666…, below 0.67): one unlucky run of three is noise
 root="$(cd "$(dirname "$0")/.." && pwd)"
 
-usage() { sed -n '6,12p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '6,15p' "$0" | sed 's/^# \{0,1\}//'; }
 fail() { echo "error: $1" >&2; exit 2; }
 
-smoke=false keep_traces=false case_glob="" max_cost="" out=""
+smoke=false keep_traces=false one_at_a_time=false case_glob="" max_cost="" out=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --smoke) smoke=true ;;
     --keep-traces) keep_traces=true ;;
+    --one-at-a-time) one_at_a_time=true ;;
     --case|--max-cost-usd|--out)
       [ $# -ge 2 ] && [ -n "$2" ] || fail "$1 needs a value"
       case "$1" in
@@ -115,25 +124,24 @@ build="$(mktemp -d)"
 trap 'rm -rf "$build"' EXIT
 plugin="$("$PY" "$root/scripts/build_plugin.py" --out "$build")"
 
-# the plugin first: --tag and --allow-tools take every word after them
-args=("$plugin" --scaffold --trust-plugin --no-publish --model sonnet --ablation with-without
-      --threshold "$THRESHOLD" --max-cost-usd "$max_cost"
-      --json "$out/result.json" --report "$out/report.html" --output-dir "$out")
-if $smoke; then args+=(--runs 1); fi
-if [ -n "$case_glob" ]; then args+=(--case "$case_glob"); fi
-if $keep_traces; then args+=(--keep-temp); fi
-args+=(--tag "${tags[@]}" --allow-tools "${grants[@]}")
+# the plugin first, and --tag and --allow-tools last: they take every word after them
+eval_args() {   # $1 the ceiling, $2 the results folder, $3 the --case glob or nothing
+  args=("$plugin" --scaffold --trust-plugin --no-publish --model sonnet --ablation with-without
+        --threshold "$THRESHOLD" --max-cost-usd "$1"
+        --json "$2/result.json" --report "$2/report.html" --output-dir "$2")
+  if $smoke; then args+=(--runs 1); fi
+  if [ -n "$3" ]; then args+=(--case "$3"); fi
+  if $keep_traces; then args+=(--keep-temp); fi
+  args+=(--tag "${tags[@]}" --allow-tools "${grants[@]}")
+}
 
-echo "+ claude plugin eval ${args[*]}"
-status=0
-claude plugin eval "${args[@]}" || status=$?
-
-if $keep_traces && [ -f "$out/result.json" ]; then
-  "$PY" "$root/scripts/eval_summary.py" --copy-traces "$out/traces" "$out/result.json" || true
+keep_traces_of() {   # $1 a result.json, $2 the folder to copy its traces into
+  "$PY" "$root/scripts/eval_summary.py" --copy-traces "$2" "$1" || true
   # --keep-temp kept each run's whole folder; the CLI asks for them to be removed once read. Only claude-eval-*
   # folders, named in the result itself, are removed. On Linux the CLI seals them read-only, so they are opened
   # first; a folder that still cannot go is reported, never a reason to fail the run.
-  kept_folders="$("$PY" - "$out/result.json" <<'EOF' || true
+  local kept_folders kept
+  kept_folders="$("$PY" - "$1" <<'EOF' || true
 import json, sys
 from pathlib import Path
 for case in json.load(open(sys.argv[1], encoding="utf-8")).get("cases", []):
@@ -150,6 +158,66 @@ EOF
     chmod -R u+rwx -- "$kept" 2>/dev/null || true
     rm -rf -- "$kept" 2>/dev/null || echo "note: could not remove $kept" >&2
   done <<< "$kept_folders"
+}
+
+if ! $one_at_a_time; then
+  eval_args "$max_cost" "$out" "$case_glob"
+  echo "+ claude plugin eval ${args[*]}"
+  status=0
+  claude plugin eval "${args[@]}" || status=$?
+  if $keep_traces && [ -f "$out/result.json" ]; then keep_traces_of "$out/result.json" "$out/traces"; fi
+  echo "results: $out (result.json, report.html)"
+  exit "$status"
 fi
-echo "results: $out (result.json, report.html)"
+
+# --one-at-a-time: the cases the CLI would choose (the same tags and glob), then one run of the CLI per case
+names="$("$PY" "$root/scripts/eval_merge.py" cases "$root/evals" --case "$case_glob" --tag "${tags[@]}")" \
+  || fail "could not read the cases under $root/evals"
+cases=()
+while IFS= read -r name; do
+  name="${name%$'\r'}"
+  [ -z "$name" ] || cases+=("$name")
+done <<< "$names"
+[ "${#cases[@]}" -gt 0 ] || fail "no case has the tags ${tags[*]}${case_glob:+ and matches $case_glob}"
+
+status=0 stopped="" results=()
+for name in "${cases[@]}"; do
+  # one ceiling for the whole run: each case may spend what the cases before it left
+  left="$("$PY" "$root/scripts/eval_merge.py" budget "$max_cost" ${results[@]+"${results[@]}"})" \
+    || fail "could not read the cost of the cases run so far"
+  left="${left%$'\r'}"
+  if [ -z "$left" ]; then stopped=cost_ceiling; break; fi
+  if [ -n "${EVALS_BEFORE_EACH:-}" ] && ! bash -c "$EVALS_BEFORE_EACH"; then
+    echo "error: EVALS_BEFORE_EACH failed before the case $name; no further case runs" >&2
+    stopped=interrupted
+    break
+  fi
+  dest="$out/cases/$name"
+  mkdir -p "$dest"
+  eval_args "$left" "$dest" "$name"
+  echo "+ claude plugin eval ${args[*]}"
+  case_status=0
+  claude plugin eval "${args[@]}" || case_status=$?
+  if [ "$case_status" -gt "$status" ]; then status=$case_status; fi
+  if [ ! -f "$dest/result.json" ]; then
+    # without its result the case's cost is unknown, so the budget of the next one would be a guess
+    echo "error: the case $name wrote no result.json (claude exited $case_status); no further case runs" >&2
+    stopped=interrupted
+    break
+  fi
+  results+=("$dest/result.json")
+  if $keep_traces; then keep_traces_of "$dest/result.json" "$dest/traces"; fi
+  if [ "$case_status" -eq 2 ]; then stopped=cost_ceiling; break; fi   # the CLI reached what was left
+done
+
+if [ -n "$stopped" ]; then
+  status=2
+  if [ "$stopped" = cost_ceiling ]; then
+    echo "note: the cost ceiling of \$$max_cost is reached; the cases after it did not run"
+  fi
+fi
+merge=(merge "$out/result.json")
+if [ -n "$stopped" ]; then merge+=(--partial "$stopped"); fi
+"$PY" "$root/scripts/eval_merge.py" "${merge[@]}" ${results[@]+"${results[@]}"} || fail "could not merge the results"
+echo "results: $out (result.json, and each case's in cases/)"
 exit "$status"
