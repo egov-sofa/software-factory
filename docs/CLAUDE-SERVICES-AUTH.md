@@ -137,12 +137,13 @@ the evals of the agents and skills ([evals/README.md](../evals/README.md), roadm
 - **Its own workspace** (since 2026-11-26): `software-factory-evals`, in `ANTHROPIC_EVALS_WORKSPACE_ID`, with its
   own monthly spend limit, because the evals once reached the limit of the workspace the PR review shares and blocked
   the reviews. The rule is bound to that workspace and the service account is a `workspace_developer` in it. Without
-  the variable the job falls back to `ANTHROPIC_WORKSPACE_ID`. Set up with the admin profile
-  (`ant ... --profile admin`): `organization:workspaces create --name software-factory-evals`,
-  `organization:workspaces:service-accounts add --workspace-id <new> --service-account-id svac_...
-  --workspace-role workspace_developer`, `organization:federation:rules update --federation-rule-id <evals rule>
-  --workspace-id <new>`, then `gh variable set ANTHROPIC_EVALS_WORKSPACE_ID`. Its spend limit is set in the Claude
-  Console (Settings, Workspaces, Limits).
+  the variable the job falls back to `ANTHROPIC_WORKSPACE_ID`. Create the workspace and give the service account a
+  place in it with the admin profile (`ant ... --profile admin`): `organization:workspaces create --name
+  software-factory-evals`, then `organization:workspaces:service-accounts add --workspace-id <new>
+  --service-account-id svac_... --workspace-role workspace_developer`. Set its spend limit in the Claude Console
+  (Settings, Workspaces, Limits). The setup command below then binds a new evals rule to it (`--evals-workspace`) and
+  sets the variable. An evals rule that already exists is reused as it is: move it with
+  `organization:federation:rules update --federation-rule-id <evals rule> --workspace-id <new>`.
 - **Pinned to the workflow on `main`:** `evals.yml` is not a reusable workflow, so `job_workflow_ref` names it
   directly. The job runs author-written scaffolds with `--trust-plugin`, so it must never run from a branch or a fork.
 - **Cost:** a full run costs about $10–18 and a smoke run $3–6 (estimates; the measured costs are in
@@ -152,7 +153,7 @@ the evals of the agents and skills ([evals/README.md](../evals/README.md), roadm
   and the shared variables already exist here and are reused):
 
   ```bash
-  python3 scripts/claude_federation.py --repo egov-sofa/software-factory --service-account svac_... --workspace wrkspc_... --evals --apply --set-variables
+  python3 scripts/claude_federation.py --repo egov-sofa/software-factory --service-account svac_... --workspace wrkspc_... --evals --evals-workspace wrkspc_... --apply --set-variables
   ```
 
   Until the variable is set, the Evals job fails at its first step with a message pointing here, before any spend.

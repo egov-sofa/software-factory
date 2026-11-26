@@ -15,8 +15,8 @@ and a rule that already exists with the same name on the issuer is reused, so it
 
 Usage:
   python3 scripts/claude_federation.py --repo OWNER/NAME --service-account svac_... --workspace wrkspc_... \\
-      [--mention] [--mention-workflow-ref REF] [--evals] [--review-workflow-ref REF] [--sub-prefix PREFIX] \\
-      [--owner-id ID] [--default-branch BRANCH] [--rule-prefix NAME] \\
+      [--mention] [--mention-workflow-ref REF] [--evals [--evals-workspace W]] [--review-workflow-ref REF] \\
+      [--sub-prefix PREFIX] [--owner-id ID] [--default-branch BRANCH] [--rule-prefix NAME] \\
       [--issuer-url URL] [--create-issuer] [--token-lifetime 600] [--apply [--set-variables]]
 
   --service-account, --workspace
@@ -36,6 +36,9 @@ Usage:
   --evals        also create the rule of the factory's own Evals workflow (.github/workflows/evals.yml, run by hand
                  on main): subject on refs/heads/main, event_name workflow_dispatch and that workflow's
                  job_workflow_ref. For the factory repository only
+  --evals-workspace
+                 with --evals: the workspace of the evals rule (wrkspc_...), so the evals have their own monthly limit
+                 apart from the review's; also sets ANTHROPIC_EVALS_WORKSPACE_ID. Without it the evals share --workspace
   --review-workflow-ref
                  the same for the review rule. Recommended for projects: without it, anyone with write access can
                  open a pull request that edits the workflow and get tokens
@@ -81,6 +84,9 @@ def parse_args(argv):
     p.add_argument("--mention-workflow-ref", default="", help="extra job_workflow_ref claim for the mention rule")
     p.add_argument("--evals", action="store_true",
                    help="also create the rule for the factory's Evals workflow (evals.yml, run by hand on main)")
+    p.add_argument("--evals-workspace", default="",
+                   help="with --evals: wrkspc_... of the evals rule, apart from the review's (sets "
+                        "ANTHROPIC_EVALS_WORKSPACE_ID)")
     p.add_argument("--review-workflow-ref", default="", help="extra job_workflow_ref claim for the review rule")
     p.add_argument("--sub-prefix", default="", help="OIDC subject prefix; default: read it with gh")
     p.add_argument("--owner-id", default="", help="numeric ID of the owner; default: read it with gh")
@@ -102,6 +108,8 @@ def parse_args(argv):
         p.error("--service-account must be a service account ID (svac_...), or set FACTORY_CLAUDE_SERVICE_ACCOUNT")
     if not args.workspace.startswith("wrkspc_"):
         p.error("--workspace must be a workspace ID (wrkspc_...), or set FACTORY_CLAUDE_WORKSPACE")
+    if args.evals_workspace and not (args.evals and args.evals_workspace.startswith("wrkspc_")):
+        p.error("--evals-workspace needs --evals and a workspace ID (wrkspc_...)")
     if args.owner_id and not args.owner_id.isdigit():
         p.error("--owner-id must be the numeric ID of the owner (gh api users/OWNER --jq .id)")
     if not 60 <= args.token_lifetime <= 3600:
@@ -212,6 +220,8 @@ def build_rules(args, sub_prefix, owner_id):
                                      "event_name": "workflow_dispatch",
                                      "job_workflow_ref": f"{args.repo}/.github/workflows/evals.yml@refs/heads/main"}},
                 **common,
+                # a workspace of its own when given: the evals once reached the limit of the one the review shares
+                "workspace_id": args.evals_workspace or args.workspace,
             },
         })
     return rules
@@ -226,6 +236,8 @@ def variable_values(rule_ids, org_id, args):
     values += [("ANTHROPIC_ORGANIZATION_ID", org_id),
                ("ANTHROPIC_SERVICE_ACCOUNT_ID", args.service_account),
                ("ANTHROPIC_WORKSPACE_ID", args.workspace)]
+    if args.evals and args.evals_workspace:
+        values += [("ANTHROPIC_EVALS_WORKSPACE_ID", args.evals_workspace)]
     values += [(var, rid) for var, rid in rule_ids.items() if var in switches]
     values += [("CLAUDE_REVIEW_ENABLED", "true")]
     return values
